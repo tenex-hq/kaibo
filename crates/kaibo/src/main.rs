@@ -7,11 +7,15 @@
 //! flags to config, and mapping a `kaibo_core` error to a process exit code.
 //! All logic lives in `kaibo_core`.
 //!
-//! `status` and `sync` are the first two verbs; `status` only reads, `sync`
-//! clones/pulls the corpus and refreshes its qmd index. Later verbs
-//! (`query`, `contribute`, `doctrine`, ...) land in later changes. None of
-//! them will ever accept a flag that names a repo, a clone path, or an
-//! index: that is what `Config` is for.
+//! `status`, `sync` and `query` are the first three verbs; `status` only
+//! reads, `sync` clones/pulls the corpus and refreshes its qmd index,
+//! `query` retrieves ranked, cited evidence and self-heals via `sync` when
+//! the local corpus is missing, stale, or its qmd collection is gone.
+//! `query` never synthesises an answer - it holds no API key and makes no
+//! network call of kaibo's own. Later verbs (`contribute`, `doctrine`,
+//! `domains`, ...) land in later changes. None of them will ever accept a
+//! flag that names a repo, a clone path, or an index: that is what `Config`
+//! is for.
 
 use std::process::ExitCode;
 
@@ -22,6 +26,7 @@ use kaibo_core::error::ExitCoded;
 use kaibo_core::explain::Explainable;
 use kaibo_core::output::{Render, RenderOptions};
 use kaibo_core::process::RealCommandRunner;
+use kaibo_core::query::QueryVerb;
 use kaibo_core::status::StatusVerb;
 use kaibo_core::sync::SyncVerb;
 
@@ -51,6 +56,9 @@ enum Commands {
     Status,
     /// Clone or pull the corpus, then refresh its qmd index.
     Sync(SyncCommandArgs),
+    /// Retrieve ranked, cited evidence for a question. Never synthesises an
+    /// answer - that's the calling model's job.
+    Query(QueryCommandArgs),
 }
 
 #[derive(Args, Debug)]
@@ -60,6 +68,17 @@ struct SyncCommandArgs {
     /// round trip when there is nothing to heal.
     #[arg(long)]
     if_stale: bool,
+}
+
+#[derive(Args, Debug)]
+struct QueryCommandArgs {
+    /// The question to search the knowledge corpus for.
+    question: String,
+
+    /// Include draft pages in the results, each labelled as a draft. Drafts
+    /// are excluded by default.
+    #[arg(long)]
+    include_drafts: bool,
 }
 
 fn main() -> ExitCode {
@@ -73,6 +92,9 @@ fn main() -> ExitCode {
     match &cli.command {
         Some(Commands::Status) => run_status(&config, &cli),
         Some(Commands::Sync(args)) => run_sync(&config, &cli, args.if_stale),
+        Some(Commands::Query(args)) => {
+            run_query(&config, &cli, &args.question, args.include_drafts)
+        }
         None => report_no_command(cli.json),
     }
 }
@@ -113,6 +135,29 @@ fn run_sync(config: &Config, cli: &Cli, if_stale: bool) -> ExitCode {
     let runner = RealCommandRunner;
     let clock = SystemClock;
     let report = verb.gather(&runner, &clock, if_stale);
+
+    if cli.json {
+        println!("{}", report.render_json());
+    } else {
+        println!("{}", report.render_text(&RenderOptions { full: cli.full }));
+    }
+
+    to_process_exit_code(report.exit_code())
+}
+
+fn run_query(config: &Config, cli: &Cli, question: &str, include_drafts: bool) -> ExitCode {
+    let verb = QueryVerb::new(config, question);
+
+    if cli.explain {
+        for command in verb.explain() {
+            println!("{command}");
+        }
+        return to_process_exit_code(kaibo_core::error::ExitCode::Success);
+    }
+
+    let runner = RealCommandRunner;
+    let clock = SystemClock;
+    let report = verb.gather(&runner, &clock, include_drafts);
 
     if cli.json {
         println!("{}", report.render_json());
