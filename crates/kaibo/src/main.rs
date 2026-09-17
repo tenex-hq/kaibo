@@ -7,14 +7,15 @@
 //! flags to config, and mapping a `kaibo_core` error to a process exit code.
 //! All logic lives in `kaibo_core`.
 //!
-//! `status` is the first verb; it only reads. Later verbs (`sync`, `query`,
-//! `contribute`, `doctrine`, ...) land in later changes. None of them will
-//! ever accept a flag that names a repo, a clone path, or an index: that is
-//! what `Config` is for.
+//! `status` and `sync` are the first two verbs; `status` only reads, `sync`
+//! clones/pulls the corpus and refreshes its qmd index. Later verbs
+//! (`query`, `contribute`, `doctrine`, ...) land in later changes. None of
+//! them will ever accept a flag that names a repo, a clone path, or an
+//! index: that is what `Config` is for.
 
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use kaibo_core::clock::SystemClock;
 use kaibo_core::config::Config;
 use kaibo_core::error::ExitCoded;
@@ -22,6 +23,7 @@ use kaibo_core::explain::Explainable;
 use kaibo_core::output::{Render, RenderOptions};
 use kaibo_core::process::RealCommandRunner;
 use kaibo_core::status::StatusVerb;
+use kaibo_core::sync::SyncVerb;
 
 /// A typed CLI interface to a git-backed markdown knowledge corpus.
 #[derive(Parser, Debug)]
@@ -47,6 +49,17 @@ struct Cli {
 enum Commands {
     /// Report on the health of the local clone and qmd index. Read-only.
     Status,
+    /// Clone or pull the corpus, then refresh its qmd index.
+    Sync(SyncCommandArgs),
+}
+
+#[derive(Args, Debug)]
+struct SyncCommandArgs {
+    /// No-op unless the corpus is currently stale, so a caller (e.g.
+    /// `query`) can ask for a self-heal without paying for a full sync
+    /// round trip when there is nothing to heal.
+    #[arg(long)]
+    if_stale: bool,
 }
 
 fn main() -> ExitCode {
@@ -59,6 +72,7 @@ fn main() -> ExitCode {
 
     match &cli.command {
         Some(Commands::Status) => run_status(&config, &cli),
+        Some(Commands::Sync(args)) => run_sync(&config, &cli, args.if_stale),
         None => report_no_command(cli.json),
     }
 }
@@ -76,6 +90,29 @@ fn run_status(config: &Config, cli: &Cli) -> ExitCode {
     let runner = RealCommandRunner;
     let clock = SystemClock;
     let report = verb.gather(&runner, &clock, env!("CARGO_PKG_VERSION"));
+
+    if cli.json {
+        println!("{}", report.render_json());
+    } else {
+        println!("{}", report.render_text(&RenderOptions { full: cli.full }));
+    }
+
+    to_process_exit_code(report.exit_code())
+}
+
+fn run_sync(config: &Config, cli: &Cli, if_stale: bool) -> ExitCode {
+    let verb = SyncVerb::new(config);
+
+    if cli.explain {
+        for command in verb.explain() {
+            println!("{command}");
+        }
+        return to_process_exit_code(kaibo_core::error::ExitCode::Success);
+    }
+
+    let runner = RealCommandRunner;
+    let clock = SystemClock;
+    let report = verb.gather(&runner, &clock, if_stale);
 
     if cli.json {
         println!("{}", report.render_json());
