@@ -17,5 +17,6 @@ pub mod frontmatter;
 pub mod output;
 pub mod process;
 pub mod qmd;
+pub mod query;
 pub mod status;
 pub mod sync;

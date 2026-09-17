@@ -113,6 +113,27 @@ impl QmdCommand {
         Self::index_command(config, "embed", Vec::<String>::new())
     }
 
+    /// `qmd query <question> --index <configured> -c <configured collection>
+    /// --format json` - retrieval against the configured index and
+    /// collection only, asking for JSON so `query` can parse hits rather
+    /// than scrape human-formatted text. `question` must already be
+    /// sanitised (a leading `expand:`/`lex:`/`vec:`/`hyde:`/`intent:`
+    /// prefix stripped) by the caller - this constructor does not sanitise
+    /// it, so it stays a thin, honest builder like every other one here.
+    pub fn query(config: &Config, question: &str) -> PlannedCommand {
+        Self::index_command(
+            config,
+            "query",
+            [
+                question.to_string(),
+                "-c".to_string(),
+                config.collection().to_string(),
+                "--format".to_string(),
+                "json".to_string(),
+            ],
+        )
+    }
+
     /// `qmd --version` - a version check addresses no index, so it carries
     /// no `--index` and is deliberately not built through
     /// [`Self::index_command`].
@@ -254,5 +275,50 @@ mod tests {
                 .unwrap_or_else(|| panic!("no --index in: {command}"));
             assert_eq!(command.args[position + 1], "from-config-not-a-literal");
         }
+    }
+
+    /// `query` carries the configured index and collection, not literals,
+    /// and asks for JSON so `query::gather` has something structured to
+    /// parse.
+    #[test]
+    fn query_command_carries_configured_index_and_collection_and_asks_for_json() {
+        let config = ConfigBuilder::new("/unused")
+            .index("from-config-index", ConfigSource::File)
+            .collection("from-config-collection", ConfigSource::File)
+            .build();
+
+        let command = QmdCommand::query(&config, "how does auth work");
+
+        assert_eq!(command.program, "qmd");
+        assert!(command.args.contains(&"how does auth work".to_string()));
+        let index_position = command
+            .args
+            .iter()
+            .position(|arg| arg == "--index")
+            .expect("query must carry --index");
+        assert_eq!(command.args[index_position + 1], "from-config-index");
+        let collection_position = command
+            .args
+            .iter()
+            .position(|arg| arg == "-c")
+            .expect("query must carry -c <collection>");
+        assert_eq!(
+            command.args[collection_position + 1],
+            "from-config-collection"
+        );
+        assert!(command.args.windows(2).any(|w| w == ["--format", "json"]));
+    }
+
+    /// A question is passed through as a single argv element - no shell is
+    /// ever involved, so embedded quotes need no escaping and must survive
+    /// verbatim.
+    #[test]
+    fn query_command_preserves_a_question_containing_quotes_verbatim() {
+        let config = ConfigBuilder::new("/unused").build();
+        let question = r#"what does "foo" mean"#;
+
+        let command = QmdCommand::query(&config, question);
+
+        assert!(command.args.contains(&question.to_string()));
     }
 }
