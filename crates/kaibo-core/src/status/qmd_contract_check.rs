@@ -15,7 +15,8 @@
 //!     match a domain-nested page (`<domain>/<type>/<page>.md`) and exclude
 //!     a file at the fixture root - checked indirectly through `qmd
 //!     status`'s file count, since no [`QmdCommand`] builder exists for
-//!     `qmd ls` (see the note on [`assert_mask_matched_only_the_nested_page`]).
+//!     `qmd ls` (see the note on
+//!     [`assert_mask_accepts_nested_and_rejects_root`]).
 //! (c) **Write isolation.** `qmd update --index <scratch>` must leave the
 //!     default index's sqlite database untouched - its mtime does not
 //!     change.
@@ -193,7 +194,12 @@ fn run_ok(runner: &dyn CommandRunner, command: &PlannedCommand) -> String {
 
 #[test]
 fn qmd_contract_check() {
-    if std::env::var(GATE_VAR).is_err() {
+    // `non_empty_env`, not `env::var(..).is_err()`: an exported-but-blank
+    // `KAIBO_QMD_CONTRACT=` counts as unset here, the same rule `Config`
+    // applies to every value it resolves. The fail-safe direction matters -
+    // a blank variable must not arm a test that shells out to a real binary
+    // and touches real state under $HOME.
+    if non_empty_env(GATE_VAR).is_none() {
         println!(
             "qmd contract check: skipped (this test is non-hermetic - it runs a real qmd \
              binary and reads/writes real qmd state under $HOME). Set {GATE_VAR}=1 to run it: \
@@ -230,7 +236,7 @@ fn qmd_contract_check() {
     run_ok(&runner, &QmdCommand::update(&config));
 
     assert_isolation_untouched(&runner, &default_before);
-    assert_mask_matched_only_the_nested_page(&runner, &config);
+    assert_mask_accepts_nested_and_rejects_root(&runner, &paths, &config);
     assert_default_db_untouched(&paths, default_db_mtime_before);
 
     let version = run_ok(&runner, &QmdCommand::version());
@@ -251,30 +257,80 @@ fn assert_isolation_untouched(runner: &dyn CommandRunner, default_before: &str) 
     );
 }
 
-/// (b) Mask semantics, asserted indirectly: no [`QmdCommand`] builder exists
-/// for `qmd ls`, so this cannot list matched files by name the way the
-/// shell contract check does. Instead it reads `qmd status --index
-/// <scratch>`'s file count after indexing a fixture with exactly one file
-/// that should match (`kaibo/reference/fixture.md`, domain-nested under a
-/// typed folder) and exactly one that should not (`README.md`, at the
-/// fixture root). A count of exactly 1 is only possible if the mask
-/// matched the nested page and excluded the root file - the fixture has no
-/// other files, so any other count means the mask's shape changed.
-fn assert_mask_matched_only_the_nested_page(
+/// (b) Mask semantics. No [`QmdCommand`] builder exists for `qmd ls`, so
+/// this cannot list matched files by name the way the shell contract check
+/// does; all it can read is `qmd status --index <scratch>`'s file count.
+///
+/// A count alone is not enough. Indexing the mixed fixture (one
+/// domain-nested page that should match, one root-level `README.md` that
+/// should not) and asserting `1` would also pass if the mask had
+/// *inverted*, matching the root file and rejecting the nested one. The
+/// count cannot distinguish those, so the assertion is made twice against
+/// different fixtures:
+///
+/// - mixed fixture, expect exactly 1: something matched, something did not.
+///
+/// - root-only fixture, expect exactly 0: what did not match is the root
+///   file specifically.
+///
+///
+/// Together those pin the mask's direction, which one count cannot. This is
+/// still weaker than naming the matched file: a mask that matched some
+/// third path shape would satisfy both. Replace this with a `qmd ls`
+/// builder if one is ever added.
+fn assert_mask_accepts_nested_and_rejects_root(
+    runner: &dyn CommandRunner,
+    paths: &ScratchIndexPaths,
+    mixed_config: &crate::config::Config,
+) {
+    assert_indexed_file_count(
+        runner,
+        mixed_config,
+        1,
+        "the mixed fixture (domain-nested `kaibo/reference/fixture.md` must match; root-level \
+         `README.md` must not)",
+    );
+
+    // Second fixture, own scratch index: clear the first one first, or
+    // `collection add` would fail on the already-registered name.
+    paths.cleanup();
+    let root_only = tempfile::tempdir().expect("create root-only fixture tempdir");
+    std::fs::write(
+        root_only.path().join("README.md"),
+        "root file, must not be indexed\n",
+    )
+    .expect("write root-only fixture file");
+
+    let root_only_config = ConfigBuilder::new(root_only.path())
+        .index(SCRATCH_INDEX, ConfigSource::File)
+        .build();
+    run_ok(
+        runner,
+        &QmdCommand::collection_add(&root_only_config, root_only.path(), "knowledge", MASK),
+    );
+    run_ok(runner, &QmdCommand::update(&root_only_config));
+
+    assert_indexed_file_count(
+        runner,
+        &root_only_config,
+        0,
+        "the root-only fixture (a bare `README.md` at the collection root must match nothing)",
+    );
+}
+
+fn assert_indexed_file_count(
     runner: &dyn CommandRunner,
     config: &crate::config::Config,
+    expected: u64,
+    fixture_description: &str,
 ) {
     let status_output = run_ok(runner, &QmdCommand::status(config));
     let status = crate::status::parse_qmd_status(&status_output);
     match status {
-        IndexStatus::Available {
-            total_files: Some(1),
-            ..
-        } => {}
+        IndexStatus::Available { total_files, .. } if total_files == Some(expected) => {}
         other => panic!(
-            "qmd contract broken: expected exactly 1 file indexed in the scratch collection \
-             (the domain-nested fixture page `kaibo/reference/fixture.md`; the root-level \
-             `README.md` must be excluded), got {other:?} instead. The mask \
+            "qmd contract broken: expected exactly {expected} file(s) indexed for \
+             {fixture_description}, got {other:?} instead. The mask \
              `*/{{reference,how-to,faq}}/**/*.md` no longer matches \
              `<domain>/{{reference,how-to,faq}}/**/*.md` and excludes root files the way \
              kaibo's `sync` verb (and the docs describing qmd's mask semantics) assume - a qmd \
