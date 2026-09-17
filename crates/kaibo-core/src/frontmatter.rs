@@ -3,11 +3,8 @@
 //!
 //! Known keys are typed. Everything else round-trips through
 //! [`Frontmatter::extra`] so a document using keys this model has never
-//! heard of survives a parse-then-serialize cycle unchanged, in the same
-//! order it isn't tracking. This passthrough is deliberate: a future epic
-//! adds `binding`, `severity`, `applies_to` and a `checks` block additively,
-//! and passthrough is what makes that a field addition instead of a
-//! rewrite.
+//! heard of survives a parse-then-serialize cycle unchanged. Deliberate:
+//! it turns adding a new known key into a field addition, not a rewrite.
 
 use std::collections::BTreeMap;
 

@@ -119,9 +119,8 @@ pub struct StatusReport {
 
 impl StatusReport {
     /// `Stale` when the clone is missing or its freshness can't be
-    /// confirmed; `Success` otherwise. qmd being absent or off-pin is
-    /// reported as a finding, not a reason to fail the exit code - see the
-    /// module doc.
+    /// confirmed; `Success` otherwise. qmd being absent or off-pin is a
+    /// finding, not an exit-code failure.
     pub fn exit_code(&self) -> ExitCode {
         if self.is_stale() {
             ExitCode::Stale
@@ -144,7 +143,6 @@ impl StatusReport {
         }
     }
 
-    /// Findings, each carrying the exact next command where one exists.
     pub fn findings(&self) -> Vec<Finding> {
         let mut findings = Vec::new();
 
@@ -477,26 +475,21 @@ fn is_ascii_digits(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
 }
 
-/// Lenient line-based parse of `qmd status --index <x>` text output. Any
-/// field that doesn't parse is `None` rather than guessed - the format isn't
-/// a stable contract, so degrading a single unreadable field beats failing
-/// the whole report.
+/// Lenient line-based parse of `qmd status --index <x>` text output. A field
+/// that doesn't parse is `None` rather than guessed - the format isn't a
+/// stable contract.
 ///
-/// Verified empirically against a real qmd 2.8.3 binary (no contract doc
-/// ships in this repo to drift against): `Total:` and `Vectors:` are always
-/// present, but `Pending:` ("N need embedding") is an *optional* line that
-/// qmd omits entirely once nothing needs embedding - it does not print
-/// `Pending: 0`. So a `Pending:` line's absence on an otherwise-successful
-/// call means zero, not "unreadable"; `pending` therefore resolves to `Some(0)`
-/// rather than `None` - but only when `Total:` parsed, which is what
-/// distinguishes qmd status output from output this parser does not
-/// recognise at all.
+/// Verified empirically against a real qmd 2.8.3 binary: `Total:` and
+/// `Vectors:` are always present, but `Pending:` ("N need embedding") is
+/// omitted entirely once nothing needs embedding - qmd does not print
+/// `Pending: 0`. So an absent `Pending:` line resolves to `Some(0)`, not
+/// `None`, but only when `Total:` parsed - that is what distinguishes real
+/// qmd status output from output this parser does not recognise at all.
 ///
 /// qmd also prints an unrelated `Orphaned: N embedding chunks (…%) - run
-/// 'qmd cleanup'` line when stale vector chunks exist (from since-deleted or
-/// -changed documents). That is a distinct concept - "needs cleanup", not
-/// "needs embedding" - so it is deliberately not folded into `pending` here;
-/// this parser ignores unrecognized lines, `Orphaned:` included.
+/// 'qmd cleanup'` line for stale vector chunks - a distinct concept ("needs
+/// cleanup", not "needs embedding") that this parser deliberately ignores
+/// along with any other unrecognised line.
 pub(crate) fn parse_qmd_status(stdout: &str) -> IndexStatus {
     let mut total_files = None;
     let mut vectors_embedded = None;
@@ -703,12 +696,9 @@ pub(crate) fn render_count(value: Option<u64>) -> String {
     value.map_or_else(|| "?".to_string(), |v| v.to_string())
 }
 
-/// Opt-in, non-hermetic smoke check against a real `qmd` binary - see the
-/// module doc there for why it is not part of the hermetic `tests` module
-/// below and how to run it. Declared as a child of this module (rather
-/// than in `lib.rs`) because it reuses this module's `parse_qmd_status` and
-/// `IndexStatus` to read `qmd status` output, and this is the file that
-/// change belongs in.
+/// Opt-in, non-hermetic smoke check against a real `qmd` binary - see its
+/// own module doc for how to run it. A child of this module because it
+/// reuses `parse_qmd_status` and `IndexStatus`.
 #[cfg(test)]
 mod qmd_contract_check;
 

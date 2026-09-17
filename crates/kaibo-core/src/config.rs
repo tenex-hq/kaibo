@@ -3,22 +3,10 @@
 //! Precedence, highest first: `KAIBO_*` environment variables, then
 //! `~/.kaibo/config.toml`, then compiled defaults.
 //!
-//! **Invariant: config comes from configuration, never from content.** A
-//! repo name appearing inside a retrieved page cannot reach the resolved
-//! config, because by the time any corpus content exists in the process,
-//! config is already resolved and frozen. Concretely:
-//!
-//! - [`Config::resolve`] is the *only* public constructor. It is the only
-//!   place in this module that calls `std::env::var` or reads
-//!   `~/.kaibo/config.toml`.
-//! - `Config` has no public mutable fields and no setters. Read it through
-//!   getters; pass it around as `&Config`.
-//! - Every other way to build a `Config` (used only by this module's tests)
-//!   takes explicit values and cannot read ambient state.
-//!
-//! Callers must resolve config exactly once, in `main`, before opening any
-//! corpus file, and treat the result as immutable for the life of the
-//! process.
+//! Config comes from configuration, never from content: [`Config::resolve`]
+//! is the sole public constructor, and callers must resolve exactly once, in
+//! `main`, before opening any corpus file - nothing read from the corpus can
+//! reach a value used to decide where to read or write.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -111,14 +99,11 @@ struct ConfigFile {
     api_url: Option<String>,
 }
 
-/// Where [`Config::resolve`] reads ambient state from.
-///
-/// [`ProcessEnvironment`] is the only implementation used outside tests, and
-/// it is the only place in the crate that calls `std::env::var` or looks at
-/// `~/.kaibo/config.toml`. Tests inject a fake implementation instead, so
-/// config-resolution tests never read (or race on) the real process
-/// environment - this trait is the injection point the hermetic-test
-/// doctrine asks for.
+/// Where [`Config::resolve`] reads ambient state from. [`ProcessEnvironment`]
+/// is the only implementation used outside tests and the only place in the
+/// crate that calls `std::env::var` or reads `~/.kaibo/config.toml`; tests
+/// inject a fake instead, so config-resolution tests never touch the real
+/// process environment.
 trait Environment {
     fn var(&self, key: &str) -> Option<String>;
     fn home_dir(&self) -> Option<PathBuf>;
@@ -136,12 +121,8 @@ impl Environment for ProcessEnvironment {
     }
 }
 
-/// Resolved, immutable configuration for a kaibo process.
-///
-/// Fields are private; read them through the getters below. There is no
-/// setter and no public way to mutate a `Config` after it is built, by
-/// design - pass it around as `&Config`, or wrap it in `Arc` to share it
-/// across threads.
+/// Resolved, immutable configuration for a kaibo process. Fields are
+/// private with no setters; read them through the getters below.
 #[derive(Debug, Clone)]
 pub struct Config {
     repo: Option<String>,
@@ -247,7 +228,6 @@ impl Config {
     }
 
     /// Where the value for `key` came from: environment, file, or default.
-    /// Not printed anywhere in this PR; a future `kaibo status` will use it.
     pub fn source(&self, key: ConfigKey) -> ConfigSource {
         *self
             .sources
@@ -276,14 +256,11 @@ fn load_config_file(home: Option<&Path>) -> Result<Option<ConfigFile>, ConfigErr
     Ok(Some(file))
 }
 
-/// An empty value counts as unset, at every layer.
-///
-/// `std::env::var` cannot distinguish `KAIBO_REPO=` from a deliberate empty
-/// string, and neither can a config file holding `repo = ""`. Treating empty
-/// as unset means an exported-but-blank variable falls through to the next
-/// layer instead of shadowing it with a value no verb could use - and it
-/// keeps `repo()` returning `None` rather than `Some("")`, so the "unset
-/// repo, point the user at `kaibo install`" path stays a single check.
+/// An empty value counts as unset, at every layer: `std::env::var` cannot
+/// distinguish `KAIBO_REPO=` from a deliberate empty string, and neither can
+/// a config file holding `repo = ""`. An exported-but-blank variable falls
+/// through to the next layer rather than shadowing it with a value no verb
+/// could use.
 fn resolve_optional(
     env: &dyn Environment,
     env_key: &str,
@@ -315,11 +292,9 @@ pub(crate) mod testing {
     use super::*;
 
     /// Test-only: build a [`Config`] with explicit values, for tests in
-    /// other modules that need one. Those tests cannot call
-    /// [`Config::resolve_with`] (private to this module) and must not call
-    /// [`Config::resolve`] (it would read the real environment and defeat
-    /// the hermetic-test doctrine this module exists to uphold) - this is
-    /// the sanctioned way for the rest of the crate to get a `Config` fixture.
+    /// other modules. Cannot call [`Config::resolve_with`] (private) or
+    /// [`Config::resolve`] (reads the real environment) - this is the
+    /// sanctioned way to get a `Config` fixture.
     pub(crate) struct ConfigBuilder {
         repo: Option<String>,
         clone: PathBuf,
