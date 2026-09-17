@@ -7,16 +7,17 @@
 //! flags to config, and mapping a `kaibo_core` error to a process exit code.
 //! All logic lives in `kaibo_core`.
 //!
-//! `status`, `sync`, `query` and `doctrine` are the verbs so far; `status`
-//! only reads, `sync` clones/pulls the corpus and refreshes its qmd index,
-//! `query` retrieves ranked, cited evidence for a question, and `doctrine`
-//! loads a named domain's own MOC section plus its `current` reference
-//! pages in one call (a load, not a question). `query` and `doctrine` both
-//! self-heal via `sync` when the local corpus is missing, stale, or its
-//! qmd collection is gone, and neither ever synthesises an answer -
-//! `query` holds no API key and makes no network call of kaibo's own.
-//! Later verbs (`domains`, `contribute`, ...) land in later changes. None
-//! of them will ever accept a flag that names a repo, a clone path, or an
+//! `status`, `sync`, `query`, `doctrine` and `domains` are the verbs so
+//! far; `status` only reads, `sync` clones/pulls the corpus and refreshes
+//! its qmd index, `query` retrieves ranked, cited evidence for a question,
+//! `doctrine` loads a named domain's own MOC section plus its `current`
+//! reference pages in one call (a load, not a question), and `domains`
+//! lists the root MOC's domain inventory as structured data. `query` and
+//! `doctrine` both self-heal via `sync` when the local corpus is missing,
+//! stale, or its qmd collection is gone, and neither ever synthesises an
+//! answer - `query` holds no API key and makes no network call of kaibo's
+//! own. Later verbs (`contribute`, ...) land in later changes. None of
+//! them will ever accept a flag that names a repo, a clone path, or an
 //! index: that is what `Config` is for.
 
 use std::process::ExitCode;
@@ -25,6 +26,7 @@ use clap::{Args, Parser, Subcommand};
 use kaibo_core::clock::SystemClock;
 use kaibo_core::config::Config;
 use kaibo_core::doctrine::DoctrineVerb;
+use kaibo_core::domains::DomainsVerb;
 use kaibo_core::error::ExitCoded;
 use kaibo_core::explain::Explainable;
 use kaibo_core::output::{Render, RenderOptions};
@@ -63,8 +65,12 @@ enum Commands {
     /// answer - that's the calling model's job.
     Query(QueryCommandArgs),
     /// Load a domain's root-MOC section plus its `current` reference pages
-    /// in one call. A load, not a question.
+    /// in one call. A load, not a question - see `kaibo domains` for the
+    /// available domain names.
     Doctrine(DoctrineCommandArgs),
+    /// List the root MOC's domain inventory as structured data: domain,
+    /// owner, topics, summary.
+    Domains,
 }
 
 #[derive(Args, Debug)]
@@ -89,7 +95,8 @@ struct QueryCommandArgs {
 
 #[derive(Args, Debug)]
 struct DoctrineCommandArgs {
-    /// The domain folder to load doctrine for.
+    /// The domain folder to load doctrine for. See `kaibo domains` for the
+    /// available names.
     domain: String,
 }
 
@@ -108,6 +115,7 @@ fn main() -> ExitCode {
             run_query(&config, &cli, &args.question, args.include_drafts)
         }
         Some(Commands::Doctrine(args)) => run_doctrine(&config, &cli, &args.domain),
+        Some(Commands::Domains) => run_domains(&config, &cli),
         None => report_no_command(cli.json),
     }
 }
@@ -186,6 +194,29 @@ fn run_query(config: &Config, cli: &Cli, question: &str, include_drafts: bool) -
 
 fn run_doctrine(config: &Config, cli: &Cli, domain: &str) -> ExitCode {
     let verb = DoctrineVerb::new(config, domain);
+
+    if cli.explain {
+        for command in verb.explain() {
+            println!("{command}");
+        }
+        return to_process_exit_code(kaibo_core::error::ExitCode::Success);
+    }
+
+    let runner = RealCommandRunner;
+    let clock = SystemClock;
+    let report = verb.gather(&runner, &clock);
+
+    if cli.json {
+        println!("{}", report.render_json());
+    } else {
+        println!("{}", report.render_text(&RenderOptions { full: cli.full }));
+    }
+
+    to_process_exit_code(report.exit_code())
+}
+
+fn run_domains(config: &Config, cli: &Cli) -> ExitCode {
+    let verb = DomainsVerb::new(config);
 
     if cli.explain {
         for command in verb.explain() {

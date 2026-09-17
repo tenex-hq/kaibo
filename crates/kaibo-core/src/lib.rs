@@ -12,6 +12,7 @@
 pub mod clock;
 pub mod config;
 pub mod doctrine;
+pub mod domains;
 pub mod error;
 pub mod explain;
 pub mod frontmatter;
