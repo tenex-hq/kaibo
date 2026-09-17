@@ -51,7 +51,14 @@ impl<'de> Deserialize<'de> for Status {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Ok(match s.as_str() {
+        // Matched case-insensitively: `status: Draft` or `status: DRAFT`
+        // means the same thing as `status: draft` to every reader of this
+        // corpus who isn't a byte-exact string comparison, and a page whose
+        // author capitalised it should not silently stop being recognised
+        // as a draft. `Unknown` keeps the original casing verbatim, since
+        // that variant exists to round-trip whatever the page actually
+        // said, not to normalise it.
+        Ok(match s.to_ascii_lowercase().as_str() {
             "draft" => Status::Draft,
             "current" => Status::Current,
             "deprecated" => Status::Deprecated,
@@ -298,6 +305,27 @@ Second line.\n";
         assert_eq!(
             doc.frontmatter.status,
             Some(Status::Unknown("experimental".to_string()))
+        );
+    }
+
+    #[test]
+    fn status_matches_known_literals_case_insensitively() {
+        let upper = "---\nstatus: DRAFT\n---\nbody\n";
+        assert_eq!(
+            parse(upper).unwrap().frontmatter.status,
+            Some(Status::Draft)
+        );
+
+        let mixed = "---\nstatus: Deprecated\n---\nbody\n";
+        assert_eq!(
+            parse(mixed).unwrap().frontmatter.status,
+            Some(Status::Deprecated)
+        );
+
+        let title_case = "---\nstatus: Current\n---\nbody\n";
+        assert_eq!(
+            parse(title_case).unwrap().frontmatter.status,
+            Some(Status::Current)
         );
     }
 
