@@ -266,15 +266,23 @@ fn load_config_file(home: Option<&Path>) -> Result<Option<ConfigFile>, ConfigErr
     Ok(Some(file))
 }
 
+/// An empty value counts as unset, at every layer.
+///
+/// `std::env::var` cannot distinguish `KAIBO_REPO=` from a deliberate empty
+/// string, and neither can a config file holding `repo = ""`. Treating empty
+/// as unset means an exported-but-blank variable falls through to the next
+/// layer instead of shadowing it with a value no verb could use - and it
+/// keeps `repo()` returning `None` rather than `Some("")`, so the "unset
+/// repo, point the user at `kaibo install`" path stays a single check.
 fn resolve_optional(
     env: &dyn Environment,
     env_key: &str,
     file_value: Option<String>,
 ) -> (Option<String>, ConfigSource) {
-    if let Some(value) = env.var(env_key) {
+    if let Some(value) = env.var(env_key).filter(|v| !v.is_empty()) {
         return (Some(value), ConfigSource::Env);
     }
-    if let Some(value) = file_value {
+    if let Some(value) = file_value.filter(|v| !v.is_empty()) {
         return (Some(value), ConfigSource::File);
     }
     (None, ConfigSource::Default)
@@ -403,6 +411,37 @@ mod tests {
 
         assert_eq!(config.collection(), "from-env-collection");
         assert_eq!(config.source(ConfigKey::Collection), ConfigSource::Env);
+    }
+
+    /// An exported-but-blank variable must fall through, not shadow the
+    /// layer below it with a value no verb could use.
+    #[test]
+    fn empty_env_value_falls_through_to_file_then_default() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_config_file(tmp.path(), "collection = \"from-file-collection\"\n");
+        let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
+            .with_var(ENV_COLLECTION, "")
+            .with_var(ENV_INDEX, "");
+        let config = Config::resolve_with(&env).unwrap();
+
+        assert_eq!(config.collection(), "from-file-collection");
+        assert_eq!(config.source(ConfigKey::Collection), ConfigSource::File);
+        assert_eq!(config.index(), DEFAULT_INDEX);
+        assert_eq!(config.source(ConfigKey::Index), ConfigSource::Default);
+    }
+
+    /// `repo` has no default, so an empty value must leave it `None` rather
+    /// than `Some("")` - otherwise the "unset repo" check every verb makes
+    /// would have to test for two different empty states.
+    #[test]
+    fn empty_repo_resolves_to_none_not_empty_string() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_config_file(tmp.path(), "repo = \"\"\n");
+        let env = FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var(ENV_REPO, "");
+        let config = Config::resolve_with(&env).unwrap();
+
+        assert_eq!(config.repo(), None);
+        assert_eq!(config.source(ConfigKey::Repo), ConfigSource::Default);
     }
 
     #[test]
