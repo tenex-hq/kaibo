@@ -114,6 +114,23 @@ fn to_process_exit_code(code: kaibo_core::error::ExitCode) -> ExitCode {
 }
 
 #[cfg(test)]
+mod cli_definition_tests {
+    use super::Cli;
+    use clap::CommandFactory;
+
+    /// clap's own internal-consistency check: duplicate argument ids,
+    /// colliding short flags, a `global` flag declared on a subcommand, and
+    /// similar derive mistakes. Without this test clap surfaces them by
+    /// panicking on the first real invocation, which means CI stays green and
+    /// the user finds the bug. `debug_assert` is a no-op in release builds,
+    /// so this only ever costs test time.
+    #[test]
+    fn cli_definition_is_internally_consistent() {
+        Cli::command().debug_assert();
+    }
+}
+
+#[cfg(test)]
 mod architecture_tests {
     //! Guardrail: `query`, `doctrine`, `contribute`, `sync` and `status`
     //! must never accept a flag naming a repo, clone path, or index - only
