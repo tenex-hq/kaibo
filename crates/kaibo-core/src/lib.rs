@@ -20,3 +20,4 @@ pub mod qmd;
 pub mod query;
 pub mod status;
 pub mod sync;
+mod trust;
