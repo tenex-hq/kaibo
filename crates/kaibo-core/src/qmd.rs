@@ -212,29 +212,43 @@ mod tests {
     /// `new("qmd"` - deliberately narrower than "the substring `qmd`
     /// anywhere", so it does not trip over doc comments, JSON field names,
     /// or test assertions that merely compare against the string `"qmd"`.
+    /// The scan walks the whole crate source tree recursively, not just its
+    /// top level, so a violation in a submodule file (`query/tests.rs`,
+    /// `doctrine/tests.rs`, or one that does not exist yet) is caught the
+    /// same as one sitting next to `qmd.rs`.
     #[test]
     fn qmd_command_literal_is_confined_to_this_module() {
-        let this_file = "qmd.rs";
+        fn rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("read directory") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    rust_files(&path, out);
+                } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                    out.push(path);
+                }
+            }
+        }
+
         let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let this_file = src_dir.join("qmd.rs");
+
+        let mut files = Vec::new();
+        rust_files(&src_dir, &mut files);
 
         let mut violations = Vec::new();
-        for entry in std::fs::read_dir(&src_dir).expect("read kaibo-core/src") {
-            let path = entry.expect("dir entry").path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
-                continue;
-            }
-            let file_name = path
-                .file_name()
-                .expect("file name")
-                .to_string_lossy()
-                .into_owned();
-            if file_name == this_file {
+        for path in files {
+            if path == this_file {
                 continue;
             }
 
             let contents = std::fs::read_to_string(&path).expect("read source file");
             if contents.contains("new(\"qmd\"") {
-                violations.push(file_name);
+                violations.push(
+                    path.strip_prefix(&src_dir)
+                        .unwrap_or(&path)
+                        .display()
+                        .to_string(),
+                );
             }
         }
 
