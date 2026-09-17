@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["crates/kaibo-core", "crates/kaibo"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/tenex-hq/kaibo"
+
+[workspace.dependencies]
+kaibo-core = { path = "crates/kaibo-core" }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+serde_yaml_ng = "0.10"
+thiserror = "2"
+
+[profile.release]
+lto = true

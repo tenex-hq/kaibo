@@ -1,0 +1,16 @@
+[package]
+name = "kaibo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "kaibo: a typed CLI interface to a git-backed markdown knowledge corpus, for AI coding agents."
+
+[[bin]]
+name = "kaibo"
+path = "src/main.rs"
+
+[dependencies]
+kaibo-core = { workspace = true }
+clap = { workspace = true }
+serde_json = { workspace = true }
