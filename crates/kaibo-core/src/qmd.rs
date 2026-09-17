@@ -38,6 +38,8 @@
 //! carve-out the qmd contract this crate follows makes for its own
 //! migration guard).
 
+use std::path::Path;
+
 use crate::config::Config;
 use crate::explain::PlannedCommand;
 
@@ -66,6 +68,49 @@ impl QmdCommand {
     /// the configured index.
     pub fn status(config: &Config) -> PlannedCommand {
         Self::index_command(config, "status", Vec::<String>::new())
+    }
+
+    /// `qmd collection list --index <configured>` - the collections that
+    /// exist in the *configured* index, used to check whether `sync`'s
+    /// collection already exists before deciding whether to create it. Not
+    /// to be confused with [`Self::default_index_collection_list`], which
+    /// deliberately addresses qmd's default index instead.
+    pub fn collection_list(config: &Config) -> PlannedCommand {
+        Self::index_command(config, "collection", ["list"])
+    }
+
+    /// `qmd collection add <path> --name <name> --mask <mask> --index
+    /// <configured>` - register `path` as a collection in the configured
+    /// index, restricted to `mask`. Not idempotent on qmd's side (a second
+    /// call with the same name fails), so callers must check
+    /// [`Self::collection_list`] first.
+    pub fn collection_add(config: &Config, path: &Path, name: &str, mask: &str) -> PlannedCommand {
+        Self::index_command(
+            config,
+            "collection",
+            [
+                "add".to_string(),
+                path.to_string_lossy().into_owned(),
+                "--name".to_string(),
+                name.to_string(),
+                "--mask".to_string(),
+                mask.to_string(),
+            ],
+        )
+    }
+
+    /// `qmd update --index <configured>` - re-scan every collection *in the
+    /// configured index* for new/changed/removed files. Deliberately never
+    /// passes `--pull`: that would have qmd itself git-pull every collection
+    /// in the index, bypassing the hooks-disabled pull `sync` runs itself.
+    pub fn update(config: &Config) -> PlannedCommand {
+        Self::index_command(config, "update", Vec::<String>::new())
+    }
+
+    /// `qmd embed --index <configured>` - generate/refresh vector embeddings
+    /// for the configured index.
+    pub fn embed(config: &Config) -> PlannedCommand {
+        Self::index_command(config, "embed", Vec::<String>::new())
     }
 
     /// `qmd --version` - a version check addresses no index, so it carries
@@ -176,5 +221,38 @@ mod tests {
             violations.is_empty(),
             "found a qmd command built outside qmd.rs, bypassing QmdCommand, in: {violations:?}"
         );
+    }
+
+    /// Mandatory guardrail test for the commands `sync` added: every one of
+    /// them carries `--index` with the configured value, not a literal.
+    /// `collection_add` and `collection_list` share the `collection`
+    /// subcommand but must not be confused with
+    /// [`QmdCommand::default_index_collection_list`], which addresses the
+    /// default index on purpose.
+    #[test]
+    fn sync_commands_carry_the_configured_index() {
+        let config = ConfigBuilder::new("/unused")
+            .index("from-config-not-a-literal", ConfigSource::File)
+            .build();
+
+        for command in [
+            QmdCommand::collection_list(&config),
+            QmdCommand::collection_add(
+                &config,
+                std::path::Path::new("/clone"),
+                "knowledge",
+                "*/{reference,how-to,faq}/**/*.md",
+            ),
+            QmdCommand::update(&config),
+            QmdCommand::embed(&config),
+        ] {
+            assert_eq!(command.program, "qmd");
+            let position = command
+                .args
+                .iter()
+                .position(|arg| arg == "--index")
+                .unwrap_or_else(|| panic!("no --index in: {command}"));
+            assert_eq!(command.args[position + 1], "from-config-not-a-literal");
+        }
     }
 }

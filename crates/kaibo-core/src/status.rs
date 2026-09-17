@@ -30,7 +30,7 @@ pub const PINNED_QMD_VERSION: &str = "2.8.3";
 /// A clone whose last commit is older than this is reported as stale. No
 /// doctrine pins this number yet; revisit once `kaibo sync` has real-world
 /// sync cadence to calibrate against.
-const STALE_THRESHOLD: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+pub(crate) const STALE_THRESHOLD: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 /// A resolved config value paired with where it came from.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -263,13 +263,11 @@ fn planned_commands(config: &Config, clone_present: bool) -> Vec<PlannedCommand>
     commands
 }
 
-fn gather(
-    config: &Config,
-    runner: &dyn CommandRunner,
-    clock: &dyn Clock,
-    cli_version: &str,
-) -> StatusReport {
-    let config_summary = ConfigSummary {
+/// Build the [`ConfigSummary`] every verb's report opens with: every
+/// resolved config value paired with where it came from. Shared by `status`
+/// and `sync` so the two cannot drift into reporting config differently.
+pub(crate) fn config_summary(config: &Config) -> ConfigSummary {
+    ConfigSummary {
         repo: ConfigValue {
             value: config.repo().map(str::to_string),
             source: config.source(ConfigKey::Repo),
@@ -290,7 +288,16 @@ fn gather(
             value: config.api_url().map(str::to_string),
             source: config.source(ConfigKey::ApiUrl),
         },
-    };
+    }
+}
+
+fn gather(
+    config: &Config,
+    runner: &dyn CommandRunner,
+    clock: &dyn Clock,
+    cli_version: &str,
+) -> StatusReport {
+    let config_summary = config_summary(config);
 
     let backend = match config.api_url() {
         Some(url) => BackendMode::Api(url.to_string()),
@@ -386,7 +393,7 @@ fn gather_clone_status(
     }
 }
 
-fn git_branch_command(path: &Path) -> PlannedCommand {
+pub(crate) fn git_branch_command(path: &Path) -> PlannedCommand {
     PlannedCommand::new(
         "git",
         vec![
@@ -399,7 +406,7 @@ fn git_branch_command(path: &Path) -> PlannedCommand {
     )
 }
 
-fn git_last_commit_command(path: &Path) -> PlannedCommand {
+pub(crate) fn git_last_commit_command(path: &Path) -> PlannedCommand {
     PlannedCommand::new(
         "git",
         vec![
@@ -412,11 +419,11 @@ fn git_last_commit_command(path: &Path) -> PlannedCommand {
     )
 }
 
-fn parse_commit_epoch(stdout: &str) -> Option<u64> {
+pub(crate) fn parse_commit_epoch(stdout: &str) -> Option<u64> {
     stdout.trim().parse().ok()
 }
 
-fn commit_age(epoch_secs: u64, now: SystemTime) -> Option<Duration> {
+pub(crate) fn commit_age(epoch_secs: u64, now: SystemTime) -> Option<Duration> {
     let commit_time = UNIX_EPOCH + Duration::from_secs(epoch_secs);
     now.duration_since(commit_time).ok()
 }
@@ -474,10 +481,27 @@ fn is_ascii_digits(s: &str) -> bool {
 /// field that doesn't parse is `None` rather than guessed - the format isn't
 /// a stable contract, so degrading a single unreadable field beats failing
 /// the whole report.
-fn parse_qmd_status(stdout: &str) -> IndexStatus {
+///
+/// Verified empirically against a real qmd 2.8.3 binary (no contract doc
+/// ships in this repo to drift against): `Total:` and `Vectors:` are always
+/// present, but `Pending:` ("N need embedding") is an *optional* line that
+/// qmd omits entirely once nothing needs embedding - it does not print
+/// `Pending: 0`. So a `Pending:` line's absence on an otherwise-successful
+/// call means zero, not "unreadable"; `pending` therefore resolves to `Some(0)`
+/// rather than `None` - but only when `Total:` parsed, which is what
+/// distinguishes qmd status output from output this parser does not
+/// recognise at all.
+///
+/// qmd also prints an unrelated `Orphaned: N embedding chunks (…%) - run
+/// 'qmd cleanup'` line when stale vector chunks exist (from since-deleted or
+/// -changed documents). That is a distinct concept - "needs cleanup", not
+/// "needs embedding" - so it is deliberately not folded into `pending` here;
+/// this parser ignores unrecognized lines, `Orphaned:` included.
+pub(crate) fn parse_qmd_status(stdout: &str) -> IndexStatus {
     let mut total_files = None;
     let mut vectors_embedded = None;
     let mut pending = None;
+    let mut saw_pending_line = false;
 
     for line in stdout.lines() {
         let trimmed = line.trim();
@@ -486,8 +510,20 @@ fn parse_qmd_status(stdout: &str) -> IndexStatus {
         } else if let Some(rest) = trimmed.strip_prefix("Vectors:") {
             vectors_embedded = first_integer(rest);
         } else if let Some(rest) = trimmed.strip_prefix("Pending:") {
+            saw_pending_line = true;
             pending = first_integer(rest);
         }
+    }
+
+    // An absent `Pending:` line means zero only when this *was* qmd status
+    // output. `Total:` is the marker for that: qmd always prints it, so
+    // parsing it is what separates "qmd said nothing is pending" from "this
+    // is not output we recognise". Without that guard, a future qmd whose
+    // format changed wholesale would render as `? total, ? embedded, 0
+    // pending` - two honest unknowns beside one confident falsehood, which
+    // is the guess this function's contract promises not to make.
+    if !saw_pending_line && total_files.is_some() {
+        pending = Some(0);
     }
 
     IndexStatus::Available {
@@ -505,7 +541,7 @@ fn first_integer(s: &str) -> Option<u64> {
 /// collection list` output - matched as the first whitespace-separated
 /// token on a line, not a substring, so `knowledge-extra` doesn't false-
 /// positive against `knowledge`.
-fn collection_listed(stdout: &str, collection: &str) -> bool {
+pub(crate) fn collection_listed(stdout: &str, collection: &str) -> bool {
     stdout
         .lines()
         .any(|line| line.split_whitespace().next() == Some(collection))
@@ -663,7 +699,7 @@ fn render_backend(backend: &BackendMode) -> String {
     }
 }
 
-fn render_count(value: Option<u64>) -> String {
+pub(crate) fn render_count(value: Option<u64>) -> String {
     value.map_or_else(|| "?".to_string(), |v| v.to_string())
 }
 
@@ -686,6 +722,68 @@ mod tests {
 
     fn sample_status_output() -> &'static str {
         "QMD Status\n\nDocuments\n  Total:    21 files indexed\n  Vectors:  38 embedded\n  Pending:  0 need embedding\n  Updated:  2h ago\n"
+    }
+
+    /// Real qmd 2.8.3 output once every document is embedded: the `Pending:`
+    /// line is omitted entirely rather than printed as `Pending: 0`.
+    /// Verified against a live qmd 2.8.3 binary, not assumed.
+    fn sample_status_output_fully_embedded() -> &'static str {
+        "QMD Status\n\nDocuments\n  Total:    21 files indexed\n  Vectors:  38 embedded\n  Updated:  2h ago\n"
+    }
+
+    /// Real qmd 2.8.3 output when stale embedding chunks exist: an
+    /// `Orphaned:` line appears, unrelated to `Pending:` - it means "run qmd
+    /// cleanup", not "needs embedding" - and `Pending:` is still omitted
+    /// because nothing needs embedding.
+    fn sample_status_output_with_orphaned_chunks() -> &'static str {
+        "QMD Status\n\nDocuments\n  Total:    39 files indexed\n  Vectors:  142 embedded\n  Orphaned: 49 embedding chunks (35%) \u{2014} run 'qmd cleanup'\n  Updated:  4d ago\n"
+    }
+
+    /// Mandatory regression test for the doc-drift fix: a `Pending:` line
+    /// missing from an otherwise-successful `qmd status` call means zero
+    /// docs are pending, not "unreadable". Getting this wrong previously
+    /// rendered a fully-synced index as `? pending` in `kaibo status`.
+    #[test]
+    fn missing_pending_line_on_success_means_zero_not_unknown() {
+        assert_eq!(
+            parse_qmd_status(sample_status_output_fully_embedded()),
+            IndexStatus::Available {
+                total_files: Some(21),
+                vectors_embedded: Some(38),
+                pending: Some(0),
+            }
+        );
+    }
+
+    /// The other half of the missing-`Pending:` rule: absence means zero
+    /// only when the output was recognisably qmd status. If a future qmd
+    /// changes its format wholesale, every field must degrade to unknown
+    /// together - reporting `0 pending` beside `? total` would be a guess
+    /// dressed as a fact.
+    #[test]
+    fn unrecognised_output_leaves_pending_unknown_rather_than_zero() {
+        assert_eq!(
+            parse_qmd_status("qmd: index summary unavailable in this build\n"),
+            IndexStatus::Available {
+                total_files: None,
+                vectors_embedded: None,
+                pending: None,
+            }
+        );
+    }
+
+    /// `Orphaned:` is a distinct "needs cleanup" signal, not a renamed
+    /// `Pending:` - it must not be folded into the pending count.
+    #[test]
+    fn orphaned_chunks_line_does_not_affect_pending_count() {
+        assert_eq!(
+            parse_qmd_status(sample_status_output_with_orphaned_chunks()),
+            IndexStatus::Available {
+                total_files: Some(39),
+                vectors_embedded: Some(142),
+                pending: Some(0),
+            }
+        );
     }
 
     #[test]

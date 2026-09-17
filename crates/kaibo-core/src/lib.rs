@@ -18,3 +18,4 @@ pub mod output;
 pub mod process;
 pub mod qmd;
 pub mod status;
+pub mod sync;
