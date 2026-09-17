@@ -44,31 +44,24 @@ fn fresh_pipeline(config: &crate::config::Config, clone: &Path) -> FakeCommandRu
         )
 }
 
-/// Git subcommands that cannot run a repository-supplied hook, and so
-/// are the only ones allowed to omit the hooks-disabled flag. Keep this
-/// list short and justify every addition: `status` and `log` only read,
-/// and neither consults `core.hooksPath`. Anything that writes the
-/// working tree, fetches objects, or can recurse into a submodule does
-/// not belong here.
+/// Git subcommands that cannot run a repository-supplied hook, and so are
+/// the only ones allowed to omit the hooks-disabled flag. Keep this list
+/// short: justify every addition against whether it writes the working
+/// tree, fetches objects, or can recurse into a submodule.
 const HOOKLESS_GIT_SUBCOMMANDS: [&str; 2] = ["status", "log"];
 
 /// Guardrail: every git command `sync` plans carries
 /// `-c core.hooksPath=/dev/null`, because a knowledge repo must never
 /// execute code on this machine.
 ///
-/// This asserts over the whole planned pipeline rather than over a
-/// hand-listed set of constructors, so a git command added to
-/// `planned_commands` later is covered the day it is added rather than
-/// the day someone remembers to extend a list. Both clone states are
-/// swept, since the clone command only appears in one of them.
+/// Asserts over the whole planned pipeline, not a hand-listed set of
+/// constructors, so a command added to `planned_commands` later is swept
+/// from day one. Both clone states are checked, since the clone command
+/// only appears in one of them.
 ///
-/// What it does *not* cover: a git command `gather` runs without
-/// planning it. There is one today - `--if-stale` probes the clone's
-/// last commit with `git log`, which `planned_commands` deliberately
-/// omits because explain describes the full pipeline regardless of
-/// freshness. That probe is read-only and so sits in the carve-out list
-/// below on its own merits, but a future unplanned command would need
-/// its own check.
+/// Does not cover `--if-stale`'s freshness probe (`git log`), which runs
+/// outside `planned_commands` - it is read-only, so it is exempted via
+/// `HOOKLESS_GIT_SUBCOMMANDS` rather than swept here.
 #[test]
 fn hooks_are_disabled_on_every_git_command_sync_plans() {
     let tmp = tempfile::tempdir().unwrap();

@@ -88,11 +88,15 @@ later escapes it. Assert over the pipeline, or scan the source.
 
 ## Writing code
 
-**A doc comment must not overstate what its mechanism enforces.** This rule has
-been broken three times in this repository, each time by a comment claiming a
-guarantee the code did not deliver, and each time the comment is what stopped
-the next reader from checking. Where a guarantee is partial, say what it does
-not cover. "Escape-resistant" is true; "unescapable" was not.
+**Prove it in a test, or delete the sentence.** A doc comment claiming a
+guarantee is a claim nothing checks, and this has gone wrong four times: a
+comment overstated what its mechanism enforces, and the comment is what
+stopped the next reader from checking. The fix each time was a stronger test,
+not better prose. So a doc comment earns its place only for the non-obvious
+why, a trap that will bite the next person, or a pointer to the test that
+enforces a guarantee - never for restating what a test could instead prove.
+If a comment is overstating a guarantee, delete the overstatement and write
+the test; do not qualify it with more prose.
 
 **Errors are instructions.** Every error message names the command that fixes
 the situation. Exit codes: `0` success, `1` internal, `2` usage, `3` gap

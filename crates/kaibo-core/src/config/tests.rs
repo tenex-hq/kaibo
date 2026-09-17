@@ -162,15 +162,11 @@ fn missing_home_dir_is_fine_if_clone_is_explicit() {
     assert_eq!(config.source(ConfigKey::Clone), ConfigSource::Env);
 }
 
-/// Mandatory test: config cannot be influenced by content.
-///
-/// The real guarantee is structural, not this test: `Config::resolve` is
-/// the only public constructor, it never takes a document or content of
-/// any kind as input, and `Config` has no setters - so there is no path
-/// by which parsed frontmatter could reach a `Config` at all. This test
-/// guards against a future regression (e.g. someone later wiring a
-/// "smart default" that scans frontmatter for a repo hint), it does not
-/// discover a design flaw.
+/// The real guarantee is structural: `Config::resolve` is the only public
+/// constructor, it never takes content as input, and `Config` has no
+/// setters - there is no path by which parsed frontmatter could reach a
+/// `Config`. This test guards against a future regression (e.g. a "smart
+/// default" that scans frontmatter for a repo hint).
 #[test]
 fn config_is_not_influenced_by_corpus_content() {
     let tmp = tempfile::tempdir().unwrap();

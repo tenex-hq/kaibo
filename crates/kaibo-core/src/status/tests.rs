@@ -32,10 +32,8 @@ fn sample_status_output_with_orphaned_chunks() -> &'static str {
     "QMD Status\n\nDocuments\n  Total:    39 files indexed\n  Vectors:  142 embedded\n  Orphaned: 49 embedding chunks (35%) \u{2014} run 'qmd cleanup'\n  Updated:  4d ago\n"
 }
 
-/// Mandatory regression test for the doc-drift fix: a `Pending:` line
-/// missing from an otherwise-successful `qmd status` call means zero
-/// docs are pending, not "unreadable". Getting this wrong previously
-/// rendered a fully-synced index as `? pending` in `kaibo status`.
+/// A `Pending:` line missing from an otherwise-successful `qmd status`
+/// call means zero docs are pending, not "unreadable".
 #[test]
 fn missing_pending_line_on_success_means_zero_not_unknown() {
     assert_eq!(
@@ -48,11 +46,10 @@ fn missing_pending_line_on_success_means_zero_not_unknown() {
     );
 }
 
-/// The other half of the missing-`Pending:` rule: absence means zero
-/// only when the output was recognisably qmd status. If a future qmd
-/// changes its format wholesale, every field must degrade to unknown
-/// together - reporting `0 pending` beside `? total` would be a guess
-/// dressed as a fact.
+/// Absence means zero only when the output was recognisably qmd status.
+/// If a future qmd changes its format wholesale, every field must
+/// degrade to unknown together - `0 pending` beside `? total` would be a
+/// guess dressed as a fact.
 #[test]
 fn unrecognised_output_leaves_pending_unknown_rather_than_zero() {
     assert_eq!(
@@ -121,8 +118,6 @@ fn healthy_system_exits_zero_with_no_findings() {
     );
 }
 
-/// Mandatory test: a fake runner reporting qmd absent still produces a
-/// full report and a useful finding, instead of aborting.
 #[test]
 fn qmd_absent_does_not_abort_the_report() {
     let tmp = tempfile::tempdir().unwrap();
@@ -328,8 +323,6 @@ fn isolation_finding_when_collection_name_collides_with_default_index() {
     );
 }
 
-/// Mandatory test: `--explain` produces the planned commands and
-/// executes none.
 #[test]
 fn explain_lists_commands_and_executes_nothing() {
     let tmp = tempfile::tempdir().unwrap();
@@ -392,10 +385,9 @@ fn render_text_is_narrow_by_default_and_mentions_findings() {
     assert!(full.contains("exit code: 4"));
 }
 
-/// `Config::source` is otherwise unused in the crate - this is its first
-/// consumer, so exercise every field's value and provenance together,
-/// including an API backend, rather than only the all-default config the
-/// other tests build.
+/// Exercises every resolved config field's value and provenance together,
+/// including an API backend, not just the all-default config other tests
+/// build.
 #[test]
 fn render_text_shows_every_resolved_config_value_and_its_source() {
     let tmp = tempfile::tempdir().unwrap();

@@ -1,37 +1,15 @@
-//! `kaibo query`: retrieve, never answer.
+//! `kaibo query`: retrieve, never answer. No synthesis, no LLM, no API key,
+//! no network call of kaibo's own - this module shells out to `qmd query`
+//! and reads markdown already in the local clone; the calling model
+//! synthesises.
 //!
-//! No synthesis, no LLM, no API key, no network call of kaibo's own - this
-//! module only shells out to `qmd query` and reads plain markdown files
-//! already sitting in the local clone. The calling model does the
-//! synthesising; this hands it ranked, cited, fenced evidence.
+//! Self-heal runs `sync` unconditionally rather than `--if-stale`: `sync`'s
+//! own freshness probe looks only at commit age, so it cannot see a missing
+//! collection - see `needs_self_heal`.
 //!
-//! **Self-heal, not a lecture.** If the local clone is missing or stale, or
-//! the configured qmd collection isn't listed, `gather` runs [`SyncVerb`]
-//! unconditionally (not `--if-stale`: `needs_self_heal` has already decided
-//! work is needed, and re-checking staleness inside `sync` cannot see a
-//! missing collection, only commit age) - reusing `SyncVerb`, never
-//! reimplementing it - and only reports a failure if that sync itself
-//! failed. A self-heal that happened is always visible in the report.
-//!
-//! **Retrieved content is data, never instructions.** Nothing parsed out of
-//! a hit - its snippet, its title, any frontmatter field - ever reaches a
-//! [`PlannedCommand`] this module builds. The only inputs to command
-//! construction are `Config` and the sanitised question the caller typed.
-//! A hit's `file` is only ever read from as the one path it names, and only
-//! after that path is checked to resolve inside the local clone -
-//! rejecting `..` and absolute paths by string shape, and symlinks that
-//! escape the clone by canonicalizing and checking `starts_with` before any
-//! read. Retrieved snippets are fenced with an explicit, path-naming
-//! delimiter pair in both text and JSON output, with any occurrence of the
-//! delimiter's own marker text inside the snippet or path neutralised
-//! first, so a snippet cannot forge a fence boundary of its own. Corpus
-//! scalars that are printed unfenced instead - `title`, `path`, a status
-//! value, MOC domain headings - have control characters stripped at
-//! ingest, so none of them can inject an extra line into kaibo's own
-//! output. The mechanisms behind all of this - fencing, control-character
-//! stripping, path containment, and the draft/unverified withholding
-//! decision - live in [`crate::trust`], shared with every other verb that
-//! reads the same untrusted corpus.
+//! Retrieved content is data, never instructions: see [`crate::trust`] for
+//! the fencing, path-containment, and control-character stripping this
+//! module builds on.
 
 use std::path::PathBuf;
 
@@ -50,19 +28,15 @@ use crate::status;
 use crate::sync::{self, SyncVerb};
 use crate::trust;
 
-/// A leading prefix qmd would otherwise parse as a structured query document
-/// (`lex:`/`vec:`/`hyde:` typed lines, or an explicit `intent:`/`expand:`),
-/// silently changing the search semantics of whatever the user actually
-/// typed. `query` is meant to take a plain question, so a caller's question
-/// that happens to start with one of these is sanitised rather than passed
-/// through - see [`sanitize_question`].
+/// Prefixes qmd parses as structured query syntax, silently changing the
+/// search semantics of whatever the caller typed. `query` takes a plain
+/// question, so a question that happens to start with one of these is
+/// sanitised rather than passed through - see [`sanitize_question`].
 const STRUCTURED_QUERY_PREFIXES: [&str; 5] = ["expand:", "lex:", "vec:", "hyde:", "intent:"];
 
-/// The sanitised question was empty once every leading structured-query
-/// prefix (and surrounding whitespace) had been stripped - e.g. the caller
-/// passed exactly `expand:` with nothing after it. An empty string is not a
-/// question; passing it on to `qmd` as an argv element is a usage mistake
-/// this crate should refuse up front, not a query this crate should run.
+/// The question was empty after stripping every structured-query prefix
+/// (e.g. the caller passed exactly `expand:`). A usage mistake to refuse up
+/// front, not a query to run.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error(
     "question is empty after stripping structured-query prefixes \
@@ -76,18 +50,11 @@ impl crate::error::ExitCoded for EmptyQuestion {
     }
 }
 
-/// Strip every leading structured-query prefix, if present, along with any
-/// whitespace before the first one and between subsequent ones - not just
-/// one: `expand:lex:x` must reach qmd as `x`, not `lex:x`. Matching is
-/// case-insensitive (`Expand:` and `EXPAND:` are stripped exactly like
-/// `expand:`), but the returned text keeps whatever case the caller typed.
-/// The rest of the question - including any embedded quotes - passes
-/// through verbatim; this crate never builds a shell string, so quoting is
-/// an argv-correctness concern handled by [`crate::process::CommandRunner`],
-/// not a sanitisation concern handled here.
+/// Strips every leading structured-query prefix, not just one:
+/// `expand:lex:x` must reach qmd as `x`, not `lex:x`. Case-insensitive
+/// match, but the returned text keeps the caller's own casing.
 ///
-/// Errs with [`EmptyQuestion`] if nothing is left afterwards, rather than
-/// handing qmd an empty argv element.
+/// Errs with [`EmptyQuestion`] if nothing is left afterwards.
 fn sanitize_question(question: &str) -> Result<String, EmptyQuestion> {
     let mut current = question.trim_start().to_string();
     loop {
@@ -110,22 +77,17 @@ fn sanitize_question(question: &str) -> Result<String, EmptyQuestion> {
 }
 
 /// One thing worth telling the user about, with the exact next command
-/// where a fix exists. Same shape as `status::Finding` / `sync::Finding`,
-/// kept as its own type for the same reason those two are separate from
-/// each other.
+/// where a fix exists. Deliberately its own type, not shared with
+/// `status::Finding` / `sync::Finding`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
     pub message: String,
     pub fix: Option<String>,
 }
 
-/// Optional facets read off a hit's frontmatter, beyond `status`: `severity`
-/// and `binding`, each `None` when the page's frontmatter does not set that
-/// key (or the key's value is not a plain string). Derives `Serialize` so
-/// `render_json` can emit whatever is actually here instead of a literal
-/// placeholder; adding a further facet is a field addition to this struct,
-/// not a rewrite of how hits carry or render them. Not currently surfaced
-/// in `render_text` - only `render_json` reads `Hit::facets` today.
+/// Optional frontmatter facets beyond `status`: `severity` and `binding`,
+/// each `None` when unset or not a plain string. Only `render_json`
+/// surfaces these today; `render_text` does not.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Facets {
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -143,12 +105,9 @@ impl Facets {
     }
 }
 
-/// Read a plain-string value out of a frontmatter document's passthrough
-/// `extra` map, control characters stripped the same way `build_hit` strips
-/// them from `title` - a facet is corpus content reaching kaibo's own
-/// output just as much as a title is. `None` if the key is absent or its
-/// value is not a plain string (a list or nested mapping under `severity`
-/// or `binding` is not a shape this struct models).
+/// A facet is corpus content reaching kaibo's output just as much as a
+/// title is, so it gets the same control-character stripping `build_hit`
+/// applies. `None` if the key is absent or not a plain string.
 fn extra_string_facet(frontmatter: &frontmatter::Frontmatter, key: &str) -> Option<String> {
     frontmatter
         .extra
@@ -157,30 +116,18 @@ fn extra_string_facet(frontmatter: &frontmatter::Frontmatter, key: &str) -> Opti
         .map(trust::strip_control_chars)
 }
 
-/// One retrieved hit: a repo-relative path with the domain as its first
-/// segment, its title, its frontmatter status, qmd's relevance score, and
-/// the raw snippet text.
+/// One retrieved hit. By construction, `path` has already passed
+/// containment checks (see `build_hit`) - it names a real file inside the
+/// clone, never one reached via `..`, a leading `/`, or an escaping
+/// symlink.
 ///
-/// By the time a `Hit` exists, `path` has already passed the containment
-/// check in [`trust::repo_relative_path`] and the canonicalize-and-`starts_with`
-/// check in [`trust::resolve_contained_path`] (via `read_frontmatter_facts`):
-/// it names a real file inside the clone, not one reached via `..`, a
-/// leading `/`, or a symlink pointing outside it. `path` and `title` have
-/// also had control characters stripped (see `trust::strip_control_chars`),
-/// since both are printed with a bare `{}` in `render_text`/`render_json`
-/// rather than fenced the way `snippet` is.
+/// `status` is `None` both for "no status field" and for "frontmatter could
+/// not be read" - the two are deliberately not distinguished here (see
+/// `gather`, which does, to decide inclusion under `include_drafts`).
 ///
-/// `status` is `None` both when the page's frontmatter parsed cleanly with
-/// no `status` field, and when its frontmatter could not be read or parsed
-/// at all - this struct does not distinguish the two (see `gather`, which
-/// does, to decide whether a hit is safe to include when `include_drafts`
-/// is false). `score` is qmd's own, defaulted to `0.0` if qmd's JSON did
-/// not include one for this hit rather than dropping the hit.
-///
-/// The snippet is fenced as untrusted only at render time (see
-/// [`trust::fence`]); this struct keeps the plain content, which is what the
-/// corpus-content-is-not-instructions guarantee actually rests on: nothing
-/// here is ever fed into a [`PlannedCommand`] this module builds.
+/// `snippet` is kept as plain content and only fenced at render time (see
+/// [`trust::fence`]); nothing here is ever fed into a [`PlannedCommand`]
+/// this module builds.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hit {
     pub path: String,
@@ -191,9 +138,8 @@ pub struct Hit {
     pub facets: Facets,
 }
 
-/// The root MOC's domain inventory, read from `<clone_path>/_index.md`, or
-/// why it could not be read. Carried by [`QueryOutcome::NoHits`] so a
-/// caller can report the gap honestly instead of the CLI inventing one.
+/// The root MOC's domain inventory from `<clone_path>/_index.md`, or why it
+/// could not be read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MocInventory {
     Domains(Vec<String>),
@@ -203,29 +149,22 @@ pub enum MocInventory {
 /// The result of one `gather` call.
 #[derive(Debug, Clone, PartialEq)]
 pub enum QueryOutcome {
-    /// Self-heal was needed and the sync it ran failed; `query` never even
-    /// attempted the real `qmd query` call. `findings` are `sync`'s own,
-    /// carried through unchanged - reusing `sync`'s reporting rather than
-    /// inventing new prose for the same failure.
+    /// Self-heal was needed and its sync failed; the real `qmd query` call
+    /// never ran. `findings` are `sync`'s own, carried through unchanged.
     SelfHealFailed {
         exit_code: ExitCode,
         findings: Vec<Finding>,
     },
-    /// `qmd query` itself could not be run, or ran and reported failure -
-    /// a real qmd-side problem (corpus not indexed, index unreachable,
-    /// ...) that re-running `kaibo sync` can plausibly fix.
+    /// `qmd query` itself failed - a qmd-side problem that `kaibo sync` can
+    /// plausibly fix.
     QueryFailed { detail: String },
-    /// `qmd query` ran and reported success, but its stdout was not a JSON
-    /// array of hit objects at all - a qmd output-contract violation (e.g.
-    /// a field rename), not a stale-corpus condition, and not something
-    /// `kaibo sync` fixes. Distinct from a single hit within an otherwise
-    /// well-shaped array failing to parse as a `RawHit`: that hit is simply
-    /// skipped (see `gather`), it does not reach this variant.
+    /// `qmd query` succeeded but its stdout was not a JSON array of hits at
+    /// all - a qmd output-contract violation, not something `sync` fixes. A
+    /// single hit failing to parse is a different case: it is skipped, not
+    /// reported here (see `gather`).
     UnexpectedOutputShape { detail: String },
-    /// The query ran (after self-heal, if one was needed) but nothing
-    /// useful came back - either qmd returned no hits at all, or every hit
-    /// it returned was a draft and `include_drafts` was not set. The gap
-    /// signal.
+    /// The query ran but nothing useful came back: no hits, or every hit
+    /// was a draft with `include_drafts` unset. The gap signal.
     NoHits { moc: MocInventory },
     /// At least one hit, already status-filtered and ordered (current
     /// preferred over deprecated).
@@ -236,20 +175,14 @@ pub enum QueryOutcome {
 pub struct QueryReport {
     pub question: String,
     pub include_drafts: bool,
-    /// `Some` iff self-heal ran - visible proof it happened, not folded
-    /// silently into a successful-looking result. Reuses `sync`'s own
-    /// outcome type rather than re-describing what sync did in a second
-    /// vocabulary.
+    /// `Some` iff self-heal ran - visible even when the rest of the result
+    /// looks successful.
     pub self_heal: Option<sync::SyncOutcome>,
     pub outcome: QueryOutcome,
 }
 
 impl QueryReport {
-    /// `Usage`/`Stale` when self-heal was needed and sync itself failed
-    /// (whatever `sync` would have exited with); `Stale` when `qmd query`
-    /// itself could not be run; `Internal` when qmd ran but its output did
-    /// not match the contract this crate parses against; `NoHits` for the
-    /// gap; `Success` otherwise.
+    /// `NoHits` must read as a gap, never a failure - see `AGENTS.md`.
     pub fn exit_code(&self) -> ExitCode {
         match &self.outcome {
             QueryOutcome::SelfHealFailed { exit_code, .. } => *exit_code,
@@ -260,7 +193,6 @@ impl QueryReport {
         }
     }
 
-    /// Findings, each carrying the exact next command where one exists.
     pub fn findings(&self) -> Vec<Finding> {
         match &self.outcome {
             QueryOutcome::SelfHealFailed { findings, .. } => findings.clone(),
@@ -279,9 +211,9 @@ impl QueryReport {
     }
 }
 
-/// The `kaibo query` verb, bound to a resolved `Config` and a (sanitised)
-/// question. The question is sanitised once, at construction, so `explain`
-/// and `gather` cannot disagree about what was actually asked.
+/// Bound to a resolved `Config` and a sanitised question - sanitised once,
+/// at construction, so `explain` and `gather` cannot disagree about what
+/// was asked.
 pub struct QueryVerb<'a> {
     config: &'a Config,
     question: String,
@@ -326,19 +258,14 @@ fn clone_git_dir(config: &Config) -> PathBuf {
     config.clone_path().join(".git")
 }
 
-/// Whether self-heal should run before the real query: the clone is
-/// missing, its last commit is older than `status::STALE_THRESHOLD` (or
-/// unreadable), or the configured collection is not listed in the
-/// configured index (or qmd could not be reached to check). Any one of
-/// these is reason enough - the action taken either way is the same
-/// unconditional sync (see [`gather`]; deliberately not `sync --if-stale` -
-/// this function has already made the staleness call, so a second,
-/// `--if-stale`-driven freshness check inside `sync` would only re-answer
-/// a question this function just answered, and could answer it
-/// differently: `sync`'s own freshness probe looks only at commit age, not
-/// at whether the collection is present, so a fresh clone with a missing
-/// collection would read as "fresh" to `sync` and the whole self-heal would
-/// be a no-op).
+/// Self-heal fires if the clone is missing, its last commit predates
+/// `status::STALE_THRESHOLD` (or is unreadable), or the configured
+/// collection is not listed in the index (or qmd is unreachable to check).
+///
+/// Deliberately not `sync --if-stale`: this function has already decided
+/// work is needed, and `sync`'s own freshness probe looks only at commit
+/// age, so a fresh clone with a missing collection would read as fresh to
+/// `sync` and self-heal would no-op.
 fn needs_self_heal(config: &Config, runner: &dyn CommandRunner, clock: &dyn Clock) -> bool {
     if !clone_git_dir(config).is_dir() {
         return true;
@@ -489,14 +416,11 @@ fn gather(
     }
 }
 
-/// The fields of one element of `qmd query --format json`'s output this
-/// module actually uses. Unknown fields (`docid`, `line`, ...) are ignored
-/// by default rather than rejected - this is qmd's output, not a contract
-/// this crate controls the shape of. `score` defaults to `0.0` rather than
-/// being required, so one hit qmd omits a score for does not take the rest
-/// of the batch down with it (see the shape handling in `gather`); `file`
-/// has no default because a hit with no addressable page is not a hit this
-/// crate can do anything with.
+/// Fields of one `qmd query --format json` hit this module uses. Unknown
+/// fields are ignored, not rejected - this is qmd's output, not a contract
+/// this crate controls. `score` defaults to `0.0` so a hit missing a score
+/// does not take the rest of the batch down with it; `file` has no default
+/// since a hit with no addressable page is not one this crate can use.
 #[derive(Debug, Deserialize)]
 struct RawHit {
     #[serde(default)]
@@ -508,17 +432,12 @@ struct RawHit {
     snippet: String,
 }
 
-/// Build a `Hit` plus whether its frontmatter was actually verified (not
-/// merely "no status field"), or `None` if `raw.file` does not resolve to a
-/// path this crate will read at all (see [`trust::repo_relative_path`]). The
-/// caller decides what to do with an unverified hit; this function only
-/// reports the fact.
+/// Builds a `Hit` plus whether its frontmatter was actually verified (as
+/// opposed to merely absent). `None` if `raw.file` does not resolve to a
+/// path this crate will read (see [`trust::repo_relative_path`]).
 ///
-/// `title` and `path` are stripped of control characters (see
-/// `trust::strip_control_chars`) before being stored - both are printed with `{}`
-/// on kaibo's own output lines in `render_text`/`render_json`, and neither
-/// is fenced the way `snippet` is, so a newline embedded in either could
-/// otherwise forge an extra line of kaibo's own output.
+/// `title` and `path` are stripped of control characters before storing,
+/// since both print unfenced in `render_text`/`render_json`.
 fn build_hit(config: &Config, raw: RawHit) -> Option<(Hit, bool)> {
     let path = trust::repo_relative_path(&raw.file)?;
     let (status, facets, verified) = match read_frontmatter_facts(config, &path) {
@@ -538,11 +457,9 @@ fn build_hit(config: &Config, raw: RawHit) -> Option<(Hit, bool)> {
     ))
 }
 
-/// Whether a hit's frontmatter was actually read and parsed - as distinct
-/// from "parsed cleanly with no `status` field set at all" - so a caller
-/// filtering drafts can tell "verified not a draft" apart from "could not
-/// verify" and treat the latter with the same caution as a draft, rather
-/// than the two collapsing into the same `status: None`.
+/// Whether a hit's frontmatter was actually read and parsed, as distinct
+/// from "parsed cleanly with no `status` field" - lets a caller treat
+/// "could not verify" with the same caution as a draft.
 enum FrontmatterFacts {
     Parsed {
         status: Option<Status>,
@@ -551,22 +468,13 @@ enum FrontmatterFacts {
     Unverified,
 }
 
-/// Read a hit's frontmatter straight off the local clone - a plain file
-/// read, not a shelled-out command, exactly like `crate::config` reads
-/// `~/.kaibo/config.toml` directly.
+/// Reads a hit's frontmatter directly off the local clone - a plain file
+/// read, not a shelled-out command.
 ///
 /// The path must resolve inside the clone (see
-/// [`trust::resolve_contained_path`] - that is what closes the symlink
-/// route [`trust::repo_relative_path`]'s component check cannot: a
-/// same-named entry inside the clone that is itself a symlink pointing
-/// outside it resolves to a path that fails containment there, even though
-/// its own path string never contained a `..` or leading `/`.
-///
-/// A missing/unreadable file, a path that escapes the clone, or frontmatter
-/// that fails to parse (see [`frontmatter::parse`] - it is all-or-nothing,
-/// so one bad field fails the whole document) all degrade to
-/// [`FrontmatterFacts::Unverified`], never a guessed status: whether the
-/// page is a draft is unknown, not "known to be `current`".
+/// [`trust::resolve_contained_path`]). A missing/unreadable file, an
+/// escaping path, or frontmatter that fails to parse all degrade to
+/// [`FrontmatterFacts::Unverified`] rather than a guessed status.
 fn read_frontmatter_facts(config: &Config, repo_relative_path: &str) -> FrontmatterFacts {
     let Some(canonical_full) = trust::resolve_contained_path(config, repo_relative_path) else {
         return FrontmatterFacts::Unverified;
@@ -596,11 +504,8 @@ fn read_moc_inventory(config: &Config) -> MocInventory {
 }
 
 /// Lenient heading scan for the root MOC's domain sections: each top-level
-/// `## ` heading names one domain folder. Not a strict schema parse - same
-/// "a degraded fact beats a guess" spirit as `status::parse_qmd_status`.
-/// Each heading is stripped of control characters (see
-/// `trust::strip_control_chars`) - it is corpus content printed with `{}` on a
-/// `known domains:` line in `render_text`, not fenced the way a snippet is.
+/// `## ` heading names one domain. Headings are stripped of control
+/// characters before being printed unfenced.
 fn parse_domain_headings(contents: &str) -> Vec<String> {
     contents
         .lines()
@@ -611,11 +516,9 @@ fn parse_domain_headings(contents: &str) -> Vec<String> {
         .collect()
 }
 
-/// A hit's status as the single word `render_text`/`render_json` print.
-/// `Unknown`'s payload is a raw frontmatter value round-tripped from a
-/// page's own YAML - corpus content printed with `{}`, not fenced - so it
-/// is stripped of control characters the same way `build_hit` strips
-/// `title`.
+/// A hit's status as the single word rendered in text/JSON. `Unknown`'s
+/// payload is a raw frontmatter value round-tripped from a page's own
+/// YAML, so it is stripped of control characters before print.
 fn status_label(status: &Option<Status>) -> String {
     match status {
         Some(Status::Draft) => "draft".to_string(),

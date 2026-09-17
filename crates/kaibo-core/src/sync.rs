@@ -1,30 +1,15 @@
 //! `kaibo sync`: clone-or-pull the corpus, then refresh its qmd index.
 //!
-//! Idempotent, and also the first-run bootstrap: if the clone is missing,
-//! it is cloned; either way the clone is then checked out to `main` and
-//! pulled - with git hooks disabled (`-c core.hooksPath=/dev/null`) on every
-//! git command that touches the untrusted repo's working tree, because a
-//! knowledge repo must never execute code on this machine. That is a
-//! security guarantee, not a nicety - it is enforced on `clone`, `checkout`,
-//! and `pull` alike, not only on the command the brief calls out by name.
+//! Idempotent, and the first-run bootstrap. Git hooks are disabled (`-c
+//! core.hooksPath=/dev/null`) on `clone`, `checkout`, and `pull` alike,
+//! since a knowledge repo must never execute code on this machine.
 //!
-//! **Stop and report, never discard.** Uncommitted changes in the clone, a
-//! blocked checkout, a failed clone/pull, or no repo configured all stop the
-//! verb before anything destructive happens - `sync` never runs `git reset
-//! --hard`, `git checkout -f`, or deletes the clone. Each stop condition is
-//! reported with the exact next command to run.
+//! `sync` never runs `git reset --hard`, `git checkout -f`, or deletes the
+//! clone: a stop condition halts before anything destructive happens.
 //!
-//! Once the clone is in a known-good state, `sync` ensures the configured
-//! qmd collection exists (creating it if missing - qmd itself is not
-//! idempotent about this, a second `collection add` with the same name
-//! fails, so existence is checked first), then runs `qmd update` and `qmd
-//! embed`, both always scoped to the configured index via
-//! [`crate::qmd::QmdCommand::index_command`].
-//!
-//! `--if-stale` short-circuits the whole verb to a no-op when the corpus is
-//! already fresh (same staleness threshold and probe as `kaibo status`),
-//! so a caller like `query` can ask for a self-heal without paying for a
-//! full sync round trip when there is nothing to heal.
+//! `--if-stale` no-ops the whole verb when the corpus is already fresh
+//! (same threshold and probe as `kaibo status`), so `query` can ask for a
+//! self-heal without paying for a full sync when there is nothing to heal.
 
 use std::path::{Path, PathBuf};
 
@@ -49,9 +34,8 @@ use crate::status::{
 const COLLECTION_MASK: &str = "*/{reference,how-to,faq}/**/*.md";
 
 /// One thing worth telling the user about, with the exact next command
-/// where a fix exists. Same shape as `status::Finding`, kept as a separate
-/// type so the two verbs' reports do not have to share a crate-visibility
-/// boundary just to reuse a two-field struct.
+/// where a fix exists. Deliberately its own type, not shared with
+/// `status::Finding`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
     pub message: String,
@@ -137,11 +121,9 @@ pub struct SyncReport {
 }
 
 impl SyncReport {
-    /// `Usage` if no repo is configured and there is no clone to fall back
-    /// on; `Stale` if a stop condition left the corpus unsynced, or if qmd
-    /// could not be reached; `NoHits` if sync completed but indexed no
-    /// files (the mask matched nothing - the gap signal); `Success`
-    /// otherwise, including the `--if-stale` no-op case.
+    /// `Usage` if no repo is configured; `Stale` on a stop condition or an
+    /// unreachable qmd; `NoHits` when sync completed but indexed no files
+    /// (the gap signal); `Success` otherwise.
     pub fn exit_code(&self) -> ExitCode {
         match &self.outcome {
             SyncOutcome::SkippedFresh => ExitCode::Success,
@@ -164,7 +146,6 @@ impl SyncReport {
         }
     }
 
-    /// Findings, each carrying the exact next command where one exists.
     pub fn findings(&self) -> Vec<Finding> {
         let clone_display = self.config.clone.value.display().to_string();
         let mut findings = Vec::new();
@@ -436,13 +417,10 @@ fn clone_git_dir(config: &Config) -> PathBuf {
     config.clone_path().join(".git")
 }
 
-/// The commands `gather` would run for the given clone state, ignoring
-/// `--if-stale` - explain never has a runner or clock to determine
-/// freshness without shelling out, so it always describes the full
-/// pipeline, the same simplification `status::planned_commands` makes for
-/// qmd's reachability. The one case explain refuses to describe is the one
-/// `gather` refuses to run anything for at all: no clone and no repo
-/// configured.
+/// Commands `gather` would run for the given clone state, ignoring
+/// `--if-stale` - explain has no runner or clock to check freshness, so it
+/// always describes the full pipeline. Empty when `gather` would refuse to
+/// run anything: no clone and no repo configured.
 fn planned_commands(config: &Config, clone_present: bool) -> Vec<PlannedCommand> {
     if !clone_present && config.repo().is_none() {
         return Vec::new();
@@ -524,10 +502,8 @@ fn gather(
     }
 }
 
-/// Same staleness question `kaibo status` answers (clone absent, or its
-/// last commit older than [`STALE_THRESHOLD`], or unreadable, all count as
-/// stale), reusing its exact command and parsing so the two verbs cannot
-/// disagree about what "fresh" means.
+/// Same staleness question `kaibo status` answers, reusing its exact
+/// command and parsing so the two verbs cannot disagree about "fresh".
 fn is_fresh(
     config: &Config,
     runner: &dyn CommandRunner,

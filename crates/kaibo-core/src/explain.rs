@@ -1,9 +1,8 @@
 //! `--explain` plumbing.
 //!
-//! A verb that would shell out to `git`, `qmd`, or `gh` declares what it
-//! would run by returning [`PlannedCommand`] values, so the binary can print
-//! those instead of actually running them. No verb exists yet in this PR;
-//! this module is the mechanism future verbs plug into.
+//! A verb that would shell out to `git` or `qmd` declares what it would run
+//! by returning [`PlannedCommand`] values, so the binary can print those
+//! instead of actually running them.
 
 /// One command a verb would execute, had `--explain` not been passed.
 ///
