@@ -44,6 +44,16 @@ pub enum ConfigSource {
     Default,
 }
 
+impl std::fmt::Display for ConfigSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            ConfigSource::Env => "env",
+            ConfigSource::File => "file",
+            ConfigSource::Default => "default",
+        })
+    }
+}
+
 /// A resolvable config key, for reporting where each value came from via
 /// [`Config::source`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -301,6 +311,84 @@ fn resolve_with_default(
 }
 
 #[cfg(test)]
+pub(crate) mod testing {
+    use super::*;
+
+    /// Test-only: build a [`Config`] with explicit values, for tests in
+    /// other modules that need one. Those tests cannot call
+    /// [`Config::resolve_with`] (private to this module) and must not call
+    /// [`Config::resolve`] (it would read the real environment and defeat
+    /// the hermetic-test doctrine this module exists to uphold) - this is
+    /// the sanctioned way for the rest of the crate to get a `Config` fixture.
+    pub(crate) struct ConfigBuilder {
+        repo: Option<String>,
+        clone: PathBuf,
+        index: String,
+        collection: String,
+        api_url: Option<String>,
+        sources: HashMap<ConfigKey, ConfigSource>,
+    }
+
+    impl ConfigBuilder {
+        pub(crate) fn new(clone: impl Into<PathBuf>) -> Self {
+            let mut sources = HashMap::with_capacity(5);
+            for key in [
+                ConfigKey::Repo,
+                ConfigKey::Clone,
+                ConfigKey::Index,
+                ConfigKey::Collection,
+                ConfigKey::ApiUrl,
+            ] {
+                sources.insert(key, ConfigSource::Default);
+            }
+            Self {
+                repo: None,
+                clone: clone.into(),
+                index: DEFAULT_INDEX.to_string(),
+                collection: DEFAULT_COLLECTION.to_string(),
+                api_url: None,
+                sources,
+            }
+        }
+
+        pub(crate) fn index(mut self, value: &str, source: ConfigSource) -> Self {
+            self.index = value.to_string();
+            self.sources.insert(ConfigKey::Index, source);
+            self
+        }
+
+        pub(crate) fn collection(mut self, value: &str, source: ConfigSource) -> Self {
+            self.collection = value.to_string();
+            self.sources.insert(ConfigKey::Collection, source);
+            self
+        }
+
+        pub(crate) fn repo(mut self, value: &str, source: ConfigSource) -> Self {
+            self.repo = Some(value.to_string());
+            self.sources.insert(ConfigKey::Repo, source);
+            self
+        }
+
+        pub(crate) fn api_url(mut self, value: &str, source: ConfigSource) -> Self {
+            self.api_url = Some(value.to_string());
+            self.sources.insert(ConfigKey::ApiUrl, source);
+            self
+        }
+
+        pub(crate) fn build(self) -> Config {
+            Config {
+                repo: self.repo,
+                clone: self.clone,
+                index: self.index,
+                collection: self.collection,
+                api_url: self.api_url,
+                sources: self.sources,
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap as StdHashMap;
@@ -442,6 +530,13 @@ mod tests {
 
         assert_eq!(config.repo(), None);
         assert_eq!(config.source(ConfigKey::Repo), ConfigSource::Default);
+    }
+
+    #[test]
+    fn config_source_displays_as_a_lowercase_label() {
+        assert_eq!(ConfigSource::Env.to_string(), "env");
+        assert_eq!(ConfigSource::File.to_string(), "file");
+        assert_eq!(ConfigSource::Default.to_string(), "default");
     }
 
     #[test]
