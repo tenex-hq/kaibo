@@ -146,7 +146,10 @@ fn run_sync(config: &Config, cli: &Cli, if_stale: bool) -> ExitCode {
 }
 
 fn run_query(config: &Config, cli: &Cli, question: &str, include_drafts: bool) -> ExitCode {
-    let verb = QueryVerb::new(config, question);
+    let verb = match QueryVerb::new(config, question) {
+        Ok(verb) => verb,
+        Err(err) => return report_error(&err),
+    };
 
     if cli.explain {
         for command in verb.explain() {
