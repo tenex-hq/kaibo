@@ -703,6 +703,15 @@ pub(crate) fn render_count(value: Option<u64>) -> String {
     value.map_or_else(|| "?".to_string(), |v| v.to_string())
 }
 
+/// Opt-in, non-hermetic smoke check against a real `qmd` binary - see the
+/// module doc there for why it is not part of the hermetic `tests` module
+/// below and how to run it. Declared as a child of this module (rather
+/// than in `lib.rs`) because it reuses this module's `parse_qmd_status` and
+/// `IndexStatus` to read `qmd status` output, and this is the file that
+/// change belongs in.
+#[cfg(test)]
+mod qmd_contract_check;
+
 #[cfg(test)]
 mod tests {
     use super::*;
