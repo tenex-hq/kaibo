@@ -487,8 +487,10 @@ fn is_ascii_digits(s: &str) -> bool {
 /// present, but `Pending:` ("N need embedding") is an *optional* line that
 /// qmd omits entirely once nothing needs embedding - it does not print
 /// `Pending: 0`. So a `Pending:` line's absence on an otherwise-successful
-/// call means zero, not "unreadable"; `pending` therefore defaults to
-/// `Some(0)` rather than `None`.
+/// call means zero, not "unreadable"; `pending` therefore resolves to `Some(0)`
+/// rather than `None` - but only when `Total:` parsed, which is what
+/// distinguishes qmd status output from output this parser does not
+/// recognise at all.
 ///
 /// qmd also prints an unrelated `Orphaned: N embedding chunks (…%) - run
 /// 'qmd cleanup'` line when stale vector chunks exist (from since-deleted or
@@ -498,7 +500,8 @@ fn is_ascii_digits(s: &str) -> bool {
 pub(crate) fn parse_qmd_status(stdout: &str) -> IndexStatus {
     let mut total_files = None;
     let mut vectors_embedded = None;
-    let mut pending = Some(0);
+    let mut pending = None;
+    let mut saw_pending_line = false;
 
     for line in stdout.lines() {
         let trimmed = line.trim();
@@ -507,8 +510,20 @@ pub(crate) fn parse_qmd_status(stdout: &str) -> IndexStatus {
         } else if let Some(rest) = trimmed.strip_prefix("Vectors:") {
             vectors_embedded = first_integer(rest);
         } else if let Some(rest) = trimmed.strip_prefix("Pending:") {
+            saw_pending_line = true;
             pending = first_integer(rest);
         }
+    }
+
+    // An absent `Pending:` line means zero only when this *was* qmd status
+    // output. `Total:` is the marker for that: qmd always prints it, so
+    // parsing it is what separates "qmd said nothing is pending" from "this
+    // is not output we recognise". Without that guard, a future qmd whose
+    // format changed wholesale would render as `? total, ? embedded, 0
+    // pending` - two honest unknowns beside one confident falsehood, which
+    // is the guess this function's contract promises not to make.
+    if !saw_pending_line && total_files.is_some() {
+        pending = Some(0);
     }
 
     IndexStatus::Available {
@@ -736,6 +751,23 @@ mod tests {
                 total_files: Some(21),
                 vectors_embedded: Some(38),
                 pending: Some(0),
+            }
+        );
+    }
+
+    /// The other half of the missing-`Pending:` rule: absence means zero
+    /// only when the output was recognisably qmd status. If a future qmd
+    /// changes its format wholesale, every field must degrade to unknown
+    /// together - reporting `0 pending` beside `? total` would be a guess
+    /// dressed as a fact.
+    #[test]
+    fn unrecognised_output_leaves_pending_unknown_rather_than_zero() {
+        assert_eq!(
+            parse_qmd_status("qmd: index summary unavailable in this build\n"),
+            IndexStatus::Available {
+                total_files: None,
+                vectors_embedded: None,
+                pending: None,
             }
         );
     }

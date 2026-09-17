@@ -793,22 +793,81 @@ mod tests {
             )
     }
 
+    /// Git subcommands that cannot run a repository-supplied hook, and so
+    /// are the only ones allowed to omit the hooks-disabled flag. Keep this
+    /// list short and justify every addition: `status` and `log` only read,
+    /// and neither consults `core.hooksPath`. Anything that writes the
+    /// working tree, fetches objects, or can recurse into a submodule does
+    /// not belong here.
+    const HOOKLESS_GIT_SUBCOMMANDS: [&str; 2] = ["status", "log"];
+
+    /// Guardrail: every git command `sync` plans carries
+    /// `-c core.hooksPath=/dev/null`, because a knowledge repo must never
+    /// execute code on this machine.
+    ///
+    /// This asserts over the whole planned pipeline rather than over a
+    /// hand-listed set of constructors, so a git command added to
+    /// `planned_commands` later is covered the day it is added rather than
+    /// the day someone remembers to extend a list. Both clone states are
+    /// swept, since the clone command only appears in one of them.
+    ///
+    /// What it does *not* cover: a git command `gather` runs without
+    /// planning it. There is one today - `--if-stale` probes the clone's
+    /// last commit with `git log`, which `planned_commands` deliberately
+    /// omits because explain describes the full pipeline regardless of
+    /// freshness. That probe is read-only and so sits in the carve-out list
+    /// below on its own merits, but a future unplanned command would need
+    /// its own check.
     #[test]
-    fn hooks_disabled_flag_present_on_every_git_command_that_pulls() {
-        let clone = Path::new("/tmp/does-not-matter");
-        for command in [
-            git_clone_command("org/corpus", clone),
-            git_checkout_main_command(clone),
-            git_pull_command(clone),
-        ] {
-            assert!(
-                command
-                    .args
-                    .windows(2)
-                    .any(|w| w == ["-c", "core.hooksPath=/dev/null"]),
-                "missing hooks-disabled flag on: {command}"
-            );
+    fn hooks_are_disabled_on_every_git_command_sync_plans() {
+        let tmp = tempfile::tempdir().unwrap();
+        let clone = tmp.path().join("corpus");
+        let config = config_with_repo(&clone);
+
+        let mut checked = 0;
+        for clone_present in [false, true] {
+            for command in planned_commands(&config, clone_present) {
+                if command.program != "git" {
+                    continue;
+                }
+                // The subcommand is the first bare word, skipping git's
+                // own leading options - and crucially the *value* that
+                // follows `-C` or `-c`, which is a bare word too. Matching
+                // on "first non-flag argument" alone would read the clone
+                // path out of `git -C <path> status` and never see a
+                // subcommand at all.
+                let mut args = command.args.iter();
+                let subcommand = loop {
+                    let Some(arg) = args.next() else {
+                        break "";
+                    };
+                    if arg == "-C" || arg == "-c" {
+                        args.next();
+                        continue;
+                    }
+                    if arg.starts_with('-') {
+                        continue;
+                    }
+                    break arg.as_str();
+                };
+                if HOOKLESS_GIT_SUBCOMMANDS.contains(&subcommand) {
+                    continue;
+                }
+                assert!(
+                    command
+                        .args
+                        .windows(2)
+                        .any(|w| w == ["-c", "core.hooksPath=/dev/null"]),
+                    "missing hooks-disabled flag on: {command}"
+                );
+                checked += 1;
+            }
         }
+
+        assert!(
+            checked >= 3,
+            "expected to sweep at least clone, checkout and pull; swept {checked}"
+        );
     }
 
     #[test]
