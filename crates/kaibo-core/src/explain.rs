@@ -6,14 +6,28 @@
 //! this module is the mechanism future verbs plug into.
 
 /// One command a verb would execute, had `--explain` not been passed.
+///
+/// Code outside this crate cannot construct one directly: the fields and
+/// [`PlannedCommand::new`] are crate-private, so a second face linking
+/// `kaibo-core` (an MCP server, a hosted API handler) can only obtain a
+/// `PlannedCommand` through the command builders this crate exposes, e.g.
+/// [`crate::qmd::QmdCommand`] - which is what guarantees every qmd command
+/// it hands out carries `--index`.
+///
+/// ```compile_fail
+/// // Outside `kaibo_core`, `PlannedCommand::new` is not visible - the only
+/// // way to obtain one is through this crate's own command builders.
+/// let index_free_qmd_update = "qmd";
+/// let _ = kaibo_core::explain::PlannedCommand::new(index_free_qmd_update, ["update"]);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedCommand {
-    pub program: String,
-    pub args: Vec<String>,
+    pub(crate) program: String,
+    pub(crate) args: Vec<String>,
 }
 
 impl PlannedCommand {
-    pub fn new(
+    pub(crate) fn new(
         program: impl Into<String>,
         args: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
