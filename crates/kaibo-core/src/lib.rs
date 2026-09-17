@@ -11,13 +11,17 @@
 
 pub mod clock;
 pub mod config;
+pub mod doctrine;
+pub mod domains;
 pub mod error;
 pub mod explain;
 pub mod frontmatter;
+pub mod moc;
 pub mod output;
 pub mod process;
 pub mod qmd;
 pub mod query;
+mod self_heal;
 pub mod status;
 pub mod sync;
 mod trust;
