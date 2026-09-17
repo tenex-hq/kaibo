@@ -161,23 +161,27 @@ pub(crate) mod testing {
         }
     }
 
+    // These two tests exercise `FakeCommandRunner` itself, not any real
+    // command - "some-tool" is a placeholder, deliberately not "qmd", so
+    // this file stays out of the qmd-construction architecture test in
+    // `crate::qmd`.
     #[test]
     fn fake_runner_answers_scripted_commands_and_records_calls() {
-        let cmd = PlannedCommand::new("qmd", ["--version"]);
-        let runner = FakeCommandRunner::new().on(cmd.clone(), ok("qmd 2.8.3\n"));
+        let cmd = PlannedCommand::new("some-tool", ["--version"]);
+        let runner = FakeCommandRunner::new().on(cmd.clone(), ok("some-tool 2.8.3\n"));
 
         let output = runner.run(&cmd).unwrap();
-        assert_eq!(output.stdout, "qmd 2.8.3\n");
+        assert_eq!(output.stdout, "some-tool 2.8.3\n");
         assert!(output.success());
         assert_eq!(runner.calls(), vec![cmd]);
     }
 
     #[test]
     fn fake_runner_reports_a_missing_program_as_a_spawn_error() {
-        let cmd = PlannedCommand::new("qmd", ["--version"]);
+        let cmd = PlannedCommand::new("some-tool", ["--version"]);
         let runner = FakeCommandRunner::new().on_missing(cmd.clone());
 
         let err = runner.run(&cmd).unwrap_err();
-        assert_eq!(err.program, "qmd");
+        assert_eq!(err.program, "some-tool");
     }
 }

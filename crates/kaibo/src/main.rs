@@ -112,3 +112,130 @@ fn report_no_command(json: bool) -> ExitCode {
 fn to_process_exit_code(code: kaibo_core::error::ExitCode) -> ExitCode {
     ExitCode::from(code.code())
 }
+
+#[cfg(test)]
+mod architecture_tests {
+    //! Guardrail: `query`, `doctrine`, `contribute`, `sync` and `status`
+    //! must never accept a flag naming a repo, clone path, or index - only
+    //! `kaibo install` may (see the module doc above). Nothing in the type
+    //! system enforces this - clap has no notion of kaibo's design rules -
+    //! so this is a source-scanning test, the practical mechanism for a
+    //! rule about *which verb* is allowed to declare *which argument*.
+    //!
+    //! Detection is a plain-text heuristic, not a real Rust parser: a field
+    //! declaration is a trimmed line starting with an (optional `pub`)
+    //! forbidden name followed by `:`; a `long` override is a substring
+    //! match on `long = "<name>"`. Both are attributed to the nearest
+    //! enclosing `struct`/`enum` or braced enum-variant name found by
+    //! scanning upward from the match, and exempted only if that name
+    //! contains "install" (case-insensitive). This is good enough for this
+    //! crate's flat, unnested verb definitions; it would need to get
+    //! smarter if a verb's arguments ever nest inside a field struct that
+    //! itself nests inside another.
+
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    const FORBIDDEN_FIELDS: [&str; 5] = ["repo", "clone", "index", "collection", "api_url"];
+    const FORBIDDEN_FLAG_BASES: [&str; 5] = ["repo", "clone", "index", "collection", "api-url"];
+
+    fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+        for entry in fs::read_dir(dir).expect("read src dir") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                rust_files(&path, out);
+            } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    /// The nearest enclosing `struct Name`, `enum Name`, or braced
+    /// enum-variant `Name {` at or above `line_idx`, searched backward - a
+    /// plain-text stand-in for "which type owns this line".
+    fn enclosing_definition(lines: &[&str], line_idx: usize) -> Option<String> {
+        for line in lines[..=line_idx].iter().rev() {
+            let trimmed = line.trim();
+            for prefix in ["pub struct ", "struct ", "pub enum ", "enum "] {
+                if let Some(rest) = trimmed.strip_prefix(prefix) {
+                    return Some(rest.to_string());
+                }
+            }
+            if let Some(head) = trimmed.strip_suffix('{') {
+                let head = head.trim();
+                if !head.is_empty() && head.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                    return Some(head.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    /// Whether `line` declares a field literally named `name` (allowing a
+    /// leading `pub` / `pub(crate)`), as opposed to merely containing `name`
+    /// as a substring of a longer identifier (e.g. `repository`).
+    fn is_field_declaration(line: &str, name: &str) -> bool {
+        let line = line.trim();
+        let line = line.strip_prefix("pub(crate)").unwrap_or(line).trim_start();
+        let line = line.strip_prefix("pub").unwrap_or(line).trim_start();
+        line.strip_prefix(name)
+            .map(|rest| rest.trim_start().starts_with(':'))
+            .unwrap_or(false)
+    }
+
+    /// Guardrail: no clap-derived verb struct in `crates/kaibo/` declares a
+    /// field named `repo`, `clone`, `index`, `collection`, or `api_url`, and
+    /// none of `--repo`, `--clone`, `--index`, `--collection`, `--api-url`
+    /// appears as a clap `long` override - outside an `install` verb, the
+    /// one place allowed to name a repo, clone path, or index.
+    #[test]
+    fn no_verb_accepts_a_target_bearing_argument() {
+        let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        rust_files(&src_dir, &mut files);
+
+        let mut violations = Vec::new();
+
+        for path in files {
+            let contents = fs::read_to_string(&path).expect("read source file");
+            let lines: Vec<&str> = contents.lines().collect();
+            let file_name = path
+                .strip_prefix(&src_dir)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
+
+            for (idx, raw_line) in lines.iter().enumerate() {
+                let owner = enclosing_definition(&lines, idx).unwrap_or_default();
+                if owner.to_lowercase().contains("install") {
+                    continue;
+                }
+
+                for field in FORBIDDEN_FIELDS {
+                    if is_field_declaration(raw_line, field) {
+                        violations.push(format!(
+                            "{file_name}:{}: field `{field}` on `{owner}`",
+                            idx + 1
+                        ));
+                    }
+                }
+
+                for base in FORBIDDEN_FLAG_BASES {
+                    let bare = format!("long = \"{base}\"");
+                    let dashed = format!("long = \"--{base}\"");
+                    if raw_line.contains(&bare) || raw_line.contains(&dashed) {
+                        violations.push(format!(
+                            "{file_name}:{}: flag `--{base}` on `{owner}`",
+                            idx + 1
+                        ));
+                    }
+                }
+            }
+        }
+
+        assert!(
+            violations.is_empty(),
+            "verb declared a target-bearing argument outside `install`: {violations:#?}"
+        );
+    }
+}
