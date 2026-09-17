@@ -28,7 +28,10 @@
 //! scalars that are printed unfenced instead - `title`, `path`, a status
 //! value, MOC domain headings - have control characters stripped at
 //! ingest, so none of them can inject an extra line into kaibo's own
-//! output.
+//! output. The mechanisms behind all of this - fencing, control-character
+//! stripping, path containment, and the draft/unverified withholding
+//! decision - live in [`crate::trust`], shared with every other verb that
+//! reads the same untrusted corpus.
 
 use std::path::PathBuf;
 
@@ -45,6 +48,7 @@ use crate::process::CommandRunner;
 use crate::qmd::QmdCommand;
 use crate::status;
 use crate::sync::{self, SyncVerb};
+use crate::trust;
 
 /// A leading prefix qmd would otherwise parse as a structured query document
 /// (`lex:`/`vec:`/`hyde:` typed lines, or an explicit `intent:`/`expand:`),
@@ -105,19 +109,6 @@ fn sanitize_question(question: &str) -> Result<String, EmptyQuestion> {
     }
 }
 
-/// Strip characters that could let corpus content forge extra lines of
-/// kaibo's own output - newlines, carriage returns, and other control
-/// characters - from a scalar pulled out of qmd's JSON or a page's
-/// frontmatter, before it is stored on a `Hit` at all. Applied at ingest
-/// (`build_hit`, `status_label`'s `Unknown` case, `parse_domain_headings`,
-/// `extra_string_facet`) rather than only at render time, so `render_text`
-/// and `render_json` can never disagree about what was stripped. Does not
-/// touch `snippet`: that field is never printed with a bare `{}` - it is
-/// always wrapped in `fence`, which is the mechanism responsible for it.
-fn strip_control_chars(s: &str) -> String {
-    s.chars().filter(|c| !c.is_control()).collect()
-}
-
 /// One thing worth telling the user about, with the exact next command
 /// where a fix exists. Same shape as `status::Finding` / `sync::Finding`,
 /// kept as its own type for the same reason those two are separate from
@@ -163,7 +154,7 @@ fn extra_string_facet(frontmatter: &frontmatter::Frontmatter, key: &str) -> Opti
         .extra
         .get(key)
         .and_then(|value| value.as_str())
-        .map(strip_control_chars)
+        .map(trust::strip_control_chars)
 }
 
 /// One retrieved hit: a repo-relative path with the domain as its first
@@ -171,13 +162,13 @@ fn extra_string_facet(frontmatter: &frontmatter::Frontmatter, key: &str) -> Opti
 /// the raw snippet text.
 ///
 /// By the time a `Hit` exists, `path` has already passed the containment
-/// check in `repo_relative_path` and the canonicalize-and-`starts_with`
-/// check in `read_frontmatter_facts`: it names a real file inside the
-/// clone, not one reached via `..`, a leading `/`, or a symlink pointing
-/// outside it. `path` and `title` have also had control characters
-/// stripped (see `strip_control_chars`), since both are printed with a
-/// bare `{}` in `render_text`/`render_json` rather than fenced the way
-/// `snippet` is.
+/// check in [`trust::repo_relative_path`] and the canonicalize-and-`starts_with`
+/// check in [`trust::resolve_contained_path`] (via `read_frontmatter_facts`):
+/// it names a real file inside the clone, not one reached via `..`, a
+/// leading `/`, or a symlink pointing outside it. `path` and `title` have
+/// also had control characters stripped (see `trust::strip_control_chars`),
+/// since both are printed with a bare `{}` in `render_text`/`render_json`
+/// rather than fenced the way `snippet` is.
 ///
 /// `status` is `None` both when the page's frontmatter parsed cleanly with
 /// no `status` field, and when its frontmatter could not be read or parsed
@@ -186,8 +177,8 @@ fn extra_string_facet(frontmatter: &frontmatter::Frontmatter, key: &str) -> Opti
 /// is false). `score` is qmd's own, defaulted to `0.0` if qmd's JSON did
 /// not include one for this hit rather than dropping the hit.
 ///
-/// The snippet is fenced as untrusted only at render time (see [`fence`]);
-/// this struct keeps the plain content, which is what the
+/// The snippet is fenced as untrusted only at render time (see
+/// [`trust::fence`]); this struct keeps the plain content, which is what the
 /// corpus-content-is-not-instructions guarantee actually rests on: nothing
 /// here is ever fed into a [`PlannedCommand`] this module builds.
 #[derive(Debug, Clone, PartialEq)]
@@ -473,9 +464,9 @@ fn gather(
     let mut hits: Vec<Hit> = raw_hits
         .into_iter()
         .filter_map(|raw| build_hit(config, raw))
-        .filter(|(_, verified)| include_drafts || *verified)
+        .filter(|(_, verified)| trust::admits_unverified(*verified, include_drafts))
         .map(|(hit, _)| hit)
-        .filter(|hit| include_drafts || hit.status != Some(Status::Draft))
+        .filter(|hit| trust::admits_draft_status(&hit.status, include_drafts))
         .collect();
     // Stable partition: current (and everything else) first, deprecated
     // last - `sort_by_key` on a bool is stable, so relevance order within
@@ -519,25 +510,25 @@ struct RawHit {
 
 /// Build a `Hit` plus whether its frontmatter was actually verified (not
 /// merely "no status field"), or `None` if `raw.file` does not resolve to a
-/// path this crate will read at all (see `repo_relative_path`). The caller
-/// decides what to do with an unverified hit; this function only reports
-/// the fact.
+/// path this crate will read at all (see [`trust::repo_relative_path`]). The
+/// caller decides what to do with an unverified hit; this function only
+/// reports the fact.
 ///
 /// `title` and `path` are stripped of control characters (see
-/// `strip_control_chars`) before being stored - both are printed with `{}`
+/// `trust::strip_control_chars`) before being stored - both are printed with `{}`
 /// on kaibo's own output lines in `render_text`/`render_json`, and neither
 /// is fenced the way `snippet` is, so a newline embedded in either could
 /// otherwise forge an extra line of kaibo's own output.
 fn build_hit(config: &Config, raw: RawHit) -> Option<(Hit, bool)> {
-    let path = repo_relative_path(&raw.file)?;
+    let path = trust::repo_relative_path(&raw.file)?;
     let (status, facets, verified) = match read_frontmatter_facts(config, &path) {
         FrontmatterFacts::Parsed { status, facets } => (status, facets, true),
         FrontmatterFacts::Unverified => (None, Facets::default(), false),
     };
     Some((
         Hit {
-            path: strip_control_chars(&path),
-            title: strip_control_chars(&raw.title),
+            path: trust::strip_control_chars(&path),
+            title: trust::strip_control_chars(&raw.title),
             status,
             score: raw.score,
             snippet: raw.snippet,
@@ -545,41 +536,6 @@ fn build_hit(config: &Config, raw: RawHit) -> Option<(Hit, bool)> {
         },
         verified,
     ))
-}
-
-/// Recover the repo-relative path (domain folder first) from qmd's `file`
-/// field, e.g. `qmd://knowledge/kaibo/how-to/write-a-good-query.md?index=kaibo`
-/// becomes `kaibo/how-to/write-a-good-query.md` - the qmd collection name
-/// (`knowledge`) is qmd's own addressing, not part of the corpus's own
-/// layout, so it is stripped along with the `qmd://` scheme and the
-/// trailing `?index=...` qmd appends.
-///
-/// `file` is qmd's own JSON field, ultimately traceable back to a corpus
-/// page's own frontmatter/indexing - not something this crate should trust
-/// to stay inside the clone. `None` is returned, instead of the remainder
-/// verbatim, when it is absolute (a leading [`Component::RootDir`]) or
-/// contains any [`Component::ParentDir`] (a `..` segment): both are ways
-/// the remainder could point outside the clone once joined onto
-/// `config.clone_path()`. This is a string-shape check only; it does not
-/// defend against a same-named file inside the clone that is itself a
-/// symlink pointing outside it - see `read_frontmatter_facts` for that.
-fn repo_relative_path(file: &str) -> Option<String> {
-    let without_query = file.split('?').next().unwrap_or(file);
-    let rest = without_query.strip_prefix("qmd://")?;
-    let (_, path) = rest.split_once('/')?;
-    if path.is_empty() {
-        return None;
-    }
-    let is_contained = std::path::Path::new(path).components().all(|component| {
-        matches!(
-            component,
-            std::path::Component::Normal(_) | std::path::Component::CurDir
-        )
-    });
-    if !is_contained {
-        return None;
-    }
-    Some(path.to_string())
 }
 
 /// Whether a hit's frontmatter was actually read and parsed - as distinct
@@ -599,12 +555,11 @@ enum FrontmatterFacts {
 /// read, not a shelled-out command, exactly like `crate::config` reads
 /// `~/.kaibo/config.toml` directly.
 ///
-/// Three things must hold before the read happens: the clone root itself
-/// must resolve, the joined path must resolve, and the resolved path must
-/// still be inside the resolved clone root. That last check is what closes
-/// the symlink route `repo_relative_path`'s component check cannot: a
+/// The path must resolve inside the clone (see
+/// [`trust::resolve_contained_path`] - that is what closes the symlink
+/// route [`trust::repo_relative_path`]'s component check cannot: a
 /// same-named entry inside the clone that is itself a symlink pointing
-/// outside it resolves to a path that fails `starts_with` here, even though
+/// outside it resolves to a path that fails containment there, even though
 /// its own path string never contained a `..` or leading `/`.
 ///
 /// A missing/unreadable file, a path that escapes the clone, or frontmatter
@@ -613,17 +568,9 @@ enum FrontmatterFacts {
 /// [`FrontmatterFacts::Unverified`], never a guessed status: whether the
 /// page is a draft is unknown, not "known to be `current`".
 fn read_frontmatter_facts(config: &Config, repo_relative_path: &str) -> FrontmatterFacts {
-    let full_path = config.clone_path().join(repo_relative_path);
-
-    let Ok(canonical_clone) = config.clone_path().canonicalize() else {
+    let Some(canonical_full) = trust::resolve_contained_path(config, repo_relative_path) else {
         return FrontmatterFacts::Unverified;
     };
-    let Ok(canonical_full) = full_path.canonicalize() else {
-        return FrontmatterFacts::Unverified;
-    };
-    if !canonical_full.starts_with(&canonical_clone) {
-        return FrontmatterFacts::Unverified;
-    }
 
     let Ok(contents) = std::fs::read_to_string(&canonical_full) else {
         return FrontmatterFacts::Unverified;
@@ -652,14 +599,14 @@ fn read_moc_inventory(config: &Config) -> MocInventory {
 /// `## ` heading names one domain folder. Not a strict schema parse - same
 /// "a degraded fact beats a guess" spirit as `status::parse_qmd_status`.
 /// Each heading is stripped of control characters (see
-/// `strip_control_chars`) - it is corpus content printed with `{}` on a
+/// `trust::strip_control_chars`) - it is corpus content printed with `{}` on a
 /// `known domains:` line in `render_text`, not fenced the way a snippet is.
 fn parse_domain_headings(contents: &str) -> Vec<String> {
     contents
         .lines()
         .filter_map(|line| {
             line.strip_prefix("## ")
-                .map(|s| strip_control_chars(s.trim()))
+                .map(|s| trust::strip_control_chars(s.trim()))
         })
         .collect()
 }
@@ -674,7 +621,7 @@ fn status_label(status: &Option<Status>) -> String {
         Some(Status::Draft) => "draft".to_string(),
         Some(Status::Current) => "current".to_string(),
         Some(Status::Deprecated) => "deprecated".to_string(),
-        Some(Status::Unknown(s)) => strip_control_chars(s),
+        Some(Status::Unknown(s)) => trust::strip_control_chars(s),
         None => "unknown".to_string(),
     }
 }
@@ -704,48 +651,6 @@ fn self_heal_summary(outcome: &sync::SyncOutcome) -> String {
             },
         ),
     }
-}
-
-/// The literal delimiter [`fence`] wraps untrusted content in. Kept as
-/// constants so the marker text used to build a fence and the marker text
-/// [`neutralize_marker`] blocks from appearing inside fenced content can
-/// never drift apart.
-const FENCE_OPEN_MARKER: &str = "<<<UNTRUSTED CORPUS CONTENT";
-const FENCE_CLOSE_MARKER: &str = "<<<END UNTRUSTED CORPUS CONTENT";
-
-/// Replace any occurrence of the fence's own opening sequence (`<<<`) with a
-/// visually similar but byte-distinct stand-in, so a page whose snippet or
-/// path contains literal fence-marker text cannot forge a fake fence
-/// boundary and have the rest of its content read as kaibo's own output.
-/// This runs on both `path` and `content` before either is placed inside
-/// [`fence`]'s output, so neither can smuggle in an extra `<<<`.
-fn neutralize_marker(text: &str) -> std::borrow::Cow<'_, str> {
-    if text.contains("<<<") {
-        std::borrow::Cow::Owned(text.replace("<<<", "\u{FF1C}\u{FF1C}\u{FF1C}"))
-    } else {
-        std::borrow::Cow::Borrowed(text)
-    }
-}
-
-/// Wrap retrieved content in an explicit, path-naming delimiter pair so the
-/// trust boundary arrives as a format the consuming model cannot lose track
-/// of, rather than a discipline it has to maintain. Used identically by
-/// both `render_text` and `render_json`, so the fencing can never drift
-/// between the two.
-///
-/// Neither `path` nor `content` is trusted: both come from the corpus (a
-/// hit's file name and its retrieved snippet), so both are run through
-/// [`neutralize_marker`] first. That closes the specific escape this
-/// function is responsible for - content containing the literal delimiter
-/// text cannot terminate the fence early - but it does not itself vouch for
-/// `path` being a safe, contained filesystem path; that containment check
-/// happens earlier, in `repo_relative_path` and `read_frontmatter_facts`.
-fn fence(path: &str, content: &str) -> String {
-    let safe_path = neutralize_marker(path);
-    let safe_content = neutralize_marker(content);
-    format!(
-        "{FENCE_OPEN_MARKER} path={safe_path:?}>>>\n{safe_content}\n{FENCE_CLOSE_MARKER} path={safe_path:?}>>>"
-    )
 }
 
 impl Render for QueryReport {
@@ -810,7 +715,7 @@ impl Render for QueryReport {
                         hit.score,
                         status_label(&hit.status),
                     ));
-                    lines.push(fence(&hit.path, &hit.snippet));
+                    lines.push(trust::fence(&hit.path, &hit.snippet));
                 }
             }
         }
@@ -850,7 +755,7 @@ impl Render for QueryReport {
                     "title": hit.title,
                     "status": status_label(&hit.status),
                     "score": hit.score,
-                    "snippet": fence(&hit.path, &hit.snippet),
+                    "snippet": trust::fence(&hit.path, &hit.snippet),
                     "facets": hit.facets,
                 })).collect::<Vec<_>>(),
             }),
@@ -1772,30 +1677,11 @@ mod tests {
 
     // --- defect 3: a hit's `file` is joined into a path with no containment
     // check -----------------------------------------------------------------
-
-    #[test]
-    fn repo_relative_path_rejects_parent_dir_traversal() {
-        assert_eq!(
-            repo_relative_path("qmd://knowledge/../outside/secret.md?index=kaibo"),
-            None
-        );
-    }
-
-    #[test]
-    fn repo_relative_path_rejects_an_absolute_remainder() {
-        assert_eq!(
-            repo_relative_path("qmd://knowledge//abs/path/elsewhere.md?index=kaibo"),
-            None
-        );
-    }
-
-    #[test]
-    fn repo_relative_path_accepts_a_plain_contained_path() {
-        assert_eq!(
-            repo_relative_path("qmd://knowledge/kaibo/reference/page.md?index=kaibo"),
-            Some("kaibo/reference/page.md".to_string())
-        );
-    }
+    //
+    // The pure `repo_relative_path` unit tests for this defect live in
+    // `trust::tests` now, alongside the function itself. The end-to-end
+    // tests below stay here: they exercise the whole `gather` pipeline, not
+    // just the trust primitive.
 
     /// End-to-end repro of the reported attack: a hit whose `file` walks up
     /// out of the clone with `..` and into a file this crate has no
