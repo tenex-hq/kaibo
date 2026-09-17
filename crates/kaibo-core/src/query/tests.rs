@@ -10,7 +10,7 @@ use crate::config::testing::ConfigBuilder;
 use crate::error::ExitCode;
 use crate::explain::Explainable;
 use crate::frontmatter::Status;
-use crate::process::testing::{FakeCommandRunner, ok};
+use crate::process::testing::{FakeCommandRunner, failed, failed_with_stdout, ok};
 use crate::qmd::QmdCommand;
 use crate::sync;
 
@@ -513,6 +513,12 @@ fn no_hits_exits_3_and_carries_the_moc_domain_inventory() {
         }
         other => panic!("expected NoHits with domains, got {other:?}"),
     }
+    let text = report.render_text(&crate::output::RenderOptions::default());
+    assert!(
+        text.lines()
+            .any(|line| line == "known domains: kaibo, observability"),
+        "expected the joined domain list line, got: {text}"
+    );
 }
 
 #[test]
@@ -601,6 +607,10 @@ fn self_heal_fires_when_the_clone_is_missing_and_the_query_proceeds_after() {
     let text = report.render_text(&crate::output::RenderOptions::default());
     assert!(text.contains("self-heal"));
     assert!(!text.contains("not needed"));
+    assert!(
+        text.contains("self-heal: ran (clone bootstrapped, collection created, index available)"),
+        "expected the exact self-heal summary line, got: {text}"
+    );
 }
 
 #[test]
@@ -715,6 +725,250 @@ fn self_heal_failure_is_reported_not_masked() {
         other => panic!("expected SelfHealFailed, got {other:?}"),
     }
     assert!(!report.findings().is_empty());
+}
+
+/// A commit exactly at the stale threshold is not stale - self-heal must
+/// not fire on age alone at the boundary, only strictly past it.
+#[test]
+fn a_commit_exactly_at_the_stale_threshold_does_not_trigger_self_heal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    let at_threshold_epoch = NOW_EPOCH - crate::status::STALE_THRESHOLD.as_secs();
+    let runner = FakeCommandRunner::new()
+        .on(
+            sync_git_last_commit_command(&clone),
+            ok(format!("{at_threshold_epoch}\n")),
+        )
+        .on(
+            QmdCommand::collection_list(&config),
+            ok(format!("{}\n", config.collection())),
+        )
+        .on(
+            QmdCommand::query(&config, "question"),
+            ok(qmd_query_json(&[])),
+        );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert!(report.self_heal.is_none());
+}
+
+/// One second past that same boundary, everything else equal, self-heal
+/// must fire on account of age.
+#[test]
+fn a_commit_one_second_past_the_stale_threshold_triggers_self_heal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    let past_threshold_epoch = NOW_EPOCH - crate::status::STALE_THRESHOLD.as_secs() - 1;
+
+    let runner = FakeCommandRunner::new()
+        .on(
+            sync_git_last_commit_command(&clone),
+            ok(format!("{past_threshold_epoch}\n")),
+        )
+        .on(sync_git_status_porcelain_command(&clone), ok(""))
+        .on(
+            sync_git_checkout_main_command(&clone),
+            ok("Already on 'main'\n"),
+        )
+        .on(sync_git_pull_command(&clone), ok("Already up to date.\n"))
+        .on(
+            QmdCommand::collection_list(&config),
+            ok(format!("{}\n", config.collection())),
+        )
+        .on(
+            QmdCommand::update(&config),
+            ok("All collections updated.\n"),
+        )
+        .on(QmdCommand::embed(&config), ok("Done.\n"))
+        .on(
+            QmdCommand::status(&config),
+            ok("QMD Status\n\nDocuments\n  Total:    1 files indexed\n  Vectors:  1 embedded\n"),
+        )
+        .on(
+            QmdCommand::query(&config, "question"),
+            ok(qmd_query_json(&[])),
+        );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert!(report.self_heal.is_some());
+}
+
+/// `git log` running but exiting non-zero must read the same as any other
+/// unreadable freshness probe: self-heal fires rather than guessing fresh.
+#[test]
+fn a_failing_last_commit_probe_triggers_self_heal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+
+    // `stdout` here is deliberately a value that *would* parse as a fresh
+    // commit if the success check were skipped: `failed`'s empty stdout
+    // can't fail either way (unparsable either way -> stale either way),
+    // so it can't tell "the check was skipped" apart from "the check ran
+    // and correctly treated a failure as stale".
+    let runner = FakeCommandRunner::new()
+        .on(
+            sync_git_last_commit_command(&clone),
+            failed_with_stdout(format!("{}\n", NOW_EPOCH - 60)),
+        )
+        .on(sync_git_status_porcelain_command(&clone), ok(""))
+        .on(
+            sync_git_checkout_main_command(&clone),
+            ok("Already on 'main'\n"),
+        )
+        .on(sync_git_pull_command(&clone), ok("Already up to date.\n"))
+        .on(
+            QmdCommand::collection_list(&config),
+            ok(format!("{}\n", config.collection())),
+        )
+        .on(
+            QmdCommand::update(&config),
+            ok("All collections updated.\n"),
+        )
+        .on(QmdCommand::embed(&config), ok("Done.\n"))
+        .on(
+            QmdCommand::status(&config),
+            ok("QMD Status\n\nDocuments\n  Total:    1 files indexed\n  Vectors:  1 embedded\n"),
+        )
+        .on(
+            QmdCommand::query(&config, "question"),
+            ok(qmd_query_json(&[])),
+        );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert!(report.self_heal.is_some());
+}
+
+/// `qmd collection list` running but exiting non-zero must read the same
+/// as qmd being unreachable: self-heal fires rather than trusting a failed
+/// command's stdout enough to check whether the collection is listed.
+#[test]
+fn a_failing_collection_list_probe_triggers_self_heal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+
+    // Same reasoning as above: `stdout` here is a value that *would* read
+    // as "listed" if the success check were skipped, so a mutant that
+    // drops the check produces a different, catchable answer.
+    let runner = FakeCommandRunner::new()
+        .on(
+            sync_git_last_commit_command(&clone),
+            ok(format!("{}\n", NOW_EPOCH - 60)),
+        )
+        .on(
+            QmdCommand::collection_list(&config),
+            failed_with_stdout(format!("{}\n", config.collection())),
+        )
+        .on(sync_git_status_porcelain_command(&clone), ok(""))
+        .on(
+            sync_git_checkout_main_command(&clone),
+            ok("Already on 'main'\n"),
+        )
+        .on(sync_git_pull_command(&clone), ok("Already up to date.\n"))
+        .on(
+            QmdCommand::collection_list(&config),
+            ok(format!("{}\n", config.collection())),
+        )
+        .on(
+            QmdCommand::update(&config),
+            ok("All collections updated.\n"),
+        )
+        .on(QmdCommand::embed(&config), ok("Done.\n"))
+        .on(
+            QmdCommand::status(&config),
+            ok("QMD Status\n\nDocuments\n  Total:    1 files indexed\n  Vectors:  1 embedded\n"),
+        )
+        .on(
+            QmdCommand::query(&config, "question"),
+            ok(qmd_query_json(&[])),
+        );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert!(report.self_heal.is_some());
+}
+
+/// `qmd query` itself running but exiting non-zero is a qmd-side failure a
+/// re-sync can plausibly fix - distinct from a spawn error, and distinct
+/// from treating the failing output as if it had succeeded.
+#[test]
+fn a_failing_qmd_query_is_reported_as_query_failed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        failed("qmd exploded"),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert_eq!(report.exit_code(), ExitCode::Stale);
+    match &report.outcome {
+        QueryOutcome::QueryFailed { detail } => assert_eq!(detail, "qmd exploded"),
+        other => panic!("expected QueryFailed, got {other:?}"),
+    }
+}
+
+/// An empty domain inventory (a MOC that parses cleanly but names no
+/// domains) must read as "none listed", not as a blank `known domains: `
+/// line produced by joining zero items.
+#[test]
+fn no_hits_with_an_empty_domain_inventory_reports_none_listed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    std::fs::write(
+        clone.join("_index.md"),
+        "---\ntype: index\n---\n\nJust prose, no headings.\n",
+    )
+    .unwrap();
+    let config = config_with_repo(&clone);
+
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        ok(qmd_query_json(&[])),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert_eq!(report.exit_code(), ExitCode::NoHits);
+    let text = report.render_text(&crate::output::RenderOptions::default());
+    assert!(
+        text.lines()
+            .any(|line| line == "known domains: none listed"),
+        "expected the exact 'none listed' line, got: {text}"
+    );
 }
 
 // --- fencing --------------------------------------------------------

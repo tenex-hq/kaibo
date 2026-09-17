@@ -7,7 +7,7 @@ use crate::config::ConfigSource;
 use crate::config::testing::ConfigBuilder;
 use crate::error::ExitCode;
 use crate::explain::Explainable;
-use crate::process::testing::{FakeCommandRunner, failed, ok};
+use crate::process::testing::{FakeCommandRunner, failed, failed_with_stdout, ok};
 use crate::qmd::QmdCommand;
 
 const NOW_EPOCH: u64 = 1_700_000_000;
@@ -471,6 +471,12 @@ fn explain_lists_git_and_qmd_commands_and_executes_nothing() {
     assert!(runner.calls().is_empty());
 }
 
+/// Asserts on the literal `git clone` argv element, not a substring of the
+/// rendered command line: the clone *path* is itself named `.../clone` in
+/// every test in this file, so a loose `.contains("clone")` check would
+/// pass even if the `git clone` command were never planned at all, as long
+/// as some other planned command's path argument happened to contain the
+/// same word.
 #[test]
 fn explain_includes_clone_command_when_clone_is_absent() {
     let tmp = tempfile::tempdir().unwrap();
@@ -479,7 +485,31 @@ fn explain_includes_clone_command_when_clone_is_absent() {
 
     let commands = SyncVerb::new(&config).explain();
 
-    assert!(commands.iter().any(|c| c.to_string().contains("clone")));
+    assert!(
+        commands
+            .iter()
+            .any(|c| c.program == "git" && c.args.iter().any(|a| a == "clone")),
+        "expected a `git clone` command, got: {commands:?}"
+    );
+}
+
+/// The complement of the test above: once the clone already exists,
+/// `explain` must not plan a second `git clone` on top of it.
+#[test]
+fn explain_omits_clone_command_when_clone_is_already_present() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+
+    let commands = SyncVerb::new(&config).explain();
+
+    assert!(
+        !commands
+            .iter()
+            .any(|c| c.program == "git" && c.args.iter().any(|a| a == "clone")),
+        "did not expect a `git clone` command, got: {commands:?}"
+    );
 }
 
 #[test]
@@ -506,6 +536,158 @@ fn render_text_mentions_result_and_next_command_on_a_stop() {
 
     assert!(text.contains("problem found"));
     assert!(text.contains("kaibo sync"));
+}
+
+#[test]
+fn render_json_reports_the_stop_reason_as_a_stable_machine_code() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    // No repo configured, and no clone either - stops with RepoNotConfigured.
+    let config = ConfigBuilder::new(&clone).build();
+    let runner = FakeCommandRunner::new();
+    let clock = FixedClock(now());
+
+    let report = SyncVerb::new(&config).gather(&runner, &clock, false);
+    let json = report.render_json();
+
+    assert_eq!(json["outcome"]["state"], "stopped");
+    assert_eq!(json["outcome"]["reason"], "repo_not_configured");
+    assert_eq!(json["exit_code"], 2);
+}
+
+/// `--if-stale`'s freshness probe running but exiting non-zero (a real git
+/// failure, not merely "not found") must read the same as any other
+/// unreadable probe: not fresh, so the sync pipeline still runs rather
+/// than skipping on a guess.
+#[test]
+fn if_stale_treats_a_failing_freshness_probe_as_not_fresh() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+
+    // `stdout` here is deliberately a value that *would* parse as a fresh
+    // commit if the success check were skipped: an empty stdout can't fail
+    // either way (unparsable regardless -> "not fresh" either way), so it
+    // can't tell "the check was skipped" apart from "the check ran and
+    // correctly treated the failure as unreadable".
+    let runner = fresh_pipeline(&config, &clone).on(
+        git_last_commit_command_for_test(&clone),
+        failed_with_stdout(format!("{}\n", NOW_EPOCH - 60)),
+    );
+    let clock = FixedClock(now());
+
+    let report = SyncVerb::new(&config).gather(&runner, &clock, true);
+
+    match &report.outcome {
+        SyncOutcome::Completed { clone, .. } => assert_eq!(*clone, CloneOutcome::Pulled),
+        other => panic!(
+            "expected the sync pipeline to run despite an unreadable freshness probe, got {other:?}"
+        ),
+    }
+}
+
+/// `qmd update` running but exiting non-zero must be reported as an
+/// unavailable index carrying its stderr, not silently treated as if it had
+/// succeeded and left to `qmd embed`/`qmd status` to paper over.
+#[test]
+fn a_failing_update_command_is_an_unavailable_index_not_a_success() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+
+    let runner = FakeCommandRunner::new()
+        .on(git_status_porcelain_command(&clone), ok(""))
+        .on(git_checkout_main_command(&clone), ok("Already on 'main'\n"))
+        .on(git_pull_command(&clone), ok("Already up to date.\n"))
+        .on(QmdCommand::collection_list(&config), ok("knowledge\n"))
+        .on(QmdCommand::update(&config), failed("update exploded"));
+    let clock = FixedClock(now());
+
+    let report = SyncVerb::new(&config).gather(&runner, &clock, false);
+
+    match &report.outcome {
+        SyncOutcome::Completed { index, .. } => match index {
+            crate::status::IndexStatus::Unavailable { detail } => {
+                assert_eq!(detail, "update exploded")
+            }
+            other => panic!("expected Unavailable, got {other:?}"),
+        },
+        other => panic!("expected Completed, got {other:?}"),
+    }
+    assert_eq!(report.exit_code(), ExitCode::Stale);
+}
+
+/// Same as above, one step later in the pipeline: `qmd embed` failing must
+/// not be masked by `update` having already succeeded.
+#[test]
+fn a_failing_embed_command_is_an_unavailable_index_not_a_success() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+
+    let runner = FakeCommandRunner::new()
+        .on(git_status_porcelain_command(&clone), ok(""))
+        .on(git_checkout_main_command(&clone), ok("Already on 'main'\n"))
+        .on(git_pull_command(&clone), ok("Already up to date.\n"))
+        .on(QmdCommand::collection_list(&config), ok("knowledge\n"))
+        .on(
+            QmdCommand::update(&config),
+            ok("All collections updated.\n"),
+        )
+        .on(QmdCommand::embed(&config), failed("embed exploded"));
+    let clock = FixedClock(now());
+
+    let report = SyncVerb::new(&config).gather(&runner, &clock, false);
+
+    match &report.outcome {
+        SyncOutcome::Completed { index, .. } => match index {
+            crate::status::IndexStatus::Unavailable { detail } => {
+                assert_eq!(detail, "embed exploded")
+            }
+            other => panic!("expected Unavailable, got {other:?}"),
+        },
+        other => panic!("expected Completed, got {other:?}"),
+    }
+    assert_eq!(report.exit_code(), ExitCode::Stale);
+}
+
+/// Same again, one step further: `qmd status` failing after a successful
+/// `update`/`embed` must still be reported as unavailable, not skipped.
+#[test]
+fn a_failing_status_command_is_an_unavailable_index_not_a_success() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+
+    let runner = FakeCommandRunner::new()
+        .on(git_status_porcelain_command(&clone), ok(""))
+        .on(git_checkout_main_command(&clone), ok("Already on 'main'\n"))
+        .on(git_pull_command(&clone), ok("Already up to date.\n"))
+        .on(QmdCommand::collection_list(&config), ok("knowledge\n"))
+        .on(
+            QmdCommand::update(&config),
+            ok("All collections updated.\n"),
+        )
+        .on(QmdCommand::embed(&config), ok("Done.\n"))
+        .on(QmdCommand::status(&config), failed("status exploded"));
+    let clock = FixedClock(now());
+
+    let report = SyncVerb::new(&config).gather(&runner, &clock, false);
+
+    match &report.outcome {
+        SyncOutcome::Completed { index, .. } => match index {
+            crate::status::IndexStatus::Unavailable { detail } => {
+                assert_eq!(detail, "status exploded")
+            }
+            other => panic!("expected Unavailable, got {other:?}"),
+        },
+        other => panic!("expected Completed, got {other:?}"),
+    }
+    assert_eq!(report.exit_code(), ExitCode::Stale);
 }
 
 // A helper duplicating status.rs's private git-last-commit command

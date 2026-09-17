@@ -31,3 +31,31 @@ jobs:
 
       - name: cargo test
         run: cargo test --workspace --locked
+
+  mutants:
+    name: mutation testing (trust-critical surface)
+    runs-on: ubuntu-latest
+    # Report, don't gate: a surviving mutant is worth a human look, but a
+    # slow or environment-flaky mutation run must never block an otherwise
+    # good merge. Scope is deliberately narrow - see .cargo/mutants.toml -
+    # so this still finishes in a few minutes; widen the scope before ever
+    # making it required.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      # Kept in sync with rust-toolchain.toml.
+      - uses: dtolnay/rust-toolchain@1.97.1
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: mutants
+
+      # Never installed imperatively on a dev machine (see AGENTS.md) - a
+      # CI runner is the one place `cargo install` is the right tool, since
+      # there is no host-level package manager to go through instead.
+      - name: install cargo-mutants
+        run: cargo install --locked cargo-mutants
+
+      - name: cargo mutants
+        run: cargo mutants --no-shuffle

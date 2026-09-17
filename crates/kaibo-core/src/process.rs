@@ -149,6 +149,25 @@ pub(crate) mod testing {
         }
     }
 
+    /// A failing (non-zero exit) [`CommandOutput`] that nonetheless carries
+    /// `stdout` a caller might be tempted to parse anyway. Distinct from
+    /// [`failed`], whose empty stdout can't tell a test "the success check
+    /// was skipped" apart from "the success check ran and correctly fell
+    /// through to a not-parseable-anyway empty string" - both read the same
+    /// either way. This gives a `stdout` that would parse as something
+    /// definite if the success check were bypassed, so a test can tell
+    /// those two apart.
+    pub(crate) fn failed_with_stdout(stdout: impl Into<String>) -> CommandOutput {
+        CommandOutput {
+            stdout: stdout.into(),
+            stderr: "stub command exited non-zero".to_string(),
+            status: CommandStatus {
+                success: false,
+                code: Some(1),
+            },
+        }
+    }
+
     /// A failing (non-zero exit) [`CommandOutput`] with the given stderr.
     pub(crate) fn failed(stderr: impl Into<String>) -> CommandOutput {
         CommandOutput {
