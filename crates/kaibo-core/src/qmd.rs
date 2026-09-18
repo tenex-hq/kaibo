@@ -26,11 +26,14 @@
 //! Neither mechanism stops a *new function added to this file* from
 //! misusing `PlannedCommand::new("qmd", ...)` directly instead of routing
 //! through `index_command` - that residual risk is what
-//! `version_and_default_index_probe_are_the_only_commands_without_an_index`
-//! below guards, by enumerating the exact two functions allowed to skip
-//! `--index`.
+//! `every_qmd_command_constructor_carries_the_index_or_is_a_named_carve_out`
+//! below guards. It scans this file's own `impl QmdCommand` block for every
+//! `pub fn` rather than working from a hand-written list, so a function
+//! added later is swept in automatically: it fails, by name, unless it is
+//! either invoked and checked for `--index` or named in the test's own
+//! carve-out table.
 //!
-//! Those two functions live outside the `--index` guarantee on purpose,
+//! Exactly two functions live outside the `--index` guarantee on purpose,
 //! each documented at its own definition: [`QmdCommand::version`] (a
 //! version check addresses no index at all) and
 //! [`QmdCommand::default_index_collection_list`] (proving the default index
@@ -185,18 +188,141 @@ mod tests {
         assert_eq!(command.args[position + 1], "from-config-not-a-literal");
     }
 
-    /// The two functions that legitimately skip `--index` are exactly these
-    /// two, and each is documented at its definition as to why. A new
-    /// exemption showing up here without a matching doc comment is the
-    /// regression this test is watching for.
+    /// Every `pub fn` on `QmdCommand` must either carry `--index` with the
+    /// configured value or be one of the two documented carve-outs. Calling
+    /// every constructor through one signature is not possible - their
+    /// arities differ (`status(config)` vs `collection_add(config, path,
+    /// name, mask)` vs `query(config, question)`) - so this instead scans
+    /// the source of `impl QmdCommand` for every `pub fn` name and
+    /// cross-checks that list against the two tables below. A constructor
+    /// present in neither table fails the test by name: that is what makes
+    /// this a sweep rather than a hand-written list like the one this test
+    /// replaced. See the module doc for why the scan has to walk brace
+    /// depth rather than stop at the first `}`.
     #[test]
-    fn version_and_default_index_probe_are_the_only_commands_without_an_index() {
-        assert!(!QmdCommand::version().args.contains(&"--index".to_string()));
-        assert!(
-            !QmdCommand::default_index_collection_list()
+    fn every_qmd_command_constructor_carries_the_index_or_is_a_named_carve_out() {
+        // The two functions allowed to skip `--index`, each documented at
+        // its own definition (see the module doc). Naming them here, with a
+        // reason, keeps this an explicit denylist rather than an allowlist
+        // that could silently omit a constructor added later.
+        const CARVE_OUTS: [(&str, &str); 2] = [
+            ("version", "a version check addresses no index at all"),
+            (
+                "default_index_collection_list",
+                "deliberately reads qmd's default index to prove it was left untouched",
+            ),
+        ];
+
+        let config = ConfigBuilder::new("/unused")
+            .index("from-config-not-a-literal", ConfigSource::File)
+            .build();
+        let clone = std::path::Path::new("/unused/clone");
+
+        // Every constructor that should carry `--index`, invoked with
+        // arbitrary-but-valid arguments for its own signature. Add a line
+        // here whenever the source scan below reports an uncovered name.
+        let swept: Vec<(&str, PlannedCommand)> = vec![
+            (
+                "index_command",
+                QmdCommand::index_command(&config, "arbitrary-subcommand", ["extra-arg"]),
+            ),
+            ("status", QmdCommand::status(&config)),
+            ("collection_list", QmdCommand::collection_list(&config)),
+            (
+                "collection_add",
+                QmdCommand::collection_add(&config, clone, "name", "mask"),
+            ),
+            ("update", QmdCommand::update(&config)),
+            ("embed", QmdCommand::embed(&config)),
+            ("query", QmdCommand::query(&config, "question")),
+        ];
+
+        for (name, command) in &swept {
+            assert_eq!(command.program, "qmd", "{name} did not build a qmd command");
+            let position = command
                 .args
-                .contains(&"--index".to_string())
-        );
+                .iter()
+                .position(|arg| arg == "--index")
+                .unwrap_or_else(|| panic!("QmdCommand::{name} is missing --index"));
+            assert_eq!(
+                command.args[position + 1],
+                "from-config-not-a-literal",
+                "QmdCommand::{name} did not carry the configured index"
+            );
+        }
+
+        for (name, reason) in CARVE_OUTS {
+            let command = match name {
+                "version" => QmdCommand::version(),
+                "default_index_collection_list" => QmdCommand::default_index_collection_list(),
+                other => panic!("unknown carve-out `{other}` - fix this match arm"),
+            };
+            assert!(
+                !command.args.contains(&"--index".to_string()),
+                "QmdCommand::{name} is listed as a carve-out ({reason}) but carries --index; \
+                 either it should be swept above, or the carve-out reason no longer holds"
+            );
+        }
+
+        let swept_names: Vec<&str> = swept.iter().map(|(name, _)| *name).collect();
+        let carve_out_names: Vec<&str> = CARVE_OUTS.iter().map(|(name, _)| name).copied().collect();
+
+        for name in public_function_names_in_impl_qmd_command() {
+            assert!(
+                swept_names.contains(&name.as_str()) || carve_out_names.contains(&name.as_str()),
+                "QmdCommand::{name} is a new constructor that is neither swept for --index \
+                 above nor listed as a documented carve-out; add it to `swept` (if it should \
+                 carry --index) or to CARVE_OUTS with a reason (if not)"
+            );
+        }
+    }
+
+    /// Extracts every `pub fn <name>` declared directly inside this file's
+    /// `impl QmdCommand { ... }` block, by scanning the source rather than
+    /// reflecting over the type - Rust has no reflection over inherent
+    /// associated functions, so this is the only way to notice a
+    /// constructor added later without a matching test update.
+    ///
+    /// Walks brace depth from the block's opening `{` to find its matching
+    /// `}`, rather than stopping at the first `}` encountered - the first
+    /// closing brace belongs to whichever function is declared first, not
+    /// to the `impl` block itself. This mirrors
+    /// `qmd_command_literal_is_confined_to_this_module`'s directory walk:
+    /// both scans exist because a shallow version of each was already wrong
+    /// once.
+    fn public_function_names_in_impl_qmd_command() -> Vec<String> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/qmd.rs");
+        let source = std::fs::read_to_string(&path).expect("read qmd.rs");
+
+        let marker = "impl QmdCommand {";
+        let block_start = source.find(marker).expect("find impl QmdCommand block");
+        let body_start = block_start + marker.len();
+
+        let bytes = source.as_bytes();
+        let mut depth: i32 = 1;
+        let mut i = body_start;
+        while depth > 0 {
+            match bytes[i] {
+                b'{' => depth += 1,
+                b'}' => depth -= 1,
+                _ => {}
+            }
+            i += 1;
+        }
+        let body_end = i - 1;
+        let body = &source[body_start..body_end];
+
+        let mut names = Vec::new();
+        let mut rest = body;
+        while let Some(pos) = rest.find("pub fn ") {
+            let after = &rest[pos + "pub fn ".len()..];
+            let name_end = after
+                .find(|c: char| c == '(' || c.is_whitespace())
+                .unwrap_or(after.len());
+            names.push(after[..name_end].to_string());
+            rest = &after[name_end..];
+        }
+        names
     }
 
     /// Architecture test: nothing outside this file may spell out the
