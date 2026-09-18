@@ -1,14 +1,19 @@
 //! Config resolution.
 //!
 //! Precedence, highest first: `KAIBO_*` environment variables, then
-//! `~/.kaibo/config.toml`, then compiled defaults.
+//! `~/.kaibo/config.toml`, then compiled defaults. [`LintConfig`]'s fields
+//! are file-only (lists and maps, not scalars an env var carries cleanly),
+//! so for those the precedence is just file then default.
 //!
 //! Config comes from configuration, never from content: [`Config::resolve`]
 //! is the sole public constructor, and callers must resolve exactly once, in
 //! `main`, before opening any corpus file - nothing read from the corpus can
-//! reach a value used to decide where to read or write.
+//! reach a value used to decide where to read or write. This is what keeps
+//! `lint.rs`'s rule parameters safe to read from a `[lint]` table: they are
+//! bound here, in the same call, from the same two layers as `repo` or
+//! `index`, and are just as unreachable from a page in the clone.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -20,6 +25,19 @@ const ENV_CLONE: &str = "KAIBO_CLONE";
 const ENV_INDEX: &str = "KAIBO_INDEX";
 const ENV_COLLECTION: &str = "KAIBO_COLLECTION";
 const ENV_API_URL: &str = "KAIBO_API_URL";
+
+/// Compiled default for `lint.frontmatter_contract.required_keys`: the four
+/// fields `frontmatter-contract` has always required. Naming any of the
+/// four here is what "required" means for it; a key with no dedicated
+/// arm in [`crate::lint::rules::frontmatter_contract`] is still checked, only
+/// generically (presence in the frontmatter's passthrough map).
+const DEFAULT_LINT_REQUIRED_FRONTMATTER_KEYS: &[&str] = &["title", "tags", "status", "updated"];
+
+/// Compiled default for `lint.tags_kebab_case.pattern`: lowercase ASCII
+/// letters and digits, hyphen-separated, no leading, trailing or doubled
+/// hyphen - the predicate `tags-kebab-case` has always enforced. Matched as
+/// a full-string pattern (the rule anchors it), not a substring search.
+const DEFAULT_LINT_TAG_PATTERN: &str = "[a-z0-9]+(-[a-z0-9]+)*";
 
 /// Claude Code's own config-directory override. Read here rather than
 /// guessed at, because `kaibo install` has to write where Claude Code
@@ -58,6 +76,11 @@ pub enum ConfigKey {
     Collection,
     ApiUrl,
     SkillsDir,
+    LintDisabledRules,
+    LintRequiredFrontmatterKeys,
+    LintAllowedStatus,
+    LintTypeFolderOverrides,
+    LintTagPattern,
 }
 
 /// Failure while resolving config. Resolution runs before anything else, so
@@ -104,6 +127,77 @@ struct ConfigFile {
     index: Option<String>,
     collection: Option<String>,
     api_url: Option<String>,
+    lint: Option<LintConfigFile>,
+}
+
+/// The `[lint]` table: parameters for the compiled lint rules. See
+/// [`crate::lint`] for why these five are the only surface - no rule file,
+/// no shelled-out linter.
+#[derive(Debug, Default, Deserialize)]
+struct LintConfigFile {
+    /// Rule ids to skip entirely, e.g. `["prose-style"]`. A rule id, not a
+    /// path or a command - this can only ever remove a rule from the fixed
+    /// set the registry already knows how to build, never name new code to
+    /// run.
+    disabled_rules: Option<Vec<String>>,
+    frontmatter_contract: Option<FrontmatterContractConfigFile>,
+    tags_kebab_case: Option<TagsKebabCaseConfigFile>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct FrontmatterContractConfigFile {
+    required_keys: Option<Vec<String>>,
+    allowed_status: Option<Vec<String>>,
+    type_folder_overrides: Option<BTreeMap<String, String>>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct TagsKebabCaseConfigFile {
+    pattern: Option<String>,
+}
+
+/// Resolved parameters for the compiled lint rules - the whole surface of
+/// [`ConfigKey::LintDisabledRules`] through [`ConfigKey::LintTagPattern`] in
+/// one struct, mirroring how [`crate::lint::rules`] actually consumes it.
+/// Every field defaults to the value each rule already hardcoded before this
+/// existed, so a caller who configures nothing sees the exact old behaviour.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LintConfig {
+    /// Rule ids the registry skips. Empty means every rule runs, the same
+    /// as before this field existed.
+    pub disabled_rules: Vec<String>,
+    /// Frontmatter keys `frontmatter-contract` requires. `title`, `tags`,
+    /// `status` and `updated` are checked with their original messages;
+    /// any other key is checked generically for presence in the
+    /// frontmatter's passthrough map.
+    pub required_frontmatter_keys: Vec<String>,
+    /// The `status` values `frontmatter-contract` accepts. Empty means no
+    /// restriction - any present `status` value passes, the original
+    /// behaviour, since the rule only ever checked presence.
+    pub allowed_status: Vec<String>,
+    /// Folder name to expected `type` value, overriding the default
+    /// identity mapping (a page under `reference/` is expected to say
+    /// `type: reference`) for the folders named here. A folder not in this
+    /// map keeps the identity default.
+    pub type_folder_overrides: BTreeMap<String, String>,
+    /// The pattern `tags-kebab-case` matches each tag against in full (the
+    /// rule anchors it as `^(?:pattern)$`), as a `regex`-crate pattern.
+    pub tag_pattern: String,
+}
+
+impl Default for LintConfig {
+    fn default() -> Self {
+        LintConfig {
+            disabled_rules: Vec::new(),
+            required_frontmatter_keys: DEFAULT_LINT_REQUIRED_FRONTMATTER_KEYS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            allowed_status: Vec::new(),
+            type_folder_overrides: BTreeMap::new(),
+            tag_pattern: DEFAULT_LINT_TAG_PATTERN.to_string(),
+        }
+    }
 }
 
 /// Where [`Config::resolve`] reads ambient state from. [`ProcessEnvironment`]
@@ -138,6 +232,7 @@ pub struct Config {
     collection: String,
     api_url: Option<String>,
     skills_dir: Option<PathBuf>,
+    lint: LintConfig,
     sources: HashMap<ConfigKey, ConfigSource>,
 }
 
@@ -203,13 +298,67 @@ impl Config {
             file.as_ref().and_then(|f| f.api_url.clone()),
         );
 
-        let mut sources = HashMap::with_capacity(6);
+        let lint_file = file.as_ref().and_then(|f| f.lint.as_ref());
+        let fm_contract_file = lint_file.and_then(|l| l.frontmatter_contract.as_ref());
+        let tags_file = lint_file.and_then(|l| l.tags_kebab_case.as_ref());
+
+        // File-only, no `KAIBO_*` override: these are lists and maps, not
+        // scalars an environment variable can carry cleanly, so the file is
+        // the only layer above the compiled default. Unlike the string
+        // helpers above, an empty list *is* a distinct, meaningful choice a
+        // config file can make (e.g. `allowed_status = []` staying explicit
+        // about "no restriction"), so presence of the key - not emptiness -
+        // is what marks a value as coming from the file: TOML already tells
+        // absent from empty apart, so there is no `KAIBO_REPO=""` ambiguity
+        // to guard against here.
+        let (disabled_rules, disabled_rules_source) =
+            resolve_file_only(lint_file.and_then(|l| l.disabled_rules.clone()), Vec::new());
+        let (required_frontmatter_keys, required_frontmatter_keys_source) = resolve_file_only(
+            fm_contract_file.and_then(|f| f.required_keys.clone()),
+            DEFAULT_LINT_REQUIRED_FRONTMATTER_KEYS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        );
+        let (allowed_status, allowed_status_source) = resolve_file_only(
+            fm_contract_file.and_then(|f| f.allowed_status.clone()),
+            Vec::new(),
+        );
+        let (type_folder_overrides, type_folder_overrides_source) = resolve_file_only(
+            fm_contract_file.and_then(|f| f.type_folder_overrides.clone()),
+            BTreeMap::new(),
+        );
+        let (tag_pattern, tag_pattern_source) = match tags_file.and_then(|t| t.pattern.clone()) {
+            Some(pattern) => (pattern, ConfigSource::File),
+            None => (DEFAULT_LINT_TAG_PATTERN.to_string(), ConfigSource::Default),
+        };
+
+        let lint = LintConfig {
+            disabled_rules,
+            required_frontmatter_keys,
+            allowed_status,
+            type_folder_overrides,
+            tag_pattern,
+        };
+
+        let mut sources = HashMap::with_capacity(11);
         sources.insert(ConfigKey::Repo, repo_source);
         sources.insert(ConfigKey::Clone, clone_source);
         sources.insert(ConfigKey::Index, index_source);
         sources.insert(ConfigKey::Collection, collection_source);
         sources.insert(ConfigKey::ApiUrl, api_url_source);
         sources.insert(ConfigKey::SkillsDir, skills_dir_source);
+        sources.insert(ConfigKey::LintDisabledRules, disabled_rules_source);
+        sources.insert(
+            ConfigKey::LintRequiredFrontmatterKeys,
+            required_frontmatter_keys_source,
+        );
+        sources.insert(ConfigKey::LintAllowedStatus, allowed_status_source);
+        sources.insert(
+            ConfigKey::LintTypeFolderOverrides,
+            type_folder_overrides_source,
+        );
+        sources.insert(ConfigKey::LintTagPattern, tag_pattern_source);
 
         Ok(Config {
             repo,
@@ -218,6 +367,7 @@ impl Config {
             collection,
             api_url,
             skills_dir,
+            lint,
             sources,
         })
     }
@@ -256,6 +406,13 @@ impl Config {
     /// only `kaibo install` has to care about.
     pub fn skills_dir(&self) -> Option<&Path> {
         self.skills_dir.as_deref()
+    }
+
+    /// Parameters for the compiled lint rules. See [`LintConfig`] and
+    /// [`crate::lint`] for what each field governs and why this is the only
+    /// way a rule's behaviour can change.
+    pub fn lint(&self) -> &LintConfig {
+        &self.lint
     }
 
     /// Where the value for `key` came from: environment, file, or default.
@@ -306,6 +463,16 @@ fn resolve_optional(
     (None, ConfigSource::Default)
 }
 
+/// File-only resolution for a config value with no environment-variable
+/// layer (a list or a map, not a scalar `KAIBO_*` can carry): the file's
+/// value if the key was present at all, the compiled default otherwise.
+fn resolve_file_only<T>(file_value: Option<T>, default: T) -> (T, ConfigSource) {
+    match file_value {
+        Some(value) => (value, ConfigSource::File),
+        None => (default, ConfigSource::Default),
+    }
+}
+
 fn resolve_with_default(
     env: &dyn Environment,
     env_key: &str,
@@ -333,12 +500,13 @@ pub(crate) mod testing {
         collection: String,
         api_url: Option<String>,
         skills_dir: Option<PathBuf>,
+        lint: LintConfig,
         sources: HashMap<ConfigKey, ConfigSource>,
     }
 
     impl ConfigBuilder {
         pub(crate) fn new(clone: impl Into<PathBuf>) -> Self {
-            let mut sources = HashMap::with_capacity(6);
+            let mut sources = HashMap::with_capacity(11);
             for key in [
                 ConfigKey::Repo,
                 ConfigKey::Clone,
@@ -346,6 +514,11 @@ pub(crate) mod testing {
                 ConfigKey::Collection,
                 ConfigKey::ApiUrl,
                 ConfigKey::SkillsDir,
+                ConfigKey::LintDisabledRules,
+                ConfigKey::LintRequiredFrontmatterKeys,
+                ConfigKey::LintAllowedStatus,
+                ConfigKey::LintTypeFolderOverrides,
+                ConfigKey::LintTagPattern,
             ] {
                 sources.insert(key, ConfigSource::Default);
             }
@@ -359,6 +532,7 @@ pub(crate) mod testing {
                 index: DEFAULT_INDEX.to_string(),
                 collection: DEFAULT_COLLECTION.to_string(),
                 api_url: None,
+                lint: LintConfig::default(),
                 sources,
             }
         }
@@ -393,6 +567,54 @@ pub(crate) mod testing {
             self
         }
 
+        pub(crate) fn lint_disabled_rules(
+            mut self,
+            value: Vec<String>,
+            source: ConfigSource,
+        ) -> Self {
+            self.lint.disabled_rules = value;
+            self.sources.insert(ConfigKey::LintDisabledRules, source);
+            self
+        }
+
+        pub(crate) fn lint_required_frontmatter_keys(
+            mut self,
+            value: Vec<String>,
+            source: ConfigSource,
+        ) -> Self {
+            self.lint.required_frontmatter_keys = value;
+            self.sources
+                .insert(ConfigKey::LintRequiredFrontmatterKeys, source);
+            self
+        }
+
+        pub(crate) fn lint_allowed_status(
+            mut self,
+            value: Vec<String>,
+            source: ConfigSource,
+        ) -> Self {
+            self.lint.allowed_status = value;
+            self.sources.insert(ConfigKey::LintAllowedStatus, source);
+            self
+        }
+
+        pub(crate) fn lint_type_folder_overrides(
+            mut self,
+            value: BTreeMap<String, String>,
+            source: ConfigSource,
+        ) -> Self {
+            self.lint.type_folder_overrides = value;
+            self.sources
+                .insert(ConfigKey::LintTypeFolderOverrides, source);
+            self
+        }
+
+        pub(crate) fn lint_tag_pattern(mut self, value: &str, source: ConfigSource) -> Self {
+            self.lint.tag_pattern = value.to_string();
+            self.sources.insert(ConfigKey::LintTagPattern, source);
+            self
+        }
+
         pub(crate) fn build(self) -> Config {
             Config {
                 repo: self.repo,
@@ -401,6 +623,7 @@ pub(crate) mod testing {
                 collection: self.collection,
                 api_url: self.api_url,
                 skills_dir: self.skills_dir,
+                lint: self.lint,
                 sources: self.sources,
             }
         }

@@ -7,6 +7,17 @@
 //!
 //! Heuristic, not structural: a prose preference must not block a
 //! contribution the way a missing required field does.
+//!
+//! This is the rule a downstream user is most likely to turn off entirely
+//! via `lint.disabled_rules = ["prose-style"]` (see
+//! [`crate::config::LintConfig::disabled_rules`]). It has no parameters of
+//! its own to reconfigure - the other three rules exist because a corpus's
+//! structural contract genuinely varies (different required fields,
+//! different status vocabulary, different folder names); this one doesn't,
+//! because a house dash convention isn't a fact about what the corpus needs
+//! to stay queryable, it's a preference about how this particular team
+//! writes. A corpus with its own prose convention doesn't need a different
+//! `prose-style` parameter, it needs `prose-style` off.
 
 use super::{LintedFile, Rule, violation};
 use crate::lint::{Severity, Violation};

@@ -27,18 +27,28 @@ pub enum Status {
     Unknown(String),
 }
 
+impl Status {
+    /// The lowercase canonical string for a known variant, or the original
+    /// (unrecognised) value verbatim for [`Status::Unknown`]. The same
+    /// mapping [`Serialize`] uses, exposed directly so a caller comparing
+    /// against a configured allow-list doesn't have to round-trip through
+    /// YAML to get it.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Status::Draft => "draft",
+            Status::Current => "current",
+            Status::Deprecated => "deprecated",
+            Status::Unknown(s) => s.as_str(),
+        }
+    }
+}
+
 impl Serialize for Status {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let s = match self {
-            Status::Draft => "draft",
-            Status::Current => "current",
-            Status::Deprecated => "deprecated",
-            Status::Unknown(s) => s.as_str(),
-        };
-        serializer.serialize_str(s)
+        serializer.serialize_str(self.as_str())
     }
 }
 

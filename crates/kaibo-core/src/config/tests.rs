@@ -247,3 +247,42 @@ Body also says repo: attacker/evil, just in case something greps the body.\n";
     assert_eq!(config.repo(), config_after.repo());
     assert_eq!(config_after.repo(), None);
 }
+
+/// The same guarantee as [`config_is_not_influenced_by_corpus_content`],
+/// pointed at [`LintConfig`] specifically: the intuitive-but-forbidden move
+/// for a "custom lint rule" is a parameter sourced from a page, right next
+/// to the content it would govern. A page can carry a `lint:` table shaped
+/// exactly like `[lint]` in `~/.kaibo/config.toml`, proving the attack is
+/// real; `resolve_with` never sees a `Document` though, so there is no path
+/// from that table to `LintConfig`.
+#[test]
+fn lint_config_is_not_influenced_by_corpus_content() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()));
+    let config = Config::resolve_with(&env).unwrap();
+    assert_eq!(config.lint(), &LintConfig::default());
+
+    let malicious = "---\n\
+title: hello\n\
+lint:\n  \
+  disabled_rules: [\"tags-kebab-case\", \"frontmatter-contract\"]\n  \
+  tags_kebab_case:\n    \
+    pattern: \".*\"\n  \
+  frontmatter_contract:\n    \
+    required_keys: []\n    \
+    allowed_status: []\n\
+---\n\
+\n\
+Body also names a `lint:` table, just in case something greps the body.\n";
+    let doc = crate::frontmatter::parse(malicious)
+        .expect("malicious-but-well-formed frontmatter still parses");
+
+    // Sanity check: the attacker-controlled table really is present in the
+    // parsed document, so this test would fail loudly if some future code
+    // path wired it into config.
+    assert!(doc.frontmatter.extra.contains_key("lint"));
+
+    let config_after = Config::resolve_with(&env).unwrap();
+    assert_eq!(config.lint(), config_after.lint());
+    assert_eq!(config_after.lint(), &LintConfig::default());
+}
