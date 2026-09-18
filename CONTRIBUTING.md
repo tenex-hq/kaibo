@@ -4,6 +4,19 @@ Thanks for working on kaibo! This doc covers the **process** rules: how to
 commit, how to release. For the **content** rules - what good code looks
 like in this repo - see [AGENTS.md](AGENTS.md).
 
+## Review rules
+
+Named so a reviewer can cite them by name instead of re-deriving them:
+
+**No expected value from the code under test.** If a test builds the value
+it asserts against by calling the function, module, or pipeline it is
+testing, reject it: that proves only that the code agrees with itself on
+this run, not that the output is correct. Write the expected value as a
+literal instead. This is not a style preference - a test suite that did
+this passed every one of its 80 tests against a change that deleted the
+corpus trust boundary entirely. See AGENTS.md's "Testing" section for the
+rest of what that incident changed about how tests are written here.
+
 ## Commit conventions
 
 Every commit on `main` **must** follow [Conventional

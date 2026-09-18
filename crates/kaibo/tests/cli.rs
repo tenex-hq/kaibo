@@ -179,6 +179,56 @@ fn sync_output_and_commands_are_unaffected_by_hostile_corpus_content() {
     assert_eq!(minimal_calls, hostile_calls);
 }
 
+/// `--if-stale` is the one flag `sync` takes beyond the global ones, and it
+/// has to change what actually runs. The stub `git log` defaults to "just
+/// now" when `KAIBO_TEST_GIT_EPOCH` is unset (see `GIT_STUB`), so this
+/// harness's corpus reads as fresh without any extra setup - `--if-stale`
+/// must skip the pull on exactly that corpus.
+#[test]
+fn sync_if_stale_flag_skips_the_pull_when_the_corpus_is_already_fresh() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    let output = harness.run(&["--json", "sync", "--if-stale"], &[]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json = parse_json(&output.stdout);
+    assert_eq!(json["outcome"]["state"], "skipped_fresh");
+    assert!(
+        harness.calls().iter().all(|c| !c.contains("pull")),
+        "a fresh corpus must not be pulled under --if-stale: {:?}",
+        harness.calls()
+    );
+}
+
+/// The other half of the same flag: without it, `sync` pulls regardless of
+/// freshness - proving the skip above comes from the flag, not from `sync`
+/// never pulling a corpus this fresh in the first place.
+#[test]
+fn sync_without_if_stale_pulls_even_when_the_corpus_is_already_fresh() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    let output = harness.run(&["sync"], &[]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        harness.calls().iter().any(|c| c.contains("pull")),
+        "without --if-stale, sync must always pull: {:?}",
+        harness.calls()
+    );
+}
+
 // --- query --------------------------------------------------------------
 
 #[test]
@@ -287,6 +337,56 @@ fn query_hostile_corpus_admits_only_verified_current_non_escaping_hits() {
 
     assert_eq!(stdout.matches("<<<UNTRUSTED CORPUS CONTENT").count(), 6);
     assert_eq!(stdout.matches("<<<END UNTRUSTED CORPUS CONTENT").count(), 6);
+}
+
+/// `--include-drafts` is the one flag `query` takes beyond the global ones,
+/// and it has to change what actually comes back, not just what the report
+/// struct is capable of holding. Deliberately no "draft" anywhere in the
+/// fixture's path or title, same reasoning as the unit-test fixture in
+/// `kaibo-core`'s `query/tests.rs`: a fixture path containing the word
+/// "draft" would let `text.contains("[draft]")` pass even if the flag did
+/// nothing at all.
+#[test]
+fn query_excludes_a_draft_page_by_default_but_include_drafts_surfaces_it_labelled() {
+    let harness = Harness::new();
+    support::write_page(
+        &harness.clone_dir(),
+        "docs/reference/onboarding-notes.md",
+        "title: Onboarding Notes\nstatus: draft",
+        "Body.",
+    );
+    let response = support::write_query_response(
+        &harness.outside_dir(),
+        r#"[{"file": "qmd://knowledge/docs/reference/onboarding-notes.md?index=kaibo", "title": "Onboarding Notes", "snippet": "clean snippet", "score": 0.9}]"#,
+    );
+    let env = [("KAIBO_TEST_QMD_QUERY_RESPONSE", response.to_str().unwrap())];
+
+    let excluded = harness.run(&["query", "a question"], &env);
+    assert_eq!(
+        excluded.status.code(),
+        Some(3),
+        "a draft page must be excluded by default (the gap signal), stderr: {}",
+        String::from_utf8_lossy(&excluded.stderr)
+    );
+
+    let included_json = harness.run(&["--json", "query", "a question", "--include-drafts"], &env);
+    assert_eq!(
+        included_json.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&included_json.stderr)
+    );
+    let json = parse_json(&included_json.stdout);
+    let hits = json["outcome"]["hits"].as_array().expect("hits array");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0]["status"], "draft");
+
+    let included_text = harness.run(&["query", "a question", "--include-drafts"], &env);
+    let stdout = String::from_utf8(included_text.stdout).unwrap();
+    assert!(
+        stdout.contains("[draft]"),
+        "expected an explicit [draft] label, got: {stdout}"
+    );
 }
 
 // --- doctrine -------------------------------------------------------------
@@ -982,6 +1082,69 @@ fn contribute_apply_completes_a_direct_push_contribution_and_opens_a_pr() {
             .exists()
     );
     assert!(harness.calls().iter().any(|c| c.contains("checkout main")));
+}
+
+/// `--append` is the flag that changes `contribute apply` from a page
+/// creation to an edit: it must write into the named existing page instead
+/// of a new file under `<domain>/<type>/<slug>.md`, and the original body
+/// must survive alongside the appended text.
+#[test]
+fn contribute_apply_append_flag_appends_to_the_existing_page_instead_of_creating_one() {
+    let harness = Harness::new();
+    // Structurally well-formed, since `apply` lint-gates the page it just
+    // wrote: `write_minimal_corpus`'s `good.md` is missing `tags`/`updated`
+    // and would fail that gate for reasons unrelated to `--append` itself.
+    support::write_page(
+        &harness.clone_dir(),
+        "docs/reference/existing-page.md",
+        support::WELL_FORMED_FRONTMATTER,
+        "Original body.",
+    );
+
+    let output = harness.run(
+        &[
+            "--json",
+            "contribute",
+            "apply",
+            "--type",
+            "how-to",
+            "--domain",
+            "docs",
+            "--title",
+            "A page",
+            "--body",
+            "Appended paragraph.",
+            "--append",
+            "docs/reference/existing-page.md",
+        ],
+        &[REPO_ENV],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json = parse_json(&output.stdout);
+    assert_eq!(json["path"], "docs/reference/existing-page.md");
+    assert_eq!(json["outcome"]["push_route"], "direct");
+
+    let contents =
+        std::fs::read_to_string(harness.clone_dir().join("docs/reference/existing-page.md"))
+            .unwrap();
+    assert!(
+        contents.contains("Original body."),
+        "the original body must survive an append, got: {contents}"
+    );
+    assert!(
+        contents.contains("Appended paragraph."),
+        "the new body must be appended, got: {contents}"
+    );
+    assert!(
+        !harness.clone_dir().join("docs/how-to/a-page.md").exists(),
+        "--append must not also create a new page at the create-mode path"
+    );
 }
 
 // --- install --------------------------------------------------------------
