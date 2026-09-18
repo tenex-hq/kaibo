@@ -1,6 +1,7 @@
 use super::*;
 use crate::clock::testing::FixedClock;
 use crate::config::testing::ConfigBuilder;
+use crate::install::{EMBEDDED_SKILLS, InstallMode, InstallVerb, PluginLayout};
 use crate::process::testing::{FakeCommandRunner, failed, ok};
 
 const NOW_EPOCH: u64 = 1_700_000_000;
@@ -9,9 +10,23 @@ fn now() -> SystemTime {
     UNIX_EPOCH + Duration::from_secs(NOW_EPOCH)
 }
 
+/// A config whose corpus is `clone` and whose skills are already
+/// installed at [`CLI_VERSION`], which is what `status` counts as
+/// healthy: the skills ship inside the binary, so finding none on disk is
+/// a finding like any other. The install lands inside `clone` because
+/// these tests own that whole temp directory and `status` never reads the
+/// corpus.
 fn healthy_config(clone: &Path) -> Config {
-    ConfigBuilder::new(clone).build()
+    let config = ConfigBuilder::new(clone)
+        .skills_dir(clone.join("home").join(".claude").join("skills"))
+        .build();
+    InstallVerb::new(&config, CLI_VERSION, InstallMode::Install).apply();
+    config
 }
+
+/// The version every test in this module hands to `gather`, so "installed"
+/// and "this binary" line up unless a test deliberately pulls them apart.
+const CLI_VERSION: &str = "0.1.0";
 
 fn sample_status_output() -> &'static str {
     "QMD Status\n\nDocuments\n  Total:    21 files indexed\n  Vectors:  38 embedded\n  Pending:  0 need embedding\n  Updated:  2h ago\n"
@@ -437,4 +452,281 @@ fn render_json_reports_found_false_when_qmd_is_missing() {
     assert_eq!(json["qmd"]["found"], false);
     assert_eq!(json["clone"]["present"], false);
     assert_eq!(json["exit_code"], 4);
+}
+
+// --- the installed skills ---------------------------------------------
+
+/// The runner every skills test below uses: a healthy machine in every
+/// respect except the one thing the test varies, so a finding it reports
+/// can only have come from the skills.
+fn healthy_runner(clone: &Path, config: &Config) -> FakeCommandRunner {
+    FakeCommandRunner::new()
+        .on(git_branch_command(clone), ok("main\n"))
+        .on(
+            git_last_commit_command(clone),
+            ok(format!("{}\n", NOW_EPOCH - 60)),
+        )
+        .on(QmdCommand::version(), ok("qmd 2.8.3\n"))
+        .on(QmdCommand::status(config), ok(sample_status_output()))
+        .on(
+            QmdCommand::default_index_collection_list(),
+            ok("some-other-collection\n"),
+        )
+}
+
+fn skills_report(clone: &Path, config: &Config, cli_version: &str) -> StatusReport {
+    let runner = healthy_runner(clone, config);
+    StatusVerb::new(config).gather(&runner, &FixedClock(now()), cli_version)
+}
+
+fn only_finding(report: &StatusReport) -> Finding {
+    let findings = report.findings();
+    assert_eq!(findings.len(), 1, "expected one finding, got {findings:?}");
+    findings.into_iter().next().expect("one finding")
+}
+
+#[test]
+fn skills_installed_at_this_binarys_version_are_reported_as_matching() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = healthy_config(tmp.path());
+
+    let report = skills_report(tmp.path(), &config, CLI_VERSION);
+
+    assert_eq!(
+        report.skills,
+        InstalledSkills::Present {
+            version: CLI_VERSION.to_string(),
+            changed: Vec::new(),
+            missing: Vec::new(),
+        }
+    );
+    assert!(
+        report
+            .render_text(&RenderOptions::default())
+            .contains("matches this binary"),
+        "{}",
+        report.render_text(&RenderOptions::default())
+    );
+}
+
+/// The whole reason the skills ship inside the binary: an older install
+/// beside a newer binary is prose describing a mechanism that has moved
+/// on, and `status` is what makes that visible.
+#[test]
+fn skills_left_behind_by_an_older_binary_are_reported_against_this_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = healthy_config(tmp.path());
+
+    let report = skills_report(tmp.path(), &config, "0.9.9");
+
+    assert_eq!(
+        only_finding(&report),
+        Finding {
+            message: "installed skills are version 0.1.0, this binary is 0.9.9".to_string(),
+            fix: Some("kaibo install".to_string()),
+        }
+    );
+}
+
+#[test]
+fn a_hand_edited_skill_file_is_reported_by_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = healthy_config(tmp.path());
+    let layout = PluginLayout::new(&config).expect("the fixture config has a skills dir");
+    std::fs::write(layout.skill_path("query"), "hand-edited\n").unwrap();
+
+    let report = skills_report(tmp.path(), &config, CLI_VERSION);
+
+    assert_eq!(
+        only_finding(&report),
+        Finding {
+            message: "installed skill edited since install: query".to_string(),
+            fix: Some("kaibo install".to_string()),
+        }
+    );
+}
+
+/// A file whose bytes are untouched is not an edit, however recently it
+/// was written: the check is content, and a timestamp-based one would
+/// call this a hand-edit.
+#[test]
+fn a_skill_file_rewritten_with_identical_bytes_is_not_reported_as_edited() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = healthy_config(tmp.path());
+    let layout = PluginLayout::new(&config).expect("the fixture config has a skills dir");
+    let path = layout.skill_path("sync");
+    let bytes = std::fs::read_to_string(&path).unwrap();
+    std::thread::sleep(Duration::from_millis(20));
+    std::fs::write(&path, bytes).unwrap();
+
+    let report = skills_report(tmp.path(), &config, CLI_VERSION);
+
+    assert!(report.findings().is_empty(), "{:?}", report.findings());
+}
+
+/// A version mismatch already explains why the bytes differ, so the two
+/// are never reported together: only one of them can be diagnosed at a
+/// time, and claiming a hand-edit on an old install would be a guess.
+#[test]
+fn an_edit_on_top_of_an_older_install_is_reported_only_as_the_version_gap() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = healthy_config(tmp.path());
+    let layout = PluginLayout::new(&config).expect("the fixture config has a skills dir");
+    std::fs::write(layout.skill_path("query"), "hand-edited\n").unwrap();
+
+    let report = skills_report(tmp.path(), &config, "0.9.9");
+
+    assert_eq!(
+        only_finding(&report).message,
+        "installed skills are version 0.1.0, this binary is 0.9.9"
+    );
+}
+
+#[test]
+fn a_deleted_skill_file_is_reported_by_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = healthy_config(tmp.path());
+    let layout = PluginLayout::new(&config).expect("the fixture config has a skills dir");
+    std::fs::remove_file(layout.skill_path("contribute")).unwrap();
+
+    let report = skills_report(tmp.path(), &config, CLI_VERSION);
+
+    assert_eq!(
+        only_finding(&report),
+        Finding {
+            message: "installed skill file missing: contribute".to_string(),
+            fix: Some("kaibo install".to_string()),
+        }
+    );
+}
+
+/// A file deleted out of an older install is still worth naming: unlike a
+/// difference in bytes, an absent file is not explained by the version
+/// gap.
+#[test]
+fn a_deleted_skill_file_is_reported_alongside_an_older_install() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = healthy_config(tmp.path());
+    let layout = PluginLayout::new(&config).expect("the fixture config has a skills dir");
+    std::fs::remove_file(layout.skill_path("contribute")).unwrap();
+
+    let report = skills_report(tmp.path(), &config, "0.9.9");
+
+    let messages: Vec<String> = report
+        .findings()
+        .into_iter()
+        .map(|finding| finding.message)
+        .collect();
+    assert_eq!(
+        messages,
+        vec![
+            "installed skills are version 0.1.0, this binary is 0.9.9".to_string(),
+            "installed skill file missing: contribute".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn skills_never_installed_are_reported_with_the_command_that_installs_them() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = ConfigBuilder::new(tmp.path())
+        .skills_dir(tmp.path().join("home").join(".claude").join("skills"))
+        .build();
+
+    let report = skills_report(tmp.path(), &config, CLI_VERSION);
+
+    assert_eq!(report.skills, InstalledSkills::Absent);
+    assert_eq!(only_finding(&report).fix, Some("kaibo install".to_string()));
+}
+
+#[test]
+fn an_unidentifiable_install_is_reported_rather_than_assumed_current() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = healthy_config(tmp.path());
+    let layout = PluginLayout::new(&config).expect("the fixture config has a skills dir");
+    std::fs::write(layout.manifest_path(), "{not json\n").unwrap();
+
+    let report = skills_report(tmp.path(), &config, CLI_VERSION);
+
+    assert!(
+        matches!(report.skills, InstalledSkills::ManifestUnreadable { .. }),
+        "{:?}",
+        report.skills
+    );
+    assert_eq!(only_finding(&report).fix, Some("kaibo install".to_string()));
+}
+
+/// Nowhere to install is not the same as nothing installed, and the fix
+/// differs: one is a command to run, the other a variable to set.
+#[test]
+fn with_no_install_location_status_names_the_variable_to_set() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = ConfigBuilder::new(tmp.path()).build();
+
+    let report = skills_report(tmp.path(), &config, CLI_VERSION);
+
+    assert_eq!(report.skills, InstalledSkills::LocationUnknown);
+    assert_eq!(report.skills_root, None);
+    assert_eq!(
+        only_finding(&report).fix,
+        Some("export CLAUDE_CONFIG_DIR=/path/to/.claude, then re-run `kaibo install`".to_string())
+    );
+}
+
+/// `status` reads the install path; it never writes to it. Sweeps every
+/// skill the binary carries rather than naming three.
+#[test]
+fn status_never_installs_what_it_finds_missing() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let skills_dir = tmp.path().join("home").join(".claude").join("skills");
+    let config = ConfigBuilder::new(tmp.path())
+        .skills_dir(&skills_dir)
+        .build();
+
+    skills_report(tmp.path(), &config, CLI_VERSION);
+
+    assert!(
+        !skills_dir.exists(),
+        "status created {}",
+        skills_dir.display()
+    );
+    for skill in EMBEDDED_SKILLS {
+        assert!(
+            !PluginLayout::new(&config)
+                .expect("the fixture config has a skills dir")
+                .skill_path(skill.name)
+                .exists(),
+            "status installed {}",
+            skill.name
+        );
+    }
+}
+
+#[test]
+fn the_json_report_carries_the_installed_version_and_what_drifted() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = healthy_config(tmp.path());
+    let layout = PluginLayout::new(&config).expect("the fixture config has a skills dir");
+    std::fs::write(layout.skill_path("query"), "hand-edited\n").unwrap();
+
+    let json = skills_report(tmp.path(), &config, CLI_VERSION).render_json();
+
+    assert_eq!(json["skills"]["installed"], true);
+    assert_eq!(json["skills"]["version"], CLI_VERSION);
+    assert_eq!(json["skills"]["matches_cli_version"], true);
+    assert_eq!(json["skills"]["edited"], serde_json::json!(["query"]));
+    assert_eq!(json["skills"]["missing"], serde_json::json!([]));
+    assert_eq!(json["skills"]["root"], layout.root().display().to_string());
 }
