@@ -1046,3 +1046,80 @@ fn uninstall_leaves_behind_a_directory_holding_someone_elses_file() {
         serde_json::json!([stranger.parent().unwrap().display().to_string()])
     );
 }
+
+/// `status` is what keeps the skills and the binary honest with each
+/// other: it compares what is installed against what this binary carries.
+#[test]
+fn status_reports_installed_skills_as_matching_this_binary() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    harness.run(&["install"], &[]);
+
+    let output = harness.run(&["--json", "status"], &[]);
+
+    let json = parse_json(&output.stdout);
+    assert_eq!(json["skills"]["installed"], true);
+    assert_eq!(json["skills"]["version"], CLI_VERSION);
+    assert_eq!(json["skills"]["matches_cli_version"], true);
+    assert_eq!(json["skills"]["edited"], serde_json::json!([]));
+    assert_eq!(json["skills"]["missing"], serde_json::json!([]));
+}
+
+#[test]
+fn status_flags_skills_left_behind_by_an_older_binary() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    harness.run(&["install"], &[]);
+    std::fs::write(
+        manifest_path(&harness.plugin_dir()),
+        "{\"name\": \"kaibo\", \"version\": \"0.0.1\"}\n",
+    )
+    .unwrap();
+
+    let output = harness.run(&["status"], &[]);
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(&format!(
+            "installed skills are version 0.0.1, this binary is {CLI_VERSION}"
+        )),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("next: `kaibo install`"), "got: {stdout}");
+}
+
+#[test]
+fn status_flags_a_hand_edited_skill_file() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    harness.run(&["install"], &[]);
+    std::fs::write(
+        skill_path(&harness.plugin_dir(), "contribute"),
+        "hand-edited\n",
+    )
+    .unwrap();
+
+    let output = harness.run(&["--json", "status"], &[]);
+
+    let json = parse_json(&output.stdout);
+    assert_eq!(json["skills"]["matches_cli_version"], true);
+    assert_eq!(json["skills"]["edited"], serde_json::json!(["contribute"]));
+}
+
+#[test]
+fn status_on_a_machine_that_never_installed_says_so() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    let output = harness.run(&["status"], &[]);
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(&format!(
+            "skills: not installed at {}",
+            harness.plugin_dir().display()
+        )),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("next: `kaibo install`"), "got: {stdout}");
+}
