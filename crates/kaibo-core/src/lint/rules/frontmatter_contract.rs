@@ -139,6 +139,11 @@ mod tests {
     }
 
     #[test]
+    fn the_rules_id_is_frontmatter_contract() {
+        assert_eq!(FrontmatterContractRule.id(), "frontmatter-contract");
+    }
+
+    #[test]
     fn a_page_with_every_required_field_and_a_matching_type_has_no_violations() {
         let f = file("kaibo/reference/page.md", well_formed_frontmatter());
         assert_eq!(FrontmatterContractRule.check(&f), Vec::new());
@@ -177,6 +182,20 @@ mod tests {
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains("reference"));
         assert!(violations[0].message.contains("how-to"));
+    }
+
+    #[test]
+    fn the_expected_type_is_the_immediate_parent_folder_even_several_levels_deep() {
+        // Five path segments, deep enough that "the immediate parent" and
+        // "some other folder further up" resolve to different names -
+        // `kaibo/a/b/reference/page.md`'s immediate parent is `reference`,
+        // not `b`, which a path this shallow (three or four segments)
+        // cannot distinguish since both would happen to name the same
+        // folder either way.
+        let mut fm = well_formed_frontmatter();
+        fm.doc_type = Some("reference".to_string());
+        let f = file("kaibo/a/b/reference/page.md", fm);
+        assert_eq!(FrontmatterContractRule.check(&f), Vec::new());
     }
 
     #[test]

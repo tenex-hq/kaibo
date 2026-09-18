@@ -157,6 +157,87 @@ fn linting_a_single_path_argument_only_checks_that_file_not_the_whole_corpus() {
 }
 
 #[test]
+fn render_text_names_the_rule_and_severity_of_a_structural_violation() {
+    let report = LintReport {
+        paths: Vec::new(),
+        outcome: LintOutcome::Finished {
+            files_checked: 1,
+            violations: vec![Violation {
+                rule_id: "frontmatter-contract".to_string(),
+                severity: Severity::Structural,
+                path: "kaibo/reference/page.md".to_string(),
+                message: "missing required frontmatter field `title`".to_string(),
+            }],
+        },
+    };
+
+    let text = report.render_text(&RenderOptions::default());
+
+    assert!(text.contains("[structural]"));
+    assert!(text.contains("frontmatter-contract"));
+    assert!(text.contains("kaibo/reference/page.md"));
+    assert!(text.contains("missing required frontmatter field `title`"));
+}
+
+#[test]
+fn render_text_names_a_heuristic_violation_distinctly_from_a_structural_one() {
+    let report = LintReport {
+        paths: Vec::new(),
+        outcome: LintOutcome::Finished {
+            files_checked: 1,
+            violations: vec![Violation {
+                rule_id: "prose-style".to_string(),
+                severity: Severity::Heuristic,
+                path: "kaibo/reference/page.md".to_string(),
+                message: "body contains an em dash (U+2014); use a plain hyphen instead"
+                    .to_string(),
+            }],
+        },
+    };
+
+    let text = report.render_text(&RenderOptions::default());
+
+    assert!(text.contains("[heuristic]"));
+    assert!(!text.contains("[structural]"));
+}
+
+#[test]
+fn render_json_encodes_each_violation_field_as_the_literal_value_it_carries() {
+    let report = LintReport {
+        paths: vec!["kaibo/reference/page.md".to_string()],
+        outcome: LintOutcome::Finished {
+            files_checked: 1,
+            violations: vec![Violation {
+                rule_id: "tags-kebab-case".to_string(),
+                severity: Severity::Structural,
+                path: "kaibo/reference/page.md".to_string(),
+                message: "tag \"bad_tag\" is not kebab-case".to_string(),
+            }],
+        },
+    };
+
+    let json = report.render_json();
+
+    assert_eq!(json["outcome"]["state"], "finished");
+    assert_eq!(json["outcome"]["files_checked"], 1);
+    let violation = &json["outcome"]["violations"][0];
+    assert_eq!(violation["rule_id"], "tags-kebab-case");
+    assert_eq!(violation["severity"], "structural");
+    assert_eq!(violation["path"], "kaibo/reference/page.md");
+    assert_eq!(violation["message"], "tag \"bad_tag\" is not kebab-case");
+}
+
+#[test]
+fn render_json_reports_the_clone_missing_state_by_name() {
+    let report = LintReport {
+        paths: Vec::new(),
+        outcome: LintOutcome::CloneMissing,
+    };
+
+    assert_eq!(report.render_json()["outcome"]["state"], "clone_missing");
+}
+
+#[test]
 fn explain_prints_nothing_to_run_because_lint_shells_out_to_nothing() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("clone");

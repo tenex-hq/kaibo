@@ -72,6 +72,11 @@ mod tests {
     }
 
     #[test]
+    fn the_rules_id_is_tags_kebab_case() {
+        assert_eq!(TagsKebabCaseRule.id(), "tags-kebab-case");
+    }
+
+    #[test]
     fn all_kebab_case_tags_produce_no_violations() {
         let f = file_with_tags(vec!["knowledge-backoffice", "cli", "rule-registry-v2"]);
         assert_eq!(TagsKebabCaseRule.check(&f), Vec::new());

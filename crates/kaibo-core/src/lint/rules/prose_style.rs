@@ -68,6 +68,11 @@ mod tests {
     }
 
     #[test]
+    fn the_rules_id_is_prose_style() {
+        assert_eq!(ProseStyleRule.id(), "prose-style");
+    }
+
+    #[test]
     fn plain_hyphenated_prose_has_no_violations() {
         let f = file_with_body("A well-formed sentence - with a hyphen aside.");
         assert_eq!(ProseStyleRule.check(&f), Vec::new());
