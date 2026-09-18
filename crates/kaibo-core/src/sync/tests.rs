@@ -114,6 +114,65 @@ fn hooks_are_disabled_on_every_git_command_sync_plans() {
     );
 }
 
+/// Qmd subcommands within `sync`'s planned pipeline that are exempt from
+/// carrying `--index` - none, today. Unlike `qmd.rs`'s own guardrail, which
+/// carves out `QmdCommand::version` (addresses no index at all) and
+/// `default_index_collection_list` (deliberately reads qmd's default index,
+/// to prove it was left untouched), `sync` never has a legitimate reason to
+/// build either of those: every command it plans writes to or reads from the
+/// one configured index. Kept as an explicit (empty) list, named here rather
+/// than skipped ad hoc inside the loop, so a future exemption has to be
+/// argued for in a comment next to this one.
+const INDEXLESS_QMD_SUBCOMMANDS: [&str; 0] = [];
+
+/// Guardrail: every qmd command `sync` plans carries `--index` with the
+/// configured value, not a literal - the same guarantee `qmd.rs` enforces
+/// for `QmdCommand::index_command` itself, checked again here at the point
+/// where `sync` assembles its pipeline.
+///
+/// Asserts over the whole planned pipeline, not a hand-listed set of
+/// constructor calls, so a qmd command added to `planned_commands` later -
+/// which would carry `--index` only if its author remembered to route it
+/// through `QmdCommand::index_command` - is swept from day one instead of
+/// silently escaping a list that only knows about today's four commands.
+/// Both clone states are checked, since the clone step is a `git` command
+/// and never appears in this sweep either way.
+#[test]
+fn sync_commands_carry_the_configured_index() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    let config = ConfigBuilder::new(&clone)
+        .repo("org/corpus", ConfigSource::File)
+        .index("from-config-not-a-literal", ConfigSource::File)
+        .build();
+
+    let mut checked = 0;
+    for clone_present in [false, true] {
+        for command in planned_commands(&config, clone_present) {
+            if command.program != "qmd" {
+                continue;
+            }
+            let subcommand = command.args.first().map(String::as_str).unwrap_or("");
+            if INDEXLESS_QMD_SUBCOMMANDS.contains(&subcommand) {
+                continue;
+            }
+            let position = command
+                .args
+                .iter()
+                .position(|arg| arg == "--index")
+                .unwrap_or_else(|| panic!("no --index in: {command}"));
+            assert_eq!(command.args[position + 1], "from-config-not-a-literal");
+            checked += 1;
+        }
+    }
+
+    assert!(
+        checked >= 8,
+        "expected to sweep collection list, collection add, update and embed \
+         across both clone states; swept {checked}"
+    );
+}
+
 #[test]
 fn missing_clone_bootstraps() {
     let tmp = tempfile::tempdir().unwrap();

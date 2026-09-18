@@ -258,39 +258,6 @@ mod tests {
         );
     }
 
-    /// Mandatory guardrail test for the commands `sync` added: every one of
-    /// them carries `--index` with the configured value, not a literal.
-    /// `collection_add` and `collection_list` share the `collection`
-    /// subcommand but must not be confused with
-    /// [`QmdCommand::default_index_collection_list`], which addresses the
-    /// default index on purpose.
-    #[test]
-    fn sync_commands_carry_the_configured_index() {
-        let config = ConfigBuilder::new("/unused")
-            .index("from-config-not-a-literal", ConfigSource::File)
-            .build();
-
-        for command in [
-            QmdCommand::collection_list(&config),
-            QmdCommand::collection_add(
-                &config,
-                std::path::Path::new("/clone"),
-                "knowledge",
-                "*/{reference,how-to,faq}/**/*.md",
-            ),
-            QmdCommand::update(&config),
-            QmdCommand::embed(&config),
-        ] {
-            assert_eq!(command.program, "qmd");
-            let position = command
-                .args
-                .iter()
-                .position(|arg| arg == "--index")
-                .unwrap_or_else(|| panic!("no --index in: {command}"));
-            assert_eq!(command.args[position + 1], "from-config-not-a-literal");
-        }
-    }
-
     /// `query` carries the configured index and collection, not literals,
     /// and asks for JSON so `query::gather` has something structured to
     /// parse.

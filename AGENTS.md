@@ -86,6 +86,12 @@ unless set, so it never runs in CI: see `status/qmd_contract_check.rs`.
 functions by name asserts a property of that list. The fourth function added
 later escapes it. Assert over the pipeline, or scan the source.
 
+**Mutation testing runs on the diff, not on a schedule.** CI mutates only the
+lines a PR touches and blocks the merge on a survivor - that is the only
+mutation testing that ever runs automatically. When you write a new
+trust-critical file, run `cargo mutants -f <that file>` yourself, once, before
+opening the PR. Nobody should sit and wait on a full sweep; there isn't one.
+
 ## Writing code
 
 **Prove it in a test, or delete the sentence.** A doc comment claiming a

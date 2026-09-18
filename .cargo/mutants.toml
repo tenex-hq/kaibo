@@ -1,37 +1,20 @@
-# cargo-mutants configuration for the trust-critical surface.
+# cargo-mutants configuration.
 #
-# Scope is deliberately narrow, not the whole crate: trust.rs is the fencing
-# and path-containment core, query.rs/doctrine.rs are its two callers,
-# sync.rs/self_heal.rs decide when the corpus gets refreshed, moc.rs is the
-# shared root-MOC parser both `doctrine` and `domains` read through, and the
-# lint.rs registry plus its three rules are the structural gate on what the
-# corpus is allowed to contain in the first place.
-# Widen this list file by file, not all at once - see AGENTS.md.
-#
-# What this list does not cover, so nobody reads it as "the crate is
-# mutation-tested": config/, frontmatter.rs, output.rs, process.rs,
-# status/, domains.rs and the `kaibo` binary crate are all outside it.
-examine_globs = [
-    "crates/kaibo-core/src/trust.rs",
-    "crates/kaibo-core/src/contribute.rs",
-    "crates/kaibo-core/src/query.rs",
-    "crates/kaibo-core/src/sync.rs",
-    "crates/kaibo-core/src/doctrine.rs",
-    "crates/kaibo-core/src/moc.rs",
-    "crates/kaibo-core/src/self_heal.rs",
-    "crates/kaibo-core/src/lint.rs",
-    "crates/kaibo-core/src/lint/rules.rs",
-    "crates/kaibo-core/src/lint/rules/frontmatter_contract.rs",
-    "crates/kaibo-core/src/lint/rules/tags_kebab_case.rs",
-    "crates/kaibo-core/src/lint/rules/prose_style.rs",
-]
+# The only mutation testing that runs is the per-PR `--in-diff` gate in CI:
+# it already bounds cost to the lines a PR touched, so a hand-curated
+# per-file allowlist here would buy no speed and would only drift - a file
+# added to the trust-critical surface and never added to this list would
+# silently never be gated. examine_globs instead draws the boundary at the
+# crate seam: the whole kaibo-core library, where every guarantee in
+# AGENTS.md actually lives, and never the thin `kaibo` binary crate, whose
+# tests are a separate suite additional_cargo_test_args below does not run.
+examine_globs = ["crates/kaibo-core/**"]
 
 # Every mutant here lives in kaibo-core; scoping the test run to that one
 # package (rather than the whole workspace) skips rebuilding and running
-# the kaibo binary crate's end-to-end suite for every mutant, which is the
-# difference between a several-minute run and one that drags on much
-# longer for no extra mutant-killing power - kaibo-core's own unit and
-# guardrail tests are the ones actually exercising this code.
+# the kaibo binary crate's end-to-end suite for every mutant, and keeps the
+# tests run in sync with examine_globs above - mutating a file whose tests
+# live in a different package would produce a mutant nothing here catches.
 additional_cargo_test_args = ["--package", "kaibo-core"]
 
 # A generous floor under cargo-mutants' own auto-detected timeout, so a
