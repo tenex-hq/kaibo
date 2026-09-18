@@ -65,7 +65,12 @@ release VERSION:
     git cliff --tag "$TAG" -o CHANGELOG.md
 
     echo "-> commit + annotated tag"
-    git commit -am "chore(release): $TAG"
+    # Stage by name, not with `commit -a`: on the very first release
+    # CHANGELOG.md is untracked, and `-a` stages only tracked files - the
+    # changelog would be silently left out, or the commit would abort with
+    # nothing to commit when the version bump is also a no-op.
+    git add CHANGELOG.md Cargo.toml Cargo.lock
+    git commit -m "chore(release): $TAG"
     git tag -a "$TAG" -m "$TAG"
 
     echo "-> pushing main + tag"
