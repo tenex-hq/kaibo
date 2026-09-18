@@ -549,6 +549,28 @@ fn a_hand_edited_skill_file_is_reported_by_name() {
     );
 }
 
+/// The text report has to name both versions, not just carry the finding:
+/// a reader skimming the summary lines sees which install is on disk and
+/// which binary is complaining about it.
+#[test]
+fn the_text_report_names_the_installed_version_and_this_binarys() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = healthy_config(tmp.path());
+    let layout = PluginLayout::new(&config).expect("the fixture config has a skills dir");
+
+    let report = skills_report(tmp.path(), &config, "0.9.9");
+
+    let text = report.render_text(&RenderOptions::default());
+    assert!(
+        text.contains(&format!(
+            "skills: 0.1.0 at {}, this binary is 0.9.9",
+            layout.root().display()
+        )),
+        "{text}"
+    );
+}
+
 /// A file whose bytes are untouched is not an edit, however recently it
 /// was written: the check is content, and a timestamp-based one would
 /// call this a hand-edit.

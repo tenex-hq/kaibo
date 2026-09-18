@@ -581,6 +581,25 @@ fn a_deleted_skill_file_reads_as_missing() {
     );
 }
 
+/// A manifest that is there but unreadable is not the same as no install:
+/// reporting it as absent would tell the user nothing is installed while
+/// something is. A directory where the manifest file belongs is the
+/// portable way to make the read fail for a reason other than the file
+/// being missing.
+#[test]
+fn a_manifest_that_cannot_be_read_does_not_read_as_nothing_installed() {
+    let (_root, config) = sandbox();
+    let layout = PluginLayout::new(&config).expect("the sandbox config has a skills dir");
+    fs::create_dir_all(layout.manifest_path()).expect("create a dir where the manifest belongs");
+
+    let found = inspect(&config);
+
+    assert!(
+        matches!(found, InstalledSkills::ManifestUnreadable { .. }),
+        "got: {found:?}"
+    );
+}
+
 #[test]
 fn a_manifest_that_is_not_json_reads_as_unreadable() {
     let (_root, config) = sandbox();
