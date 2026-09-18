@@ -62,30 +62,3 @@ has.
 Un-parked, in the other direction: atomic one-convention-per-page references
 now live in the corpus conventions - their trigger, the consultant path turning
 on, fired.
-
-## Open questions
-
-### Review gate for knowledge PRs
-
-Correctness, staleness and contradiction detection. Who, or what, reviews a
-knowledge PR? Merge is ratification today, which is a convention rather than a
-check ([0008](0008-contribution-needs-read-access-not-write.md)). CODEOWNERS is
-written per area and per domain so it can become enforcement without a
-restructure.
-
-### Lifecycle of outdated knowledge
-
-How a page gets flagged `deprecated` or superseded. `updated:` records
-authorship, not world-validity, and a confidently cited stale page is worse
-than no page at all.
-
-### Harvesting from an incumbent wiki
-
-An existing wiki (Confluence or similar) holds content that kaibo answers will
-want. External links are pointers, not knowledge, per the corpus conventions,
-so linking out is not harvesting. There is no ingestion story yet.
-
-### No-clone fallback
-
-Answering without a local clone - forge code search over the monorepo - is
-limited by private-repo visibility. Unresolved.
