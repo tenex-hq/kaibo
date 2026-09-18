@@ -11,9 +11,10 @@
 //! Every verb is covered for: the process exit code on a healthy corpus,
 //! that `--explain` runs nothing, and that `--json` parses. The hostile
 //! corpus fixture (`support::write_hostile_corpus`) additionally proves
-//! that a corpus-reading verb (`query`, `doctrine`) admits only the pages
-//! its own trust rules say it should, and that no verb's own output lines
-//! or the commands it runs are altered by what the hostile corpus contains.
+//! that a corpus-reading verb (`query`, `doctrine`, `lint`) admits only
+//! the pages its own trust rules say it should, and that no verb's own
+//! output lines or the commands it runs are altered by what the hostile
+//! corpus contains.
 
 mod support;
 
@@ -236,11 +237,11 @@ fn query_json_output_parses_and_reports_the_exit_code() {
 /// The hostile corpus's `file` fields include a path-traversal hit, an
 /// absolute-path hit, a real symlink escaping the clone, and a page with
 /// malformed frontmatter around a `draft` status - none of those four may
-/// appear in `query`'s hits. The four verified, `current`, contained pages
+/// appear in `query`'s hits. The five verified, `current`, contained pages
 /// must appear, in ranked order, each with its title and status stripped
 /// of the control characters it was seeded with, and each fenced exactly
 /// once - a forged fence marker embedded in one page's own snippet must
-/// not add a fifth open/close pair.
+/// not add a sixth open/close pair.
 #[test]
 fn query_hostile_corpus_admits_only_verified_current_non_escaping_hits() {
     let harness = Harness::new();
@@ -284,8 +285,8 @@ fn query_hostile_corpus_admits_only_verified_current_non_escaping_hits() {
     assert_eq!(control_chars_hit["title"], "Hostile Query TitleSecond Line");
     assert_eq!(control_chars_hit["status"], "weirdstatus");
 
-    assert_eq!(stdout.matches("<<<UNTRUSTED CORPUS CONTENT").count(), 4);
-    assert_eq!(stdout.matches("<<<END UNTRUSTED CORPUS CONTENT").count(), 4);
+    assert_eq!(stdout.matches("<<<UNTRUSTED CORPUS CONTENT").count(), 5);
+    assert_eq!(stdout.matches("<<<END UNTRUSTED CORPUS CONTENT").count(), 5);
 }
 
 // --- doctrine -------------------------------------------------------------
@@ -333,7 +334,7 @@ fn doctrine_json_output_parses_and_reports_the_exit_code() {
     assert_eq!(json["outcome"]["state"], "loaded");
 }
 
-/// The same four pages `query` admits, loaded directly off disk this time -
+/// The same five pages `query` admits, loaded directly off disk this time -
 /// `doctrine` walks `docs/reference/` itself rather than trusting a qmd
 /// hit, so this exercises the containment check against a real directory
 /// listing (including the real escaping symlink) rather than a string in a
@@ -375,8 +376,8 @@ fn doctrine_hostile_corpus_admits_only_verified_current_non_escaping_pages() {
     assert_eq!(control_chars_page["title"], "WeirdTitle");
     assert_eq!(control_chars_page["status"], "weirdstatus");
 
-    assert_eq!(stdout.matches("<<<UNTRUSTED CORPUS CONTENT").count(), 4);
-    assert_eq!(stdout.matches("<<<END UNTRUSTED CORPUS CONTENT").count(), 4);
+    assert_eq!(stdout.matches("<<<UNTRUSTED CORPUS CONTENT").count(), 5);
+    assert_eq!(stdout.matches("<<<END UNTRUSTED CORPUS CONTENT").count(), 5);
 }
 
 // --- domains --------------------------------------------------------------
@@ -439,4 +440,229 @@ fn domains_output_is_unaffected_by_hostile_reference_pages() {
 
     assert_eq!(without_pages.status.code(), Some(0));
     assert_eq!(without_pages.stdout, with_pages.stdout);
+}
+
+// --- lint -----------------------------------------------------------------
+
+/// `lint` shells out to nothing, so its plan is empty and `--explain` has
+/// nothing to print. That empty plan is only half the claim: `lint` reads
+/// markdown in-process rather than through a stub, so the call log cannot
+/// witness a read the way it does for the other verbs. The other half is
+/// that the corpus is byte-for-byte and mtime-for-mtime what it was.
+#[test]
+fn lint_explain_runs_nothing_and_exits_success() {
+    let harness = Harness::new();
+    let clone = harness.clone_dir();
+    support::write_page(
+        &clone,
+        "docs/reference/page.md",
+        support::WELL_FORMED_FRONTMATTER,
+        "Body.",
+    );
+    let page = clone.join("docs/reference/page.md");
+    let before = std::fs::read_to_string(&page).unwrap();
+    let before_mtime = std::fs::metadata(&page).unwrap().modified().unwrap();
+
+    let output = harness.run(&["--explain", "lint"], &[]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(harness.calls().is_empty(), "explain must not run anything");
+    assert!(
+        output.stdout.is_empty(),
+        "lint shells out to nothing, so --explain has nothing to print, got: {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert_eq!(before, std::fs::read_to_string(&page).unwrap());
+    assert_eq!(
+        before_mtime,
+        std::fs::metadata(&page).unwrap().modified().unwrap()
+    );
+}
+
+#[test]
+fn lint_reports_success_exit_code_on_a_corpus_with_no_structural_violation() {
+    let harness = Harness::new();
+    support::write_page(
+        &harness.clone_dir(),
+        "docs/reference/page.md",
+        support::WELL_FORMED_FRONTMATTER,
+        "Fine.",
+    );
+
+    let output = harness.run(&["lint"], &[]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// A page missing `title`, `tags`, `status` and `updated` trips the
+/// structural half of the registry, and a structural violation is bad
+/// input: exit 2, the same code a malformed frontmatter block gets.
+#[test]
+fn lint_reports_usage_exit_code_for_a_structural_violation() {
+    let harness = Harness::new();
+    support::write_page(
+        &harness.clone_dir(),
+        "docs/reference/page.md",
+        "type: reference",
+        "Body.",
+    );
+
+    let output = harness.run(&["lint"], &[]);
+
+    assert_eq!(output.status.code(), Some(2));
+}
+
+/// No clone on disk at all is unsynced (4), never a gap (3): `lint` has no
+/// basis to say whether the corpus it never saw would have had anything to
+/// check.
+#[test]
+fn lint_reports_stale_exit_code_when_the_clone_is_missing() {
+    let harness = Harness::new();
+    harness.remove_clone();
+
+    let output = harness.run(&["lint"], &[]);
+
+    assert_eq!(output.status.code(), Some(4));
+}
+
+/// A `path` argument is corpus-shaped user input, so it is validated for
+/// containment before anything is read from it. One walking out of the
+/// clone is refused as bad input (2), and the reported outcome is the
+/// refusal itself - `invalid_path`, naming the argument. The exit code
+/// alone would not distinguish a refusal from having happily linted the
+/// file outside the clone and found violations in it, which also exits 2.
+#[test]
+fn lint_reports_a_path_argument_escaping_the_clone_as_invalid_rather_than_linting_it() {
+    let harness = Harness::new();
+    support::write_page(
+        &harness.clone_dir(),
+        "docs/reference/page.md",
+        support::WELL_FORMED_FRONTMATTER,
+        "Fine.",
+    );
+    std::fs::write(
+        harness.outside_dir().join("secret.md"),
+        "OUTSIDE CONTENT - must never be read by kaibo.\n",
+    )
+    .unwrap();
+
+    let output = harness.run(&["--json", "lint", "../outside/secret.md"], &[]);
+
+    assert_eq!(output.status.code(), Some(2));
+    let json = parse_json(&output.stdout);
+    assert_eq!(json["outcome"]["state"], "invalid_path");
+    assert_eq!(json["outcome"]["path"], "../outside/secret.md");
+    assert!(
+        !String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("OUTSIDE CONTENT")
+    );
+}
+
+#[test]
+fn lint_json_output_parses_and_reports_the_exit_code() {
+    let harness = Harness::new();
+    support::write_page(
+        &harness.clone_dir(),
+        "docs/reference/page.md",
+        "type: reference",
+        "Body.",
+    );
+
+    let output = harness.run(&["--json", "lint"], &[]);
+
+    let json = parse_json(&output.stdout);
+    assert_eq!(json["outcome"]["state"], "finished");
+    assert_eq!(json["exit_code"], 2);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "the reported exit_code and the process exit code must agree"
+    );
+}
+
+/// The hostile corpus's `forged-tag.md` embeds a carriage return in a
+/// frontmatter tag, so that a tool echoing the tag back verbatim prints
+/// everything after it as a line of its own - a finding kaibo never made.
+/// Stripping the control character defuses that without hiding the tag's
+/// own text, which still appears fused onto the real violation's line.
+#[test]
+fn lint_hostile_corpus_tag_control_character_does_not_forge_an_output_line() {
+    let harness = Harness::new();
+    support::write_hostile_corpus(&harness.clone_dir(), &harness.outside_dir());
+
+    let output = harness.run(&["lint"], &[]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    assert!(!stdout.contains('\r'));
+    assert!(
+        !stdout
+            .lines()
+            .any(|line| line.trim() == support::FORGED_TAG_INJECTED_LINE),
+        "the forged tag produced a line of its own: {stdout}"
+    );
+    assert!(
+        stdout.contains("forgedinjected: line"),
+        "the tag's own text must survive, fused onto the real finding: {stdout}"
+    );
+}
+
+/// `lint` walks the whole hostile corpus, exactly as `query` and `doctrine`
+/// read it. The escaping symlink resolves outside the clone, so it is
+/// dropped before it is read rather than reported on - the containment
+/// check is the same one, not a copy `lint` grew for itself.
+#[test]
+fn lint_hostile_corpus_never_reports_a_page_resolving_outside_the_clone() {
+    let harness = Harness::new();
+    support::write_hostile_corpus(&harness.clone_dir(), &harness.outside_dir());
+
+    let output = harness.run(&["--json", "lint"], &[]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    assert!(!stdout.contains("docs/reference/escaping-symlink.md"));
+    assert!(!stdout.contains("OUTSIDE CONTENT"));
+}
+
+/// The same page carries both a structural violation (its tag is not
+/// kebab-case) and a heuristic one (an em dash in its body). The prose
+/// finding must stay heuristic regardless of what else is wrong with the
+/// file it was found in: severity is the rule's, never the file's.
+#[test]
+fn lint_hostile_corpus_reports_the_em_dash_as_a_heuristic_finding() {
+    let harness = Harness::new();
+    support::write_hostile_corpus(&harness.clone_dir(), &harness.outside_dir());
+
+    let output = harness.run(&["--json", "lint"], &[]);
+
+    let json = parse_json(&output.stdout);
+    let violations = json["outcome"]["violations"]
+        .as_array()
+        .expect("violations array");
+
+    let prose_hits: Vec<&serde_json::Value> = violations
+        .iter()
+        .filter(|v| v["rule_id"] == "prose-style")
+        .collect();
+    assert!(
+        prose_hits
+            .iter()
+            .any(|v| v["path"] == support::HOSTILE_FORGED_TAG_PATH
+                && v["message"].as_str().is_some_and(|m| m.contains("em dash"))),
+        "no em-dash prose finding on {}: {violations:#?}",
+        support::HOSTILE_FORGED_TAG_PATH
+    );
+    assert!(prose_hits.iter().all(|v| v["severity"] == "heuristic"));
+
+    assert!(
+        violations.iter().any(|v| v["rule_id"] == "tags-kebab-case"
+            && v["path"] == support::HOSTILE_FORGED_TAG_PATH
+            && v["severity"] == "structural"),
+        "the same page's structural finding is what makes the run exit 2"
+    );
+    assert_eq!(output.status.code(), Some(2));
 }

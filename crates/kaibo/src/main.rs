@@ -7,18 +7,21 @@
 //! flags to config, and mapping a `kaibo_core` error to a process exit code.
 //! All logic lives in `kaibo_core`.
 //!
-//! `status`, `sync`, `query`, `doctrine` and `domains` are the verbs so
-//! far; `status` only reads, `sync` clones/pulls the corpus and refreshes
-//! its qmd index, `query` retrieves ranked, cited evidence for a question,
-//! `doctrine` loads a named domain's own MOC section plus its `current`
-//! reference pages in one call (a load, not a question), and `domains`
-//! lists the root MOC's domain inventory as structured data. `query` and
-//! `doctrine` both self-heal via `sync` when the local corpus is missing,
-//! stale, or its qmd collection is gone, and neither ever synthesises an
-//! answer - `query` holds no API key and makes no network call of kaibo's
-//! own. Later verbs (`contribute`, ...) land in later changes. None of
-//! them will ever accept a flag that names a repo, a clone path, or an
-//! index: that is what `Config` is for.
+//! `status`, `sync`, `query`, `doctrine`, `domains` and `lint` are the
+//! verbs so far; `status` only reads, `sync` clones/pulls the corpus and
+//! refreshes its qmd index, `query` retrieves ranked, cited evidence for a
+//! question, `doctrine` loads a named domain's own MOC section plus its
+//! `current` reference pages in one call (a load, not a question),
+//! `domains` lists the root MOC's domain inventory as structured data, and
+//! `lint` runs a rule registry over the corpus (or over given paths),
+//! gating on structural violations and only annotating heuristic ones.
+//! `query` and `doctrine` both self-heal via `sync` when the local corpus
+//! is missing, stale, or its qmd collection is gone, and neither ever
+//! synthesises an answer - `query` holds no API key and makes no network
+//! call of kaibo's own. `lint` never touches qmd at all: it reads whatever
+//! is already on disk. Later verbs (`contribute`, ...) land in later
+//! changes. None of them will ever accept a flag that names a repo, a
+//! clone path, or an index: that is what `Config` is for.
 
 use std::process::ExitCode;
 
@@ -29,6 +32,7 @@ use kaibo_core::doctrine::DoctrineVerb;
 use kaibo_core::domains::DomainsVerb;
 use kaibo_core::error::ExitCoded;
 use kaibo_core::explain::Explainable;
+use kaibo_core::lint::LintVerb;
 use kaibo_core::output::{Render, RenderOptions};
 use kaibo_core::process::RealCommandRunner;
 use kaibo_core::query::QueryVerb;
@@ -71,6 +75,9 @@ enum Commands {
     /// List the root MOC's domain inventory as structured data: domain,
     /// owner, topics, summary.
     Domains,
+    /// Run the rule registry over the corpus, or over the given paths.
+    /// Structural violations exit non-zero; heuristic ones only annotate.
+    Lint(LintCommandArgs),
 }
 
 #[derive(Args, Debug)]
@@ -100,6 +107,13 @@ struct DoctrineCommandArgs {
     domain: String,
 }
 
+#[derive(Args, Debug)]
+struct LintCommandArgs {
+    /// Files or folders under the corpus to lint. Defaults to the whole
+    /// corpus when none are given.
+    paths: Vec<String>,
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -116,6 +130,7 @@ fn main() -> ExitCode {
         }
         Some(Commands::Doctrine(args)) => run_doctrine(&config, &cli, &args.domain),
         Some(Commands::Domains) => run_domains(&config, &cli),
+        Some(Commands::Lint(args)) => run_lint(&config, &cli, args.paths.clone()),
         None => report_no_command(cli.json),
     }
 }
@@ -228,6 +243,27 @@ fn run_domains(config: &Config, cli: &Cli) -> ExitCode {
     let runner = RealCommandRunner;
     let clock = SystemClock;
     let report = verb.gather(&runner, &clock);
+
+    if cli.json {
+        println!("{}", report.render_json());
+    } else {
+        println!("{}", report.render_text(&RenderOptions { full: cli.full }));
+    }
+
+    to_process_exit_code(report.exit_code())
+}
+
+fn run_lint(config: &Config, cli: &Cli, paths: Vec<String>) -> ExitCode {
+    let verb = LintVerb::new(config, paths);
+
+    if cli.explain {
+        for command in verb.explain() {
+            println!("{command}");
+        }
+        return to_process_exit_code(kaibo_core::error::ExitCode::Success);
+    }
+
+    let report = verb.gather();
 
     if cli.json {
         println!("{}", report.render_json());
