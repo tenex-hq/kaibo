@@ -940,6 +940,39 @@ fn every_installed_skill_declares_its_own_name_in_its_frontmatter() {
     }
 }
 
+/// `CLAUDE_CONFIG_DIR` is the documented way to move the install, and the
+/// only knob it has. The unit tests can reach it only through a fake
+/// environment, so this is the one place the real binary reads the real
+/// variable and writes where it points instead of under the home
+/// directory.
+#[test]
+fn claude_config_dir_moves_the_install_off_the_home_directory() {
+    let harness = Harness::new();
+    let elsewhere = harness.outside_dir().join("claude");
+
+    let output = harness.run(
+        &["install"],
+        &[("CLAUDE_CONFIG_DIR", elsewhere.to_str().unwrap())],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        manifest_path(&elsewhere.join("skills").join("kaibo")).is_file(),
+        "nothing was installed under {}",
+        elsewhere.display()
+    );
+    assert!(
+        !harness.plugin_dir().exists(),
+        "the home directory was written to as well: {}",
+        harness.plugin_dir().display()
+    );
+}
+
 #[test]
 fn installing_twice_changes_nothing_the_second_time() {
     let harness = Harness::new();
