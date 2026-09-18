@@ -1123,3 +1123,86 @@ fn status_on_a_machine_that_never_installed_says_so() {
     );
     assert!(stdout.contains("next: `kaibo install`"), "got: {stdout}");
 }
+
+// --- the scratch home ------------------------------------------------------
+
+fn rust_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        for entry in std::fs::read_dir(&current).expect("read test source directory") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                out.push(path);
+            }
+        }
+    }
+    out
+}
+
+/// `install` writes wherever the process's `HOME` points, so a test that
+/// spawned the binary itself would install into the developer's real
+/// `~/.claude` and overwrite the skills they are actually running.
+/// `Harness::run` clears the environment and points `HOME` at a temp dir,
+/// and this scans for a second spawn site rather than listing the tests
+/// that have to use it, so one added later is covered without being named
+/// here.
+#[test]
+fn the_harness_is_the_only_thing_in_this_suite_that_spawns_the_binary() {
+    let tests_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let harness_source = tests_dir.join("support").join("mod.rs");
+
+    // Split so the scan does not find its own needle in this file.
+    let marker = concat!("CARGO_BIN", "_EXE");
+
+    let mut violations = Vec::new();
+    for path in rust_files(&tests_dir) {
+        if path == harness_source {
+            continue;
+        }
+        let contents = std::fs::read_to_string(&path).expect("read test source file");
+        if contents.contains(marker) {
+            violations.push(
+                path.strip_prefix(&tests_dir)
+                    .unwrap_or(&path)
+                    .display()
+                    .to_string(),
+            );
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "these spawn the kaibo binary outside Harness::run and so inherit this \
+         machine's real HOME: {violations:?}"
+    );
+}
+
+/// The other half of that guardrail: going through the harness has to
+/// actually move the install location off this machine. `status` reports
+/// where `install` would write, so it is the binary itself saying which
+/// home it resolved, and under the harness that is never the real
+/// `~/.claude`.
+#[test]
+fn a_run_through_the_harness_resolves_its_install_location_inside_the_sandbox() {
+    let harness = Harness::new();
+
+    let output = harness.run(&["--json", "status"], &[]);
+
+    let json = parse_json(&output.stdout);
+    let root = json["skills"]["root"]
+        .as_str()
+        .expect("status reports the install root")
+        .to_string();
+    assert_eq!(root, harness.plugin_dir().display().to_string());
+    if let Some(real_home) = std::env::var_os("HOME") {
+        let real_skills = std::path::Path::new(&real_home).join(".claude");
+        assert!(
+            !std::path::Path::new(&root).starts_with(&real_skills),
+            "a test run resolved {root}, inside the real {}",
+            real_skills.display()
+        );
+    }
+}

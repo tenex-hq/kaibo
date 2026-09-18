@@ -725,3 +725,16 @@ fn with_no_install_location_the_text_report_says_so() {
     );
     assert!(text.contains("result: failed"), "got: {text}");
 }
+
+/// The fixture default is what keeps a unit test off this machine's real
+/// skills directory: a test that never names an install location has
+/// nowhere to write at all, rather than falling back to `~/.claude` and
+/// overwriting the skills the developer actually runs. Opting in means
+/// naming a temp directory, as [`sandbox`] does.
+#[test]
+fn the_config_fixture_defaults_to_no_install_location() {
+    let config = ConfigBuilder::new("/corpus-that-is-never-read").build();
+
+    assert_eq!(config.skills_dir(), None);
+    assert_eq!(PluginLayout::new(&config), None);
+}
