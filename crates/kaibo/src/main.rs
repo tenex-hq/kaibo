@@ -36,6 +36,7 @@ use kaibo_core::doctrine::DoctrineVerb;
 use kaibo_core::domains::DomainsVerb;
 use kaibo_core::error::ExitCoded;
 use kaibo_core::explain::Explainable;
+use kaibo_core::install::{InstallMode, InstallVerb};
 use kaibo_core::lint::LintVerb;
 use kaibo_core::output::{Render, RenderOptions};
 use kaibo_core::process::RealCommandRunner;
@@ -85,6 +86,16 @@ enum Commands {
     /// The write side: plan a placement, or apply an already-resolved one.
     #[command(subcommand)]
     Contribute(ContributeCommands),
+    /// Place the skills this binary carries where Claude Code finds them,
+    /// or remove them again. Idempotent either way.
+    Install(InstallCommandArgs),
+}
+
+#[derive(Args, Debug)]
+struct InstallCommandArgs {
+    /// Remove the installed skills instead of placing them.
+    #[arg(long)]
+    uninstall: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -199,6 +210,7 @@ fn main() -> ExitCode {
         Some(Commands::Contribute(ContributeCommands::Apply(args))) => {
             run_contribute_apply(&config, &cli, args)
         }
+        Some(Commands::Install(args)) => run_install(&config, &cli, args.uninstall),
         None => report_no_command(cli.json),
     }
 }
@@ -394,6 +406,32 @@ fn run_contribute_apply(config: &Config, cli: &Cli, args: &ContributeApplyArgs) 
     let runner = RealCommandRunner;
     let clock = SystemClock;
     let report = verb.apply(&runner, &clock);
+
+    if cli.json {
+        println!("{}", report.render_json());
+    } else {
+        println!("{}", report.render_text(&RenderOptions { full: cli.full }));
+    }
+
+    to_process_exit_code(report.exit_code())
+}
+
+/// `install` shells out to nothing, so it has no `PlannedCommand` list to
+/// print: `--explain` runs the same planning pass and reports the
+/// filesystem changes it would have made, having made none of them.
+fn run_install(config: &Config, cli: &Cli, uninstall: bool) -> ExitCode {
+    let mode = if uninstall {
+        InstallMode::Uninstall
+    } else {
+        InstallMode::Install
+    };
+    let verb = InstallVerb::new(config, env!("CARGO_PKG_VERSION"), mode);
+
+    let report = if cli.explain {
+        verb.plan()
+    } else {
+        verb.apply()
+    };
 
     if cli.json {
         println!("{}", report.render_json());

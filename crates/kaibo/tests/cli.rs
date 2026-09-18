@@ -873,3 +873,176 @@ fn contribute_apply_completes_a_direct_push_contribution_and_opens_a_pr() {
     );
     assert!(harness.calls().iter().any(|c| c.contains("checkout main")));
 }
+
+// --- install --------------------------------------------------------------
+
+/// The binary's own version, which `install` stamps into the manifest and
+/// `status` compares against. Read from the same place the binary reads it
+/// so a release bump cannot leave these tests asserting a stale literal.
+const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+fn skill_path(plugin_dir: &std::path::Path, skill: &str) -> std::path::PathBuf {
+    plugin_dir.join("skills").join(skill).join("SKILL.md")
+}
+
+fn manifest_path(plugin_dir: &std::path::Path) -> std::path::PathBuf {
+    plugin_dir.join(".claude-plugin").join("plugin.json")
+}
+
+/// The plugin manifest beside `skills/` is what keeps the installed skills
+/// namespaced: Claude Code discovers a directory carrying one as a plugin,
+/// so its skills stay `kaibo:query` instead of degrading to `query`.
+#[test]
+fn install_writes_a_plugin_directory_under_the_users_skills_dir() {
+    let harness = Harness::new();
+
+    let output = harness.run(&["install"], &[]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let plugin_dir = harness.plugin_dir();
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(manifest_path(&plugin_dir)).expect("manifest was written"),
+    )
+    .expect("manifest is valid JSON");
+    assert_eq!(manifest["name"], "kaibo");
+    assert_eq!(manifest["version"], CLI_VERSION);
+    for skill in ["query", "contribute", "sync"] {
+        assert!(
+            skill_path(&plugin_dir, skill).is_file(),
+            "{skill} was not installed"
+        );
+    }
+    assert!(harness.calls().is_empty(), "install shells out to nothing");
+}
+
+/// The skills reach disk exactly as the binary carries them, so a reader of
+/// the installed file is reading the shipped prose and not a rendering of
+/// it.
+#[test]
+fn every_installed_skill_declares_its_own_name_in_its_frontmatter() {
+    let harness = Harness::new();
+
+    harness.run(&["install"], &[]);
+
+    let plugin_dir = harness.plugin_dir();
+    for skill in ["query", "contribute", "sync"] {
+        let source =
+            std::fs::read_to_string(skill_path(&plugin_dir, skill)).expect("skill was installed");
+        assert!(
+            source.lines().any(|line| line == format!("name: {skill}")),
+            "{skill} does not declare its own name: {source}"
+        );
+    }
+}
+
+#[test]
+fn installing_twice_changes_nothing_the_second_time() {
+    let harness = Harness::new();
+    harness.run(&["install"], &[]);
+    let before = std::fs::read_to_string(skill_path(&harness.plugin_dir(), "query")).unwrap();
+
+    let output = harness.run(&["--json", "install"], &[]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let json = parse_json(&output.stdout);
+    for change in json["outcome"]["changes"].as_array().unwrap() {
+        assert_eq!(change["action"], "unchanged", "got: {change}");
+    }
+    assert_eq!(
+        before,
+        std::fs::read_to_string(skill_path(&harness.plugin_dir(), "query")).unwrap()
+    );
+}
+
+#[test]
+fn install_restores_a_hand_edited_skill_file() {
+    let harness = Harness::new();
+    harness.run(&["install"], &[]);
+    let query = skill_path(&harness.plugin_dir(), "query");
+    let shipped = std::fs::read_to_string(&query).unwrap();
+    std::fs::write(&query, "hand-edited\n").unwrap();
+
+    harness.run(&["install"], &[]);
+
+    assert_eq!(std::fs::read_to_string(&query).unwrap(), shipped);
+}
+
+#[test]
+fn install_explain_reports_what_it_would_do_and_writes_nothing() {
+    let harness = Harness::new();
+
+    let output = harness.run(&["--explain", "install"], &[]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(harness.calls().is_empty(), "explain must not run anything");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("result: planned"), "got: {stdout}");
+    assert!(
+        !harness.plugin_dir().exists(),
+        "an explain run must not create {}",
+        harness.plugin_dir().display()
+    );
+}
+
+#[test]
+fn uninstall_removes_the_plugin_directory_it_installed() {
+    let harness = Harness::new();
+    harness.run(&["install"], &[]);
+
+    let output = harness.run(&["install", "--uninstall"], &[]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        !harness.plugin_dir().exists(),
+        "{} survived the uninstall",
+        harness.plugin_dir().display()
+    );
+    assert!(
+        harness.home_dir().join(".claude").join("skills").is_dir(),
+        "the user's own skills directory is not kaibo's to remove"
+    );
+}
+
+#[test]
+fn uninstalling_twice_is_the_same_as_uninstalling_once() {
+    let harness = Harness::new();
+    harness.run(&["install"], &[]);
+    harness.run(&["install", "--uninstall"], &[]);
+
+    let output = harness.run(&["--json", "install", "--uninstall"], &[]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let json = parse_json(&output.stdout);
+    for change in json["outcome"]["changes"].as_array().unwrap() {
+        assert_eq!(change["action"], "absent", "got: {change}");
+    }
+}
+
+/// Stop and report, never discard: a directory holding a file kaibo did
+/// not install survives, and the report names it.
+#[test]
+fn uninstall_leaves_behind_a_directory_holding_someone_elses_file() {
+    let harness = Harness::new();
+    harness.run(&["install"], &[]);
+    let stranger = harness
+        .plugin_dir()
+        .join("skills")
+        .join("query")
+        .join("NOTES.md");
+    std::fs::write(&stranger, "a human put this here\n").unwrap();
+
+    let output = harness.run(&["--json", "install", "--uninstall"], &[]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(stranger.is_file(), "the stranger's file was discarded");
+    let json = parse_json(&output.stdout);
+    assert_eq!(
+        json["outcome"]["retained"],
+        serde_json::json!([stranger.parent().unwrap().display().to_string()])
+    );
+}
