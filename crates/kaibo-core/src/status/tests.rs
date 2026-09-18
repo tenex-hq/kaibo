@@ -504,7 +504,7 @@ fn skills_installed_at_this_binarys_version_are_reported_as_matching() {
     assert!(
         report
             .render_text(&RenderOptions::default())
-            .contains("matches this binary"),
+            .contains("same version as this binary"),
         "{}",
         report.render_text(&RenderOptions::default())
     );

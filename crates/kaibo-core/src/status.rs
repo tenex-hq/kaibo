@@ -692,7 +692,7 @@ impl Render for StatusReport {
             }
             InstalledSkills::Present { version, .. } if *version == self.cli_version => {
                 format!(
-                    "skills: {version} at {}, matches this binary",
+                    "skills: {version} at {}, same version as this binary",
                     self.skills_display()
                 )
             }
