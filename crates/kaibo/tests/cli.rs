@@ -237,11 +237,11 @@ fn query_json_output_parses_and_reports_the_exit_code() {
 /// The hostile corpus's `file` fields include a path-traversal hit, an
 /// absolute-path hit, a real symlink escaping the clone, and a page with
 /// malformed frontmatter around a `draft` status - none of those four may
-/// appear in `query`'s hits. The five verified, `current`, contained pages
+/// appear in `query`'s hits. The six verified, `current`, contained pages
 /// must appear, in ranked order, each with its title and status stripped
 /// of the control characters it was seeded with, and each fenced exactly
 /// once - a forged fence marker embedded in one page's own snippet must
-/// not add a sixth open/close pair.
+/// not add a seventh open/close pair.
 #[test]
 fn query_hostile_corpus_admits_only_verified_current_non_escaping_hits() {
     let harness = Harness::new();
@@ -285,8 +285,8 @@ fn query_hostile_corpus_admits_only_verified_current_non_escaping_hits() {
     assert_eq!(control_chars_hit["title"], "Hostile Query TitleSecond Line");
     assert_eq!(control_chars_hit["status"], "weirdstatus");
 
-    assert_eq!(stdout.matches("<<<UNTRUSTED CORPUS CONTENT").count(), 5);
-    assert_eq!(stdout.matches("<<<END UNTRUSTED CORPUS CONTENT").count(), 5);
+    assert_eq!(stdout.matches("<<<UNTRUSTED CORPUS CONTENT").count(), 6);
+    assert_eq!(stdout.matches("<<<END UNTRUSTED CORPUS CONTENT").count(), 6);
 }
 
 // --- doctrine -------------------------------------------------------------
@@ -334,7 +334,7 @@ fn doctrine_json_output_parses_and_reports_the_exit_code() {
     assert_eq!(json["outcome"]["state"], "loaded");
 }
 
-/// The same five pages `query` admits, loaded directly off disk this time -
+/// The same six pages `query` admits, loaded directly off disk this time -
 /// `doctrine` walks `docs/reference/` itself rather than trusting a qmd
 /// hit, so this exercises the containment check against a real directory
 /// listing (including the real escaping symlink) rather than a string in a
@@ -376,8 +376,59 @@ fn doctrine_hostile_corpus_admits_only_verified_current_non_escaping_pages() {
     assert_eq!(control_chars_page["title"], "WeirdTitle");
     assert_eq!(control_chars_page["status"], "weirdstatus");
 
-    assert_eq!(stdout.matches("<<<UNTRUSTED CORPUS CONTENT").count(), 5);
-    assert_eq!(stdout.matches("<<<END UNTRUSTED CORPUS CONTENT").count(), 5);
+    assert_eq!(stdout.matches("<<<UNTRUSTED CORPUS CONTENT").count(), 6);
+    assert_eq!(stdout.matches("<<<END UNTRUSTED CORPUS CONTENT").count(), 6);
+}
+
+/// Dedicated coverage for the one hostile page the shared admission test
+/// above only counts, not inspects: a body that embeds a `---` line of its
+/// own. `frontmatter::parse` stops at the first closing `---`, so this
+/// proves the embedded delimiter reaches `doctrine`'s output as ordinary
+/// body text on both sides of it, and that fencing it does not add a
+/// second open/close marker pair around it.
+#[test]
+fn doctrine_hostile_corpus_survives_a_body_containing_a_frontmatter_delimiter() {
+    let harness = Harness::new();
+    support::write_hostile_corpus(&harness.clone_dir(), &harness.outside_dir());
+
+    let output = harness.run(&["--json", "doctrine", support::DOMAIN], &[]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("valid json");
+
+    let pages = json["outcome"]["pages"].as_array().expect("pages array");
+    let page = pages
+        .iter()
+        .find(|p| p["path"] == "docs/reference/frontmatter-delimiter-in-body.md")
+        .expect("frontmatter-delimiter-in-body page admitted");
+    assert_eq!(page["title"], "Frontmatter Delimiter Attempt");
+
+    let body = page["body"].as_str().expect("body is a string");
+    assert!(
+        body.contains("Text before the embedded delimiter."),
+        "text before the embedded delimiter must survive, got: {body}"
+    );
+    assert!(
+        body.contains("Text after the embedded delimiter"),
+        "text after the embedded delimiter must survive - a naive re-parse \
+         truncating at it would drop this, got: {body}"
+    );
+    assert_eq!(
+        body.matches("<<<UNTRUSTED CORPUS CONTENT").count(),
+        1,
+        "the embedded --- must not add a second fence open marker, got: {body}"
+    );
+    assert_eq!(
+        body.matches("<<<END UNTRUSTED CORPUS CONTENT").count(),
+        1,
+        "the embedded --- must not add a second fence close marker, got: {body}"
+    );
 }
 
 // --- domains --------------------------------------------------------------
@@ -686,6 +737,65 @@ fn contribute_plan_explain_runs_nothing_and_exits_success() {
     assert!(
         stdout.contains("qmd"),
         "expected the planned qmd query, got: {stdout}"
+    );
+}
+
+/// `contribute plan` never appears in the explain-only tests above with a
+/// real `gather` run: this exercises the actual candidate-dedup pipeline
+/// against the shared hostile corpus. `probe_candidates` never reads a
+/// candidate's content (it only maps `file` -> `path` + `score`), so the
+/// pages `query`/`doctrine` reject for unreadable or escaping content
+/// (`draft-malformed-frontmatter.md`, `escaping-symlink.md`) are legitimate
+/// candidates here - the only hits that must never appear are the two whose
+/// `file` field never resolves to a repo-relative path at all: a `..`
+/// traversal and an absolute path.
+#[test]
+fn contribute_plan_hostile_corpus_never_surfaces_a_path_traversal_or_absolute_candidate() {
+    let harness = Harness::new();
+    support::write_hostile_corpus(&harness.clone_dir(), &harness.outside_dir());
+    let response =
+        support::write_query_response(&harness.outside_dir(), support::HOSTILE_QUERY_RESPONSE);
+
+    let output = harness.run(
+        &[
+            "--json",
+            "contribute",
+            "plan",
+            "a hostile corpus stress question",
+        ],
+        &[("KAIBO_TEST_QMD_QUERY_RESPONSE", response.to_str().unwrap())],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json = parse_json(&output.stdout);
+    assert_eq!(json["outcome"]["state"], "ready");
+
+    let candidates = json["outcome"]["candidates"]
+        .as_array()
+        .expect("candidates array");
+    let paths: Vec<&str> = candidates
+        .iter()
+        .map(|c| c["path"].as_str().unwrap())
+        .collect();
+
+    assert!(
+        !paths.iter().any(|p| p.contains("..")),
+        "a path-traversal hit leaked into plan candidates: {paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|p| p.starts_with('/')),
+        "an absolute-path hit leaked into plan candidates: {paths:?}"
+    );
+    assert_eq!(
+        paths.len(),
+        8,
+        "expected every hostile hit except the traversal and absolute-path \
+         ones, got: {paths:?}"
     );
 }
 
