@@ -16,6 +16,7 @@ use crate::clock::Clock;
 use crate::config::{Config, ConfigKey, ConfigSource};
 use crate::error::ExitCode;
 use crate::explain::{Explainable, PlannedCommand};
+use crate::install::{self, InstalledSkills, PluginLayout};
 use crate::output::{Render, RenderOptions};
 use crate::process::CommandRunner;
 use crate::qmd::QmdCommand;
@@ -115,6 +116,11 @@ pub struct StatusReport {
     pub qmd: QmdStatus,
     pub index: IndexStatus,
     pub isolation: IsolationStatus,
+    /// Where `kaibo install` would write, and what is there now. The skills
+    /// ship inside this binary, so anything here that is not what this
+    /// binary carries is drift worth naming.
+    pub skills_root: Option<PathBuf>,
+    pub skills: InstalledSkills,
 }
 
 impl StatusReport {
@@ -197,6 +203,8 @@ impl StatusReport {
                 fix: None,
             });
         }
+        findings.extend(self.skill_findings());
+
         if self.isolation == IsolationStatus::NameCollisionInDefaultIndex {
             findings.push(Finding {
                 message: format!(
@@ -209,6 +217,77 @@ impl StatusReport {
         }
 
         findings
+    }
+
+    /// The skills half of [`StatusReport::findings`]. A version mismatch
+    /// and a hand-edit are different problems with the same fix, and only
+    /// one of them can be diagnosed at a time: when the installed version
+    /// is not this binary's, the bytes are *expected* to differ, so a
+    /// difference proves nothing about whether a human touched them.
+    fn skill_findings(&self) -> Vec<Finding> {
+        let fix = Some("kaibo install".to_string());
+        match &self.skills {
+            InstalledSkills::LocationUnknown => vec![Finding {
+                message: "no home directory and no CLAUDE_CONFIG_DIR, so there is \
+                          nowhere to install the skills"
+                    .to_string(),
+                fix: Some(
+                    "export CLAUDE_CONFIG_DIR=/path/to/.claude, then re-run `kaibo install`"
+                        .to_string(),
+                ),
+            }],
+            InstalledSkills::Absent => vec![Finding {
+                message: format!("skills are not installed at {}", self.skills_display()),
+                fix,
+            }],
+            InstalledSkills::ManifestUnreadable { detail } => vec![Finding {
+                message: format!("installed skills could not be identified: {detail}"),
+                fix,
+            }],
+            InstalledSkills::Present {
+                version, missing, ..
+            } if *version != self.cli_version => {
+                let mut findings = vec![Finding {
+                    message: format!(
+                        "installed skills are version {version}, this binary is {}",
+                        self.cli_version
+                    ),
+                    fix: fix.clone(),
+                }];
+                findings.extend(self.missing_finding(missing, &fix));
+                findings
+            }
+            InstalledSkills::Present {
+                changed, missing, ..
+            } => {
+                let mut findings = Vec::new();
+                if !changed.is_empty() {
+                    findings.push(Finding {
+                        message: format!(
+                            "installed skill edited since install: {}",
+                            changed.join(", ")
+                        ),
+                        fix: fix.clone(),
+                    });
+                }
+                findings.extend(self.missing_finding(missing, &fix));
+                findings
+            }
+        }
+    }
+
+    fn missing_finding(&self, missing: &[String], fix: &Option<String>) -> Option<Finding> {
+        (!missing.is_empty()).then(|| Finding {
+            message: format!("installed skill file missing: {}", missing.join(", ")),
+            fix: fix.clone(),
+        })
+    }
+
+    fn skills_display(&self) -> String {
+        match &self.skills_root {
+            Some(root) => root.display().to_string(),
+            None => "an unknown location".to_string(),
+        }
     }
 }
 
@@ -365,6 +444,8 @@ fn gather(
         qmd,
         index,
         isolation,
+        skills_root: PluginLayout::new(config).map(|layout| layout.root().to_path_buf()),
+        skills: install::inspect(config),
     }
 }
 
@@ -601,6 +682,27 @@ impl Render for StatusReport {
             ),
         });
 
+        lines.push(match &self.skills {
+            InstalledSkills::LocationUnknown => "skills: install location unknown".to_string(),
+            InstalledSkills::Absent => {
+                format!("skills: not installed at {}", self.skills_display())
+            }
+            InstalledSkills::ManifestUnreadable { .. } => {
+                format!("skills: unidentifiable at {}", self.skills_display())
+            }
+            InstalledSkills::Present { version, .. } if *version == self.cli_version => {
+                format!(
+                    "skills: {version} at {}, same version as this binary",
+                    self.skills_display()
+                )
+            }
+            InstalledSkills::Present { version, .. } => format!(
+                "skills: {version} at {}, this binary is {}",
+                self.skills_display(),
+                self.cli_version
+            ),
+        });
+
         lines.push(format!(
             "isolation: {}",
             match self.isolation {
@@ -654,6 +756,29 @@ impl Render for StatusReport {
                     "branch": branch,
                     "last_commit_relative_age": last_commit_age.map(render_relative_age),
                     "last_commit_age_secs": last_commit_age.map(|age| age.as_secs()),
+                }),
+            },
+            "skills": match &self.skills {
+                InstalledSkills::LocationUnknown => serde_json::json!({"located": false}),
+                InstalledSkills::Absent => serde_json::json!({
+                    "located": true,
+                    "root": self.skills_display(),
+                    "installed": false,
+                }),
+                InstalledSkills::ManifestUnreadable { detail } => serde_json::json!({
+                    "located": true,
+                    "root": self.skills_display(),
+                    "installed": false,
+                    "detail": detail,
+                }),
+                InstalledSkills::Present { version, changed, missing } => serde_json::json!({
+                    "located": true,
+                    "root": self.skills_display(),
+                    "installed": true,
+                    "version": version,
+                    "matches_cli_version": *version == self.cli_version,
+                    "edited": changed,
+                    "missing": missing,
                 }),
             },
             "qmd": match &self.qmd {

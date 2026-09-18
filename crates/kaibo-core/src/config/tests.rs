@@ -154,6 +154,54 @@ fn missing_home_dir_without_explicit_clone_is_an_error() {
     assert!(matches!(err, ConfigError::NoHomeDir));
 }
 
+/// `install` writes where Claude Code reads, and Claude Code reads
+/// `CLAUDE_CONFIG_DIR` when it is set - so kaibo has to read it too, or a
+/// user who has moved that directory gets a plugin installed somewhere
+/// nothing looks.
+#[test]
+fn claude_config_dir_moves_where_skills_are_installed() {
+    let home = PathBuf::from("/home/someone");
+    let env = FakeEnvironment::new(Some(home)).with_var("CLAUDE_CONFIG_DIR", "/elsewhere/.claude");
+    let config = Config::resolve_with(&env).unwrap();
+    assert_eq!(
+        config.skills_dir(),
+        Some(Path::new("/elsewhere/.claude/skills"))
+    );
+    assert_eq!(config.source(ConfigKey::SkillsDir), ConfigSource::Env);
+}
+
+#[test]
+fn skills_are_installed_under_the_home_directory_by_default() {
+    let env = FakeEnvironment::new(Some(PathBuf::from("/home/someone")));
+    let config = Config::resolve_with(&env).unwrap();
+    assert_eq!(
+        config.skills_dir(),
+        Some(Path::new("/home/someone/.claude/skills"))
+    );
+    assert_eq!(config.source(ConfigKey::SkillsDir), ConfigSource::Default);
+}
+
+#[test]
+fn an_empty_claude_config_dir_falls_through_to_the_home_directory() {
+    let env = FakeEnvironment::new(Some(PathBuf::from("/home/someone")))
+        .with_var("CLAUDE_CONFIG_DIR", "");
+    let config = Config::resolve_with(&env).unwrap();
+    assert_eq!(
+        config.skills_dir(),
+        Some(Path::new("/home/someone/.claude/skills"))
+    );
+}
+
+/// Resolution must not fail for want of an install location: a machine
+/// with an explicit clone and no home directory can still read the
+/// corpus, and only `install` has to care that it has nowhere to write.
+#[test]
+fn no_home_dir_and_no_claude_config_dir_leaves_no_install_location() {
+    let env = FakeEnvironment::new(None).with_var(ENV_CLONE, "/explicit/clone");
+    let config = Config::resolve_with(&env).unwrap();
+    assert_eq!(config.skills_dir(), None);
+}
+
 #[test]
 fn missing_home_dir_is_fine_if_clone_is_explicit() {
     let env = FakeEnvironment::new(None).with_var(ENV_CLONE, "/explicit/clone");

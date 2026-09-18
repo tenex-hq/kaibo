@@ -249,6 +249,19 @@ impl Harness {
         self.root.path().join("corpus")
     }
 
+    /// The scratch `HOME` every run sees. `kaibo install` writes under
+    /// this, which is the whole reason the harness sets `HOME` at all:
+    /// no test may touch the real `~/.claude`.
+    pub fn home_dir(&self) -> PathBuf {
+        self.root.path().join("home")
+    }
+
+    /// Where `kaibo install` places its plugin directory, given the
+    /// scratch `HOME` above.
+    pub fn plugin_dir(&self) -> PathBuf {
+        self.home_dir().join(".claude").join("skills").join("kaibo")
+    }
+
     /// A directory outside `clone_dir()`, for a symlink to escape to.
     pub fn outside_dir(&self) -> PathBuf {
         self.root.path().join("outside")

@@ -873,3 +873,369 @@ fn contribute_apply_completes_a_direct_push_contribution_and_opens_a_pr() {
     );
     assert!(harness.calls().iter().any(|c| c.contains("checkout main")));
 }
+
+// --- install --------------------------------------------------------------
+
+/// The binary's own version, which `install` stamps into the manifest and
+/// `status` compares against. Read from the same place the binary reads it
+/// so a release bump cannot leave these tests asserting a stale literal.
+const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+fn skill_path(plugin_dir: &std::path::Path, skill: &str) -> std::path::PathBuf {
+    plugin_dir.join("skills").join(skill).join("SKILL.md")
+}
+
+fn manifest_path(plugin_dir: &std::path::Path) -> std::path::PathBuf {
+    plugin_dir.join(".claude-plugin").join("plugin.json")
+}
+
+/// The plugin manifest beside `skills/` is what keeps the installed skills
+/// namespaced: Claude Code discovers a directory carrying one as a plugin,
+/// so its skills stay `kaibo:query` instead of degrading to `query`.
+#[test]
+fn install_writes_a_plugin_directory_under_the_users_skills_dir() {
+    let harness = Harness::new();
+
+    let output = harness.run(&["install"], &[]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let plugin_dir = harness.plugin_dir();
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(manifest_path(&plugin_dir)).expect("manifest was written"),
+    )
+    .expect("manifest is valid JSON");
+    assert_eq!(manifest["name"], "kaibo");
+    assert_eq!(manifest["version"], CLI_VERSION);
+    for skill in ["query", "contribute", "sync"] {
+        assert!(
+            skill_path(&plugin_dir, skill).is_file(),
+            "{skill} was not installed"
+        );
+    }
+    assert!(harness.calls().is_empty(), "install shells out to nothing");
+}
+
+/// The skills reach disk exactly as the binary carries them, so a reader of
+/// the installed file is reading the shipped prose and not a rendering of
+/// it.
+#[test]
+fn every_installed_skill_declares_its_own_name_in_its_frontmatter() {
+    let harness = Harness::new();
+
+    harness.run(&["install"], &[]);
+
+    let plugin_dir = harness.plugin_dir();
+    for skill in ["query", "contribute", "sync"] {
+        let source =
+            std::fs::read_to_string(skill_path(&plugin_dir, skill)).expect("skill was installed");
+        assert!(
+            source.lines().any(|line| line == format!("name: {skill}")),
+            "{skill} does not declare its own name: {source}"
+        );
+    }
+}
+
+/// `CLAUDE_CONFIG_DIR` is the documented way to move the install, and the
+/// only knob it has. The unit tests can reach it only through a fake
+/// environment, so this is the one place the real binary reads the real
+/// variable and writes where it points instead of under the home
+/// directory.
+#[test]
+fn claude_config_dir_moves_the_install_off_the_home_directory() {
+    let harness = Harness::new();
+    let elsewhere = harness.outside_dir().join("claude");
+
+    let output = harness.run(
+        &["install"],
+        &[("CLAUDE_CONFIG_DIR", elsewhere.to_str().unwrap())],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        manifest_path(&elsewhere.join("skills").join("kaibo")).is_file(),
+        "nothing was installed under {}",
+        elsewhere.display()
+    );
+    assert!(
+        !harness.plugin_dir().exists(),
+        "the home directory was written to as well: {}",
+        harness.plugin_dir().display()
+    );
+}
+
+#[test]
+fn installing_twice_changes_nothing_the_second_time() {
+    let harness = Harness::new();
+    harness.run(&["install"], &[]);
+    let before = std::fs::read_to_string(skill_path(&harness.plugin_dir(), "query")).unwrap();
+
+    let output = harness.run(&["--json", "install"], &[]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let json = parse_json(&output.stdout);
+    for change in json["outcome"]["changes"].as_array().unwrap() {
+        assert_eq!(change["action"], "unchanged", "got: {change}");
+    }
+    assert_eq!(
+        before,
+        std::fs::read_to_string(skill_path(&harness.plugin_dir(), "query")).unwrap()
+    );
+}
+
+#[test]
+fn install_restores_a_hand_edited_skill_file() {
+    let harness = Harness::new();
+    harness.run(&["install"], &[]);
+    let query = skill_path(&harness.plugin_dir(), "query");
+    let shipped = std::fs::read_to_string(&query).unwrap();
+    std::fs::write(&query, "hand-edited\n").unwrap();
+
+    harness.run(&["install"], &[]);
+
+    assert_eq!(std::fs::read_to_string(&query).unwrap(), shipped);
+}
+
+#[test]
+fn install_explain_reports_what_it_would_do_and_writes_nothing() {
+    let harness = Harness::new();
+
+    let output = harness.run(&["--explain", "install"], &[]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(harness.calls().is_empty(), "explain must not run anything");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("result: planned"), "got: {stdout}");
+    assert!(
+        !harness.plugin_dir().exists(),
+        "an explain run must not create {}",
+        harness.plugin_dir().display()
+    );
+}
+
+#[test]
+fn uninstall_removes_the_plugin_directory_it_installed() {
+    let harness = Harness::new();
+    harness.run(&["install"], &[]);
+
+    let output = harness.run(&["install", "--uninstall"], &[]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        !harness.plugin_dir().exists(),
+        "{} survived the uninstall",
+        harness.plugin_dir().display()
+    );
+    assert!(
+        harness.home_dir().join(".claude").join("skills").is_dir(),
+        "the user's own skills directory is not kaibo's to remove"
+    );
+}
+
+#[test]
+fn uninstalling_twice_is_the_same_as_uninstalling_once() {
+    let harness = Harness::new();
+    harness.run(&["install"], &[]);
+    harness.run(&["install", "--uninstall"], &[]);
+
+    let output = harness.run(&["--json", "install", "--uninstall"], &[]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let json = parse_json(&output.stdout);
+    for change in json["outcome"]["changes"].as_array().unwrap() {
+        assert_eq!(change["action"], "absent", "got: {change}");
+    }
+}
+
+/// Stop and report, never discard: a directory holding a file kaibo did
+/// not install survives, and the report names it.
+#[test]
+fn uninstall_leaves_behind_a_directory_holding_someone_elses_file() {
+    let harness = Harness::new();
+    harness.run(&["install"], &[]);
+    let stranger = harness
+        .plugin_dir()
+        .join("skills")
+        .join("query")
+        .join("NOTES.md");
+    std::fs::write(&stranger, "a human put this here\n").unwrap();
+
+    let output = harness.run(&["--json", "install", "--uninstall"], &[]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(stranger.is_file(), "the stranger's file was discarded");
+    let json = parse_json(&output.stdout);
+    assert_eq!(
+        json["outcome"]["retained"],
+        serde_json::json!([stranger.parent().unwrap().display().to_string()])
+    );
+}
+
+/// `status` is what keeps the skills and the binary honest with each
+/// other: it compares what is installed against what this binary carries.
+#[test]
+fn status_reports_installed_skills_as_matching_this_binary() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    harness.run(&["install"], &[]);
+
+    let output = harness.run(&["--json", "status"], &[]);
+
+    let json = parse_json(&output.stdout);
+    assert_eq!(json["skills"]["installed"], true);
+    assert_eq!(json["skills"]["version"], CLI_VERSION);
+    assert_eq!(json["skills"]["matches_cli_version"], true);
+    assert_eq!(json["skills"]["edited"], serde_json::json!([]));
+    assert_eq!(json["skills"]["missing"], serde_json::json!([]));
+}
+
+#[test]
+fn status_flags_skills_left_behind_by_an_older_binary() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    harness.run(&["install"], &[]);
+    std::fs::write(
+        manifest_path(&harness.plugin_dir()),
+        "{\"name\": \"kaibo\", \"version\": \"0.0.1\"}\n",
+    )
+    .unwrap();
+
+    let output = harness.run(&["status"], &[]);
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(&format!(
+            "installed skills are version 0.0.1, this binary is {CLI_VERSION}"
+        )),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("next: `kaibo install`"), "got: {stdout}");
+}
+
+#[test]
+fn status_flags_a_hand_edited_skill_file() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    harness.run(&["install"], &[]);
+    std::fs::write(
+        skill_path(&harness.plugin_dir(), "contribute"),
+        "hand-edited\n",
+    )
+    .unwrap();
+
+    let output = harness.run(&["--json", "status"], &[]);
+
+    let json = parse_json(&output.stdout);
+    assert_eq!(json["skills"]["matches_cli_version"], true);
+    assert_eq!(json["skills"]["edited"], serde_json::json!(["contribute"]));
+}
+
+#[test]
+fn status_on_a_machine_that_never_installed_says_so() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    let output = harness.run(&["status"], &[]);
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(&format!(
+            "skills: not installed at {}",
+            harness.plugin_dir().display()
+        )),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("next: `kaibo install`"), "got: {stdout}");
+}
+
+// --- the scratch home ------------------------------------------------------
+
+fn rust_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        for entry in std::fs::read_dir(&current).expect("read test source directory") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                out.push(path);
+            }
+        }
+    }
+    out
+}
+
+/// `install` writes wherever the process's `HOME` points, so a test that
+/// spawned the binary itself would install into the developer's real
+/// `~/.claude` and overwrite the skills they are actually running.
+/// `Harness::run` clears the environment and points `HOME` at a temp dir,
+/// and this scans for a second spawn site rather than listing the tests
+/// that have to use it, so one added later is covered without being named
+/// here.
+#[test]
+fn the_harness_is_the_only_thing_in_this_suite_that_spawns_the_binary() {
+    let tests_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let harness_source = tests_dir.join("support").join("mod.rs");
+
+    // Split so the scan does not find its own needle in this file.
+    let marker = concat!("CARGO_BIN", "_EXE");
+
+    let mut violations = Vec::new();
+    for path in rust_files(&tests_dir) {
+        if path == harness_source {
+            continue;
+        }
+        let contents = std::fs::read_to_string(&path).expect("read test source file");
+        if contents.contains(marker) {
+            violations.push(
+                path.strip_prefix(&tests_dir)
+                    .unwrap_or(&path)
+                    .display()
+                    .to_string(),
+            );
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "these spawn the kaibo binary outside Harness::run and so inherit this \
+         machine's real HOME: {violations:?}"
+    );
+}
+
+/// The other half of that guardrail: going through the harness has to
+/// actually move the install location off this machine. `status` reports
+/// where `install` would write, so it is the binary itself saying which
+/// home it resolved, and under the harness that is never the real
+/// `~/.claude`.
+#[test]
+fn a_run_through_the_harness_resolves_its_install_location_inside_the_sandbox() {
+    let harness = Harness::new();
+
+    let output = harness.run(&["--json", "status"], &[]);
+
+    let json = parse_json(&output.stdout);
+    let root = json["skills"]["root"]
+        .as_str()
+        .expect("status reports the install root")
+        .to_string();
+    assert_eq!(root, harness.plugin_dir().display().to_string());
+    if let Some(real_home) = std::env::var_os("HOME") {
+        let real_skills = std::path::Path::new(&real_home).join(".claude");
+        assert!(
+            !std::path::Path::new(&root).starts_with(&real_skills),
+            "a test run resolved {root}, inside the real {}",
+            real_skills.display()
+        );
+    }
+}
