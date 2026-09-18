@@ -1,0 +1,171 @@
+# Kaibo activation suite - the cheap half of evals/CASES.md.
+#
+# Every task here is a trigger probe: `activates:` and nothing else. It asks
+# only what the agent reached for, skips the judge entirely, and so costs a
+# fraction of a graded task. That is deliberate - CASES.md notes that cases
+# 1-3 and 5-6 are answered by the tool-call sequence alone.
+#
+# The neighbourhood is the whole plugin. All three skills are installed, none
+# preloaded, so `activates:` measures the three descriptions competing against
+# each other rather than one description in isolation.
+#
+#   uvx --from caliper-eval caliper run evals/activation.eval.yaml \
+#     --k 3 --timeout 300 --model claude-code:claude-sonnet-5
+#
+# `--timeout 300` is not optional. A skill that fires still runs its body, and
+# `contribute` in particular does git and gh work against a repo that is not
+# there; the 120s default marks those attempts UNUSABLE and they drop out of the
+# score, which reads as a pass rate over fewer tasks rather than as a failure.
+
+# The fake corpus from behaviour.eval.yaml is on PATH here too. Activation is
+# all these tasks measure, but a `query` that fires still executes its body, and
+# against a missing index it burns minutes and half a million tokens before
+# giving up. The stub makes a fired skill finish in seconds.
+#
+# It also matters for the negatives: several of them name a domain the corpus
+# genuinely covers, so a skill that fires gets a real answer rather than an
+# error it might mistake for a stale index.
+# ./stubs holds fake `qmd` and `gh` binaries, prepended to PATH. The `gh` one
+# exists because the sync skill's honest "I am not authenticated" report matched
+# caliper's own not-logged-in heuristic and aborted whole runs - see its
+# docstring.
+sandbox:
+  extra_path:
+    - ./stubs
+
+# Resolved against this spec file's own directory, so this is the copy of the
+# skills that ships inside the binary - the evals grade what users get.
+skills:
+  - ../crates/kaibo-core/skills/query/SKILL.md
+  - ../crates/kaibo-core/skills/contribute/SKILL.md
+  - ../crates/kaibo-core/skills/sync/SKILL.md
+
+tasks:
+  # =========================================================================
+  # FIRE. CASES.md cases 1 and 3.
+  # =========================================================================
+
+  # The description's own worked example. If this ever fails, nothing else here
+  # is worth reading.
+  - name: Canonical domain entry fires query
+    prompt: "lets do observability"
+    activates: [query]
+
+  # Same trigger, different vocabulary, and no word from the description's
+  # example list. Guards against a description that only matches its own text.
+  - name: Domain entry in the user's own words fires query
+    prompt: "Right - I want to get this service properly instrumented."
+    activates: [query]
+
+  # CASES.md case 3: the research clause. A decision with no obvious answer.
+  - name: A non-trivial decision fires query before proposing
+    prompt: >
+      We need to pick a schema registry for the new event pipeline - Quillrail
+      or Marlspike. Which should we go with?
+    activates: [query]
+
+  # The research clause without a domain entry: the question is about a choice,
+  # and the skill should look for a prior position before proposing one.
+  - name: Asking whether a position exists fires query
+    prompt: "Has anyone here decided how we do rollouts, or is it per-team?"
+    activates: [query]
+
+  # KNOWN FAILING, 2026-09-17. A bare domain entry with no project in front of
+  # it: the unpinned default over-fired (query + sync), sonnet-5 under-fired
+  # (nothing). Kept asserting the wanted behaviour so the fix is visible when it
+  # lands - see "Findings" in README.md.
+  - name: Vague domain entry with no project fires query
+    prompt: "Right, time to sort out how we deploy this thing."
+    activates: [query]
+
+  # =========================================================================
+  # SILENCE. CASES.md cases 5 and 6.
+  #
+  # The first two are floors - they should never fail. The rest are the real
+  # test: each one sits close to a trigger and must still stay quiet, because
+  # the SKIP clause is narrow ("pure language/library/tool syntax with no
+  # team-specific angle") and a description that over-reads it fires on
+  # everything that mentions a covered domain.
+  # =========================================================================
+
+  - name: Floor - bash syntax stays silent
+    prompt: "How do I write a for loop over an array in bash?"
+    activates: []
+
+  - name: Floor - unrelated refactor stays silent
+    prompt: "Rename the variable `resolved_model` to `engine_model` in this directory."
+    activates: []
+
+  # Names a covered domain (observability) and a covered tool (OpenTelemetry),
+  # but asks for pure SDK syntax. This is the SKIP clause's exact wording, and
+  # it is the likeliest over-fire in real use.
+  - name: Library syntax inside a covered domain stays silent
+    prompt: >
+      What's the Python call to start a new OpenTelemetry span and set an
+      attribute on it? Just the syntax.
+    activates: []
+
+  # Uses the word "we" and sounds organisational, but the answer is a language
+  # fact with no team-specific angle.
+  - name: Organisational phrasing around a language fact stays silent
+    prompt: >
+      Do we need `__init__.py` in a Python package directory these days, or is
+      that gone?
+    activates: []
+
+  # CASES.md case 6: answerable from the file in front of it.
+  # `setup:` runs on the host before the attempt's isolated HOME exists, so the
+  # fixture goes to a fixed absolute path the prompt can name. See "Known
+  # limits" in README.md.
+  - name: Repo-local fact stays silent
+    setup: |
+      # Written identically on every attempt and never removed. Attempts run
+      # in parallel (`--workers`), and they share this path: a `cleanup:` here
+      # would let one attempt delete the fixture while a sibling is still
+      # reading it. Idempotent setup with no teardown is the only race-free
+      # shape. /tmp/caliper-kaibo is scratch; leaving it costs nothing.
+      mkdir -p /tmp/caliper-kaibo/repo-local
+      cat > /tmp/caliper-kaibo/repo-local/tracing.py <<'PY'
+      SERVICE = "checkout"
+
+
+      def span_name(op: str, kind: str) -> str:
+          """Build the OTel span name for an operation.
+
+          Returns "<SERVICE>.<kind>.<op>", lowercased, with dots in `op`
+          replaced by underscores so the name stays a single dotted triple.
+          """
+          return f"{SERVICE}.{kind}.{op.replace('.', '_')}".lower()
+      PY
+    prompt: >
+      In /tmp/caliper-kaibo/repo-local/tracing.py, what does span_name return
+      when called with op="cart.add" and kind="server"?
+    activates: []
+
+  # =========================================================================
+  # LANE SPLIT. Not in CASES.md - the matrix predates the three-skill plugin.
+  # Each prompt belongs to exactly one skill, and the other two must not take
+  # it. This is what the closed neighbourhood buys.
+  # =========================================================================
+
+  - name: Recording knowledge belongs to contribute
+    prompt: >
+      We just worked out why our OTel collector drops spans under load - the
+      memory_limiter was ordered after the batch processor. Write that down for
+      the team.
+    activates: [contribute]
+
+  - name: A stale index belongs to sync
+    prompt: "kaibo search returns nothing at all - the local index looks out of date."
+    activates: [sync]
+
+  # The trap in the other direction: this mentions writing something down, but
+  # it is a note to self in a local file, not a contribution to the corpus.
+  - name: A local scratch note is not a contribution
+    prompt: >
+      Append a line to /tmp/caliper-kaibo/notes.md reminding me to check the
+      collector config tomorrow.
+    setup: |
+      mkdir -p /tmp/caliper-kaibo
+      touch /tmp/caliper-kaibo/notes.md
+    activates: []

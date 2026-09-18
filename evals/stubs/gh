@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""A fake `gh`, just enough for the sync skill to get through its happy path.
+
+Why this exists: the `sync` skill's body clones the knowledge monorepo with
+`gh`. In a caliper attempt there is no GitHub auth, so the real `gh` fails,
+and the skill - correctly - reports that plainly and stops.
+
+That honest failure is what makes the stub necessary. Caliper scans a backend's
+output for signs the CLI is not logged in, and the skill's own words ("gh auth
+status", "run `gh auth login`") match that heuristic: caliper concludes *Claude
+Code* is unauthenticated and aborts the entire run. One task's expected-in-
+sandbox failure was taking the other twelve with it.
+
+Scope is deliberately tiny. These probes assert activation only - whether `sync`
+was the skill the agent reached for - so the body just has to complete quietly
+rather than faithfully. Nothing here is a model of gh's real behaviour.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _corpus import KNOWLEDGE, guard_home, seed_clone  # noqa: E402
+
+
+def main() -> int:
+    guard_home()
+    argv = sys.argv[1:]
+    if not argv:
+        return 0
+    cmd = argv[0]
+
+    if cmd == "auth":
+        print("github.com\n  ✓ Logged in to github.com account eval-stub (GH_TOKEN)")
+        return 0
+
+    if cmd == "repo" and len(argv) > 1 and argv[1] == "clone":
+        seed_clone()
+        print(f"Cloned to {KNOWLEDGE}")
+        return 0
+
+    if cmd == "repo":
+        print("example-org/knowledge")
+        return 0
+
+    # Anything else the skill happens to try: succeed silently rather than
+    # emit text that might read as an auth failure.
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
