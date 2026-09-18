@@ -157,11 +157,77 @@ fn plan_degrades_to_empty_candidates_when_qmd_is_unreachable_rather_than_failing
             ..
         } => {
             assert!(candidates.is_empty());
-            assert!(qmd_unavailable.is_some());
+            // The exact failing stderr, not just "some detail was set" -
+            // otherwise a mutant that always treats the qmd output as a
+            // success (and then fails to parse its empty stdout as JSON,
+            // producing some *other* detail message) would survive.
+            assert_eq!(qmd_unavailable.as_deref(), Some("qmd: not found"));
         }
         other => panic!("expected Ready with degraded candidates, got {other:?}"),
     }
     assert_eq!(report.exit_code(), ExitCode::Success);
+}
+
+#[test]
+fn plan_candidates_carry_the_exact_path_and_score_qmd_reported() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    std::fs::create_dir_all(&clone).unwrap();
+    write_moc(&clone, "## kaibo\n");
+    let config = config_with_repo(&clone);
+    let response = r#"[{"score":0.87,"file":"qmd://knowledge/kaibo/reference/x.md?index=kaibo"}]"#;
+    let runner = FakeCommandRunner::new().on(QmdCommand::query(&config, "gist"), ok(response));
+
+    let report = ContributePlanVerb::new(&config, "gist", None, None).gather(&runner);
+
+    match &report.outcome {
+        PlanOutcome::Ready {
+            candidates,
+            qmd_unavailable,
+            ..
+        } => {
+            assert!(qmd_unavailable.is_none());
+            assert_eq!(
+                candidates,
+                &vec![Candidate {
+                    path: "kaibo/reference/x.md".to_string(),
+                    score: 0.87,
+                }]
+            );
+        }
+        other => panic!("expected Ready with a real candidate, got {other:?}"),
+    }
+}
+
+#[test]
+fn plan_target_path_is_none_when_only_one_of_type_and_domain_is_a_valid_segment() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    std::fs::create_dir_all(&clone).unwrap();
+    write_moc(&clone, "## kaibo\n");
+    let config = config_with_repo(&clone);
+    let runner = FakeCommandRunner::new().on(QmdCommand::query(&config, "gist"), ok("[]"));
+
+    // A valid type but an invalid (path-escaping) domain.
+    let report = ContributePlanVerb::new(
+        &config,
+        "gist",
+        Some("how-to".to_string()),
+        Some("../escape".to_string()),
+    )
+    .gather(&runner);
+    assert!(report.target_path.is_none());
+
+    // The reverse: a valid domain but an invalid type.
+    let runner2 = FakeCommandRunner::new().on(QmdCommand::query(&config, "gist"), ok("[]"));
+    let report2 = ContributePlanVerb::new(
+        &config,
+        "gist",
+        Some("../escape".to_string()),
+        Some("kaibo".to_string()),
+    )
+    .gather(&runner2);
+    assert!(report2.target_path.is_none());
 }
 
 #[test]
@@ -761,4 +827,136 @@ fn a_lint_failure_finding_names_the_real_clone_path_not_the_branch_name() {
         !text.contains("contribute/write-a-good-query checkout"),
         "the fix instruction must not name the branch as if it were a path, got: {text}"
     );
+}
+
+// --- targeted mutation-gap coverage -----------------------------------------
+
+#[test]
+fn commit_message_names_the_title_and_the_placement_verb_exactly() {
+    let mut input = valid_input();
+    input.title = "Write a good query".to_string();
+    input.placement = Placement::Create;
+    assert_eq!(commit_message(&input), "contribute: add Write a good query");
+
+    input.placement = Placement::Append {
+        path: "kaibo/how-to/existing.md".to_string(),
+    };
+    assert_eq!(
+        commit_message(&input),
+        "contribute: update Write a good query"
+    );
+}
+
+#[test]
+fn a_report_that_did_return_to_main_carries_no_return_to_main_finding() {
+    let report = ApplyReport {
+        path: "kaibo/how-to/x.md".to_string(),
+        branch: "contribute/x".to_string(),
+        clone_display: "/tmp/corpus".to_string(),
+        returned_to_main: Some(true),
+        outcome: ApplyOutcome::Completed {
+            push_route: PushRoute {
+                kind: PushRouteKind::Direct,
+                owner: None,
+            },
+            pr_url: "https://github.com/org/knowledge/pull/1".to_string(),
+            ci: CiVerdict::Passed,
+        },
+    };
+
+    assert!(report.findings().is_empty());
+}
+
+#[test]
+fn a_failed_return_to_main_is_reported_as_its_own_finding() {
+    let report = ApplyReport {
+        path: "kaibo/how-to/x.md".to_string(),
+        branch: "contribute/x".to_string(),
+        clone_display: "/tmp/corpus".to_string(),
+        returned_to_main: Some(false),
+        outcome: ApplyOutcome::Completed {
+            push_route: PushRoute {
+                kind: PushRouteKind::Direct,
+                owner: None,
+            },
+            pr_url: "https://github.com/org/knowledge/pull/1".to_string(),
+            ci: CiVerdict::Passed,
+        },
+    };
+
+    let findings = report.findings();
+    assert_eq!(findings.len(), 1);
+    assert!(findings[0].0.contains("/tmp/corpus"));
+}
+
+#[test]
+fn an_unreadable_git_status_stops_apply_as_clone_unreadable_not_uncommitted_changes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    std::fs::create_dir_all(&clone).unwrap();
+    let config = config_with_repo(&clone);
+    let runner = FakeCommandRunner::new().on(
+        git_status_porcelain(&clone),
+        failed("fatal: not a git repository"),
+    );
+    let clock = FixedClock(now());
+
+    let report = ContributeApplyVerb::new(&config, valid_input()).apply(&runner, &clock);
+
+    match &report.outcome {
+        ApplyOutcome::Stopped(ApplyStop::CloneUnreadable { detail }) => {
+            assert!(detail.contains("not a git repository"));
+        }
+        other => panic!("expected CloneUnreadable, got {other:?}"),
+    }
+}
+
+#[test]
+fn appending_to_a_directory_is_rejected_as_an_unreadable_target() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    // A real, contained "path" that resolves fine but is a directory, not
+    // a file - must be rejected the same as a missing path, not read as
+    // if it were a page.
+    std::fs::create_dir_all(clone.join("kaibo/how-to/existing.md")).unwrap();
+    let config = config_with_repo(&clone);
+    let runner = FakeCommandRunner::new().on(git_status_porcelain(&clone), ok(""));
+    let clock = FixedClock(now());
+    let mut input = valid_input();
+    input.placement = Placement::Append {
+        path: "kaibo/how-to/existing.md".to_string(),
+    };
+
+    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);
+
+    assert!(matches!(
+        report.outcome,
+        ApplyOutcome::Stopped(ApplyStop::AppendTargetUnreadable { .. })
+    ));
+}
+
+#[test]
+fn a_failing_branch_list_command_stops_apply_as_checkout_failed_not_a_collision() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    std::fs::create_dir_all(&clone).unwrap();
+    let config = config_with_repo(&clone);
+    let input = valid_input();
+    let branch = format!("contribute/{}", slugify(&input.title));
+    let runner = FakeCommandRunner::new()
+        .on(git_status_porcelain(&clone), ok(""))
+        .on(
+            git_branch_list(&clone, &branch),
+            failed("git: command not found"),
+        );
+    let clock = FixedClock(now());
+
+    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);
+
+    match &report.outcome {
+        ApplyOutcome::Stopped(ApplyStop::CheckoutFailed { detail }) => {
+            assert!(detail.contains("git: command not found"));
+        }
+        other => panic!("expected CheckoutFailed, got {other:?}"),
+    }
 }
