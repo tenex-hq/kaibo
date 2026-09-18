@@ -13,6 +13,7 @@
 # status/, domains.rs and the `kaibo` binary crate are all outside it.
 examine_globs = [
     "crates/kaibo-core/src/trust.rs",
+    "crates/kaibo-core/src/contribute.rs",
     "crates/kaibo-core/src/query.rs",
     "crates/kaibo-core/src/sync.rs",
     "crates/kaibo-core/src/doctrine.rs",

@@ -666,3 +666,210 @@ fn lint_hostile_corpus_reports_the_em_dash_as_a_heuristic_finding() {
     );
     assert_eq!(output.status.code(), Some(2));
 }
+
+// --- contribute -------------------------------------------------------------
+
+const REPO_ENV: (&str, &str) = ("KAIBO_REPO", "org/knowledge");
+
+#[test]
+fn contribute_plan_explain_runs_nothing_and_exits_success() {
+    let harness = Harness::new();
+
+    let output = harness.run(
+        &["--explain", "contribute", "plan", "how do queries work"],
+        &[],
+    );
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(harness.calls().is_empty(), "explain must not run anything");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("qmd"),
+        "expected the planned qmd query, got: {stdout}"
+    );
+}
+
+#[test]
+fn contribute_apply_explain_runs_nothing_and_exits_success() {
+    let harness = Harness::new();
+
+    let output = harness.run(
+        &[
+            "--explain",
+            "contribute",
+            "apply",
+            "--type",
+            "how-to",
+            "--domain",
+            "docs",
+            "--title",
+            "A new page",
+            "--body",
+            "Body text.",
+        ],
+        &[REPO_ENV],
+    );
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(harness.calls().is_empty(), "explain must not run anything");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("git"));
+    assert!(stdout.contains("gh"));
+}
+
+#[test]
+fn contribute_apply_stops_on_a_dirty_clone_without_branching_or_writing() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    let output = harness.run(
+        &[
+            "contribute",
+            "apply",
+            "--type",
+            "how-to",
+            "--domain",
+            "docs",
+            "--title",
+            "A new page",
+            "--body",
+            "Body text.",
+        ],
+        &[
+            REPO_ENV,
+            (
+                "KAIBO_TEST_GIT_STATUS_PORCELAIN",
+                " M docs/reference/good.md\n",
+            ),
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(4));
+    assert!(
+        !harness
+            .clone_dir()
+            .join("docs/how-to/a-new-page.md")
+            .exists()
+    );
+    assert!(
+        harness.calls().iter().all(|c| !c.contains("checkout -b")),
+        "a dirty clone must stop before any branch is created: {:?}",
+        harness.calls()
+    );
+}
+
+#[test]
+fn contribute_apply_stops_on_a_structural_lint_failure_and_leaves_the_write_in_place() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    let output = harness.run(
+        &[
+            "contribute",
+            "apply",
+            "--type",
+            "how-to",
+            "--domain",
+            "docs",
+            "--title",
+            "A new page",
+            "--body",
+            "Body text.",
+            "--tag",
+            "NotKebabCase",
+        ],
+        &[REPO_ENV],
+    );
+
+    assert_eq!(output.status.code(), Some(2));
+    let written = std::fs::read_to_string(harness.clone_dir().join("docs/how-to/a-new-page.md"))
+        .expect("the write is left in place, stop-and-report never discards it");
+    assert!(written.contains("NotKebabCase"));
+    assert!(
+        harness.calls().iter().all(|c| !c.contains("checkout -b")),
+        "a lint failure must stop before any branch is created: {:?}",
+        harness.calls()
+    );
+}
+
+#[test]
+fn contribute_apply_stops_when_the_fork_parent_does_not_match_the_configured_repo() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    let output = harness.run(
+        &[
+            "contribute",
+            "apply",
+            "--type",
+            "how-to",
+            "--domain",
+            "docs",
+            "--title",
+            "A new page",
+            "--body",
+            "Body text.",
+            "--tag",
+            "good-tag",
+        ],
+        &[
+            REPO_ENV,
+            ("KAIBO_TEST_GH_CAN_PUSH", "false"),
+            ("KAIBO_TEST_GH_FORK_PARENT", "someone-else/knowledge"),
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        harness.calls().iter().all(|c| !c.contains(" push ")),
+        "a mismatched fork parent must never be pushed to: {:?}",
+        harness.calls()
+    );
+    // The clone was still returned to `main`, per the unconditional rule.
+    assert!(harness.calls().iter().any(|c| c.contains("checkout main")));
+}
+
+#[test]
+fn contribute_apply_completes_a_direct_push_contribution_and_opens_a_pr() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    let output = harness.run(
+        &[
+            "--json",
+            "contribute",
+            "apply",
+            "--type",
+            "how-to",
+            "--domain",
+            "docs",
+            "--title",
+            "A new page",
+            "--body",
+            "Body text.",
+            "--tag",
+            "good-tag",
+        ],
+        &[REPO_ENV],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json = parse_json(&output.stdout);
+    assert_eq!(json["outcome"]["push_route"], "direct");
+    assert_eq!(
+        json["outcome"]["pr_url"],
+        "https://github.com/org/knowledge/pull/1"
+    );
+    assert!(
+        harness
+            .clone_dir()
+            .join("docs/how-to/a-new-page.md")
+            .exists()
+    );
+    assert!(harness.calls().iter().any(|c| c.contains("checkout main")));
+}

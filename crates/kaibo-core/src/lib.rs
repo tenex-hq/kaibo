@@ -11,6 +11,7 @@
 
 pub mod clock;
 pub mod config;
+pub mod contribute;
 pub mod doctrine;
 pub mod domains;
 pub mod error;

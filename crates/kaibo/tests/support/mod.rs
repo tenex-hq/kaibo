@@ -62,6 +62,7 @@ if has_arg "clone" "$@"; then
 elif has_arg "checkout" "$@"; then
   exit 0
 elif has_arg "--porcelain" "$@"; then
+  printf '%s' "${KAIBO_TEST_GIT_STATUS_PORCELAIN:-}"
   exit 0
 elif has_arg "--abbrev-ref" "$@"; then
   printf 'main\n'
@@ -72,10 +73,68 @@ elif has_arg "log" "$@"; then
 elif has_arg "pull" "$@"; then
   printf 'Already up to date.\n'
   exit 0
+elif has_arg "branch" "$@"; then
+  printf '%s' "${KAIBO_TEST_GIT_BRANCH_LIST:-}"
+  exit 0
+elif has_arg "add" "$@"; then
+  exit "${KAIBO_TEST_GIT_ADD_EXIT:-0}"
+elif has_arg "commit" "$@"; then
+  exit "${KAIBO_TEST_GIT_COMMIT_EXIT:-0}"
+elif has_arg "remote" "$@"; then
+  exit "${KAIBO_TEST_GIT_REMOTE_EXIT:-0}"
+elif has_arg "push" "$@"; then
+  exit "${KAIBO_TEST_GIT_PUSH_EXIT:-0}"
 else
   printf 'stub git: unrecognized invocation: %s\n' "$*" >&2
   exit 111
 fi
+"#;
+
+/// A stub `gh` that answers exactly the invocations `contribute::apply` is
+/// known to build (see `contribute.rs`). Every canned answer is
+/// overridable through an env var, same convention as [`QMD_STUB`], so a
+/// test scripts one specific response (a denied permission check, a
+/// mismatched fork parent, a failing CI check) without a second copy of
+/// this script.
+const GH_STUB: &str = r#"#!/usr/bin/env bash
+set -eu
+if [ -n "${KAIBO_TEST_CALL_LOG:-}" ]; then
+  printf 'gh %s\n' "$*" >> "$KAIBO_TEST_CALL_LOG"
+fi
+
+has_arg() {
+  needle="$1"
+  shift
+  for a in "$@"; do
+    if [ "$a" = "$needle" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [ "${1:-}" = "api" ]; then
+  if has_arg ".permissions.push" "$@"; then
+    printf '%s\n' "${KAIBO_TEST_GH_CAN_PUSH:-true}"
+    exit 0
+  elif has_arg ".login" "$@"; then
+    printf '%s\n' "${KAIBO_TEST_GH_LOGIN:-contributor}"
+    exit 0
+  elif has_arg ".parent.full_name" "$@"; then
+    printf '%s\n' "${KAIBO_TEST_GH_FORK_PARENT:-org/knowledge}"
+    exit 0
+  fi
+elif [ "${1:-}" = "repo" ] && has_arg "fork" "$@"; then
+  exit "${KAIBO_TEST_GH_FORK_EXIT:-0}"
+elif [ "${1:-}" = "pr" ] && has_arg "create" "$@"; then
+  printf '%s\n' "${KAIBO_TEST_GH_PR_URL:-https://github.com/org/knowledge/pull/1}"
+  exit "${KAIBO_TEST_GH_PR_CREATE_EXIT:-0}"
+elif [ "${1:-}" = "pr" ] && has_arg "checks" "$@"; then
+  exit "${KAIBO_TEST_GH_PR_CHECKS_EXIT:-0}"
+fi
+
+printf 'stub gh: unrecognized invocation: %s\n' "$*" >&2
+exit 111
 "#;
 
 /// A stub `qmd` that answers exactly the invocations `QmdCommand` is known
@@ -181,6 +240,7 @@ impl Harness {
 
         write_executable(&root.path().join("bin").join("git"), GIT_STUB);
         write_executable(&root.path().join("bin").join("qmd"), QMD_STUB);
+        write_executable(&root.path().join("bin").join("gh"), GH_STUB);
 
         Harness { root }
     }

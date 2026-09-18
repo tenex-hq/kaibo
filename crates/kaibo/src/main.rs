@@ -7,27 +7,31 @@
 //! flags to config, and mapping a `kaibo_core` error to a process exit code.
 //! All logic lives in `kaibo_core`.
 //!
-//! `status`, `sync`, `query`, `doctrine`, `domains` and `lint` are the
-//! verbs so far; `status` only reads, `sync` clones/pulls the corpus and
-//! refreshes its qmd index, `query` retrieves ranked, cited evidence for a
-//! question, `doctrine` loads a named domain's own MOC section plus its
-//! `current` reference pages in one call (a load, not a question),
-//! `domains` lists the root MOC's domain inventory as structured data, and
-//! `lint` runs a rule registry over the corpus (or over given paths),
-//! gating on structural violations and only annotating heuristic ones.
-//! `query` and `doctrine` both self-heal via `sync` when the local corpus
-//! is missing, stale, or its qmd collection is gone, and neither ever
-//! synthesises an answer - `query` holds no API key and makes no network
-//! call of kaibo's own. `lint` never touches qmd at all: it reads whatever
-//! is already on disk. Later verbs (`contribute`, ...) land in later
-//! changes. None of them will ever accept a flag that names a repo, a
-//! clone path, or an index: that is what `Config` is for.
+//! `status`, `sync`, `query`, `doctrine`, `domains`, `lint` and
+//! `contribute` are the verbs so far; `status` only reads, `sync`
+//! clones/pulls the corpus and refreshes its qmd index, `query` retrieves
+//! ranked, cited evidence for a question, `doctrine` loads a named
+//! domain's own MOC section plus its `current` reference pages in one call
+//! (a load, not a question), `domains` lists the root MOC's domain
+//! inventory as structured data, and `lint` runs a rule registry over the
+//! corpus (or over given paths), gating on structural violations and only
+//! annotating heuristic ones. `query` and `doctrine` both self-heal via
+//! `sync` when the local corpus is missing, stale, or its qmd collection
+//! is gone, and neither ever synthesises an answer - `query` holds no API
+//! key and makes no network call of kaibo's own. `lint` never touches qmd
+//! at all: it reads whatever is already on disk. `contribute plan` and
+//! `contribute apply` are the write side: `plan` surfaces placement
+//! candidates and never mutates anything, `apply` writes, lints, branches,
+//! commits, pushes (directly or via a verified fork), opens a PR and
+//! watches CI. None of these verbs will ever accept a flag that names a
+//! repo, a clone path, or an index: that is what `Config` is for.
 
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use kaibo_core::clock::SystemClock;
 use kaibo_core::config::Config;
+use kaibo_core::contribute::{ApplyInput, ContributeApplyVerb, ContributePlanVerb, Placement};
 use kaibo_core::doctrine::DoctrineVerb;
 use kaibo_core::domains::DomainsVerb;
 use kaibo_core::error::ExitCoded;
@@ -78,6 +82,64 @@ enum Commands {
     /// Run the rule registry over the corpus, or over the given paths.
     /// Structural violations exit non-zero; heuristic ones only annotate.
     Lint(LintCommandArgs),
+    /// The write side: plan a placement, or apply an already-resolved one.
+    #[command(subcommand)]
+    Contribute(ContributeCommands),
+}
+
+#[derive(Subcommand, Debug)]
+enum ContributeCommands {
+    /// Surface placement candidates for a piece of knowledge. Read-only:
+    /// never writes, never prompts, never decides content type or domain.
+    Plan(ContributePlanArgs),
+    /// Write, lint-gate, branch, commit, push (direct or via a verified
+    /// fork), open a PR against the configured repo, and watch CI.
+    Apply(ContributeApplyArgs),
+}
+
+#[derive(Args, Debug)]
+struct ContributePlanArgs {
+    /// The gist of the knowledge to place.
+    gist: String,
+
+    /// Resolved content type, if already known. Classification is the
+    /// calling agent's judgement call, never this verb's.
+    #[arg(long)]
+    r#type: Option<String>,
+
+    /// Resolved domain folder, if already known.
+    #[arg(long)]
+    domain: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct ContributeApplyArgs {
+    /// Resolved content type (a single path segment, e.g. `how-to`).
+    #[arg(long)]
+    r#type: String,
+
+    /// Resolved domain folder (a single path segment).
+    #[arg(long)]
+    domain: String,
+
+    /// The page title.
+    #[arg(long)]
+    title: String,
+
+    /// The page body (markdown, no frontmatter).
+    #[arg(long)]
+    body: String,
+
+    /// Frontmatter tags, kebab-case. Repeatable.
+    #[arg(long = "tag")]
+    tags: Vec<String>,
+
+    /// Append to this existing repo-relative page instead of creating a
+    /// new one. The path is corpus-shaped input, like `lint`'s path
+    /// argument - never a flag naming the repo, clone, index or
+    /// collection.
+    #[arg(long)]
+    append: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -131,6 +193,12 @@ fn main() -> ExitCode {
         Some(Commands::Doctrine(args)) => run_doctrine(&config, &cli, &args.domain),
         Some(Commands::Domains) => run_domains(&config, &cli),
         Some(Commands::Lint(args)) => run_lint(&config, &cli, args.paths.clone()),
+        Some(Commands::Contribute(ContributeCommands::Plan(args))) => {
+            run_contribute_plan(&config, &cli, args)
+        }
+        Some(Commands::Contribute(ContributeCommands::Apply(args))) => {
+            run_contribute_apply(&config, &cli, args)
+        }
         None => report_no_command(cli.json),
     }
 }
@@ -264,6 +332,68 @@ fn run_lint(config: &Config, cli: &Cli, paths: Vec<String>) -> ExitCode {
     }
 
     let report = verb.gather();
+
+    if cli.json {
+        println!("{}", report.render_json());
+    } else {
+        println!("{}", report.render_text(&RenderOptions { full: cli.full }));
+    }
+
+    to_process_exit_code(report.exit_code())
+}
+
+fn run_contribute_plan(config: &Config, cli: &Cli, args: &ContributePlanArgs) -> ExitCode {
+    let verb = ContributePlanVerb::new(
+        config,
+        args.gist.clone(),
+        args.r#type.clone(),
+        args.domain.clone(),
+    );
+
+    if cli.explain {
+        for command in verb.explain() {
+            println!("{command}");
+        }
+        return to_process_exit_code(kaibo_core::error::ExitCode::Success);
+    }
+
+    let runner = RealCommandRunner;
+    let report = verb.gather(&runner);
+
+    if cli.json {
+        println!("{}", report.render_json());
+    } else {
+        println!("{}", report.render_text(&RenderOptions { full: cli.full }));
+    }
+
+    to_process_exit_code(report.exit_code())
+}
+
+fn run_contribute_apply(config: &Config, cli: &Cli, args: &ContributeApplyArgs) -> ExitCode {
+    let placement = match &args.append {
+        Some(path) => Placement::Append { path: path.clone() },
+        None => Placement::Create,
+    };
+    let input = ApplyInput {
+        content_type: args.r#type.clone(),
+        domain: args.domain.clone(),
+        title: args.title.clone(),
+        body: args.body.clone(),
+        tags: args.tags.clone(),
+        placement,
+    };
+    let verb = ContributeApplyVerb::new(config, input);
+
+    if cli.explain {
+        for command in verb.explain() {
+            println!("{command}");
+        }
+        return to_process_exit_code(kaibo_core::error::ExitCode::Success);
+    }
+
+    let runner = RealCommandRunner;
+    let clock = SystemClock;
+    let report = verb.apply(&runner, &clock);
 
     if cli.json {
         println!("{}", report.render_json());
