@@ -685,9 +685,7 @@ fn an_explain_report_says_it_only_planned() {
 #[test]
 fn with_no_install_location_install_reports_the_variable_to_set() {
     let root = tempfile::tempdir().expect("create temp root");
-    let config = ConfigBuilder::new(root.path().join("corpus"))
-        .no_skills_dir()
-        .build();
+    let config = ConfigBuilder::new(root.path().join("corpus")).build();
 
     let report = InstallVerb::new(&config, "0.1.0", InstallMode::Install).apply();
 
@@ -707,9 +705,7 @@ fn with_no_install_location_install_reports_the_variable_to_set() {
 #[test]
 fn with_no_install_location_there_is_nothing_to_inspect() {
     let root = tempfile::tempdir().expect("create temp root");
-    let config = ConfigBuilder::new(root.path().join("corpus"))
-        .no_skills_dir()
-        .build();
+    let config = ConfigBuilder::new(root.path().join("corpus")).build();
 
     assert_eq!(inspect(&config), InstalledSkills::LocationUnknown);
 }
@@ -717,9 +713,7 @@ fn with_no_install_location_there_is_nothing_to_inspect() {
 #[test]
 fn with_no_install_location_the_text_report_says_so() {
     let root = tempfile::tempdir().expect("create temp root");
-    let config = ConfigBuilder::new(root.path().join("corpus"))
-        .no_skills_dir()
-        .build();
+    let config = ConfigBuilder::new(root.path().join("corpus")).build();
 
     let text = InstallVerb::new(&config, "0.1.0", InstallMode::Install)
         .apply()

@@ -349,10 +349,12 @@ pub(crate) mod testing {
             ] {
                 sources.insert(key, ConfigSource::Default);
             }
-            let clone = clone.into();
             Self {
-                skills_dir: Some(clone.join("skills-dir-fixture")),
-                clone,
+                // No install location unless a test asks for one: a
+                // fixture that silently pointed `install` somewhere would
+                // have it writing into another test's corpus.
+                skills_dir: None,
+                clone: clone.into(),
                 repo: None,
                 index: DEFAULT_INDEX.to_string(),
                 collection: DEFAULT_COLLECTION.to_string(),
@@ -364,13 +366,6 @@ pub(crate) mod testing {
         pub(crate) fn skills_dir(mut self, value: impl Into<PathBuf>) -> Self {
             self.skills_dir = Some(value.into());
             self.sources.insert(ConfigKey::SkillsDir, ConfigSource::Env);
-            self
-        }
-
-        /// The machine with no home directory and no `CLAUDE_CONFIG_DIR`:
-        /// every reading verb still works, and `install` has nowhere to go.
-        pub(crate) fn no_skills_dir(mut self) -> Self {
-            self.skills_dir = None;
             self
         }
 
