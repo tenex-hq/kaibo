@@ -127,7 +127,10 @@ etc.), the equivalent commands, in the same order, are:
 3. Bump the `version` under `[workspace.package]` in `Cargo.toml` by hand.
 4. Refresh the lockfile: `cargo build`.
 5. Regenerate the changelog: `git cliff --tag vX.Y.Z -o CHANGELOG.md`.
-6. Commit: `git commit -am "chore(release): vX.Y.Z"`.
+6. Commit: `git add CHANGELOG.md Cargo.toml Cargo.lock && git commit -m
+   "chore(release): vX.Y.Z"`. Stage by name: `-a` stages only tracked
+   files, so a first-ever CHANGELOG.md would be left out of the release
+   commit.
 7. Tag and push: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push --follow-tags`.
    The annotated `-a` tag is required for `--follow-tags` to ship it -
    a lightweight tag (`git tag vX.Y.Z`) stays local and no release fires.
