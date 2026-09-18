@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""A `git` shim that seeds the fake corpus, then hands off to the real git.
+
+It intercepts nothing. Its only job is to make sure ~/.kaibo/knowledge exists as
+a real clone before the first command that looks at it - because `contribute`
+inspects the clone with git before it touches qmd or gh, finds an unbootstrapped
+machine, and fires `sync` to fix it. That cost a k=3 run 3/3 failures on a task
+whose description was working fine.
+
+Everything after seeding is the real git binary, exec'd with the same argv.
+"""
+
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _corpus import guard_home, seed_clone  # noqa: E402
+
+
+def real_git() -> str:
+    """The first `git` on PATH that is not this shim."""
+    here = Path(__file__).resolve().parent
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        if not d or Path(d).resolve() == here:
+            continue
+        cand = Path(d) / "git"
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return str(cand)
+    sys.exit("eval stub: no real git found on PATH")
+
+
+if __name__ == "__main__":
+    guard_home()
+    # Seeding runs git itself, so never recurse into the shim.
+    if os.environ.get("_CALIPER_SEEDING") != "1":
+        os.environ["_CALIPER_SEEDING"] = "1"
+        seed_clone()
+    os.execv(real_git(), ["git", *sys.argv[1:]])

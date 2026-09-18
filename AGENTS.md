@@ -82,6 +82,12 @@ filesystem mutation outside `tempfile`. Hand-written fakes over mocking crates;
 one exception is opt-in and gated behind an environment variable that is inert
 unless set, so it never runs in CI: see `status/qmd_contract_check.rs`.
 
+**The eval suites are not part of the test suite.** `evals/` grades the shipped
+skills against a live model, at roughly a million tokens for the cheap suite and
+markedly more for the graded one. `caliper validate` is free and proves the spec
+still resolves; `caliper run` costs real money and is a deliberate act, never a
+reflex. See `evals/README.md`.
+
 **Guardrail tests sweep, they do not enumerate.** A test that lists three
 functions by name asserts a property of that list. The fourth function added
 later escapes it. Assert over the pipeline, or scan the source.
