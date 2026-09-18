@@ -1,0 +1,27 @@
+# cargo-mutants configuration for the trust-critical surface.
+#
+# Scope is deliberately narrow, not the whole crate: trust.rs is the fencing
+# and path-containment core, query.rs/doctrine.rs are its two callers,
+# sync.rs/self_heal.rs decide when the corpus gets refreshed, and moc.rs is
+# the shared root-MOC parser both `doctrine` and `domains` read through.
+# Widen this list file by file, not all at once - see AGENTS.md.
+examine_globs = [
+    "crates/kaibo-core/src/trust.rs",
+    "crates/kaibo-core/src/query.rs",
+    "crates/kaibo-core/src/sync.rs",
+    "crates/kaibo-core/src/doctrine.rs",
+    "crates/kaibo-core/src/moc.rs",
+    "crates/kaibo-core/src/self_heal.rs",
+]
+
+# Every mutant here lives in kaibo-core; scoping the test run to that one
+# package (rather than the whole workspace) skips rebuilding and running
+# the kaibo binary crate's end-to-end suite for every mutant, which is the
+# difference between a several-minute run and one that drags on much
+# longer for no extra mutant-killing power - kaibo-core's own unit and
+# guardrail tests are the ones actually exercising this code.
+additional_cargo_test_args = ["--package", "kaibo-core"]
+
+# A generous floor under cargo-mutants' own auto-detected timeout, so a
+# mutant that spins rather than fails fast does not stall the whole run.
+minimum_test_timeout = 60

@@ -169,6 +169,43 @@ fn current_pages_are_loaded_and_draft_pages_are_excluded() {
     }
 }
 
+/// Every field `render_section_lines` prints, plus the status label a
+/// loaded page's own line carries - literal values from `simple_moc`, not
+/// derived from the code under test, so a mutant that drops a line, blanks
+/// a field, or mislabels the status turns this red.
+#[test]
+fn render_text_and_json_report_the_full_moc_section_for_a_loaded_domain() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_moc(&clone, &simple_moc("kaibo"));
+    write_page(
+        &clone,
+        "kaibo/reference/current-page.md",
+        "status: current\ntitle: Current Page",
+        "Current body.",
+    );
+    let runner = healthy_fixture(&clone, &config);
+    let clock = FixedClock(now());
+
+    let report = DoctrineVerb::new(&config, "kaibo").gather(&runner, &clock);
+    let text = report.render_text(&crate::output::RenderOptions::default());
+
+    assert!(text.contains("domain: kaibo"), "got: {text}");
+    assert!(text.contains("owner: @someone"), "got: {text}");
+    assert!(text.contains("topics: one, two"), "got: {text}");
+    assert!(text.contains("summary: a domain summary"), "got: {text}");
+    assert!(text.contains("(status current)"), "got: {text}");
+
+    let json = report.render_json();
+    assert_eq!(json["outcome"]["section"]["name"], "kaibo");
+    assert_eq!(json["outcome"]["section"]["owner"], "@someone");
+    assert_eq!(json["outcome"]["section"]["topics"][0], "one");
+    assert_eq!(json["outcome"]["section"]["topics"][1], "two");
+    assert_eq!(json["outcome"]["section"]["summary"], "a domain summary");
+}
+
 #[test]
 fn deprecated_pages_are_included_but_marked_deprecated() {
     let tmp = tempfile::tempdir().unwrap();
@@ -537,6 +574,10 @@ fn self_heal_fires_when_the_collection_is_missing_on_a_fresh_clone() {
     let text = report.render_text(&crate::output::RenderOptions::default());
     assert!(text.contains("self-heal"));
     assert!(!text.contains("not needed"));
+    assert!(
+        text.contains("self-heal: ran (clone pulled, collection created, index available)"),
+        "expected the exact self-heal summary line, got: {text}"
+    );
 }
 
 #[test]
