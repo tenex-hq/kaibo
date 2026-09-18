@@ -960,3 +960,92 @@ fn a_failing_branch_list_command_stops_apply_as_checkout_failed_not_a_collision(
         other => panic!("expected CheckoutFailed, got {other:?}"),
     }
 }
+
+// --- `today` (civil-from-days) -----------------------------------------------
+
+#[test]
+fn today_converts_several_known_epoch_seconds_to_their_correct_calendar_dates() {
+    // Independently known (epoch seconds, Y, M, D) pairs, not derived from
+    // the function under test, chosen to stress the arithmetic
+    // differently: the Unix epoch itself, an ordinary mid-month date, a
+    // leap day, the day right after a leap day, a non-leap-year February
+    // end, and a year boundary.
+    let cases: &[(u64, u16, u8, u8)] = &[
+        (0, 1970, 1, 1),
+        (1_700_000_000, 2023, 11, 14),
+        (951_782_400, 2000, 2, 29), // leap day
+        (951_868_800, 2000, 3, 1),  // day after a leap day
+        (1_421_362_265, 2015, 1, 15),
+        (946_684_799, 1999, 12, 31), // one second before a year boundary
+        (946_684_800, 2000, 1, 1),   // the year boundary itself
+    ];
+
+    for &(epoch, year, month, day) in cases {
+        let date = today(&FixedClock(UNIX_EPOCH + Duration::from_secs(epoch)));
+        assert_eq!(
+            (date.year, date.month, date.day),
+            (year, month, day),
+            "epoch {epoch} converted incorrectly"
+        );
+    }
+}
+
+// --- rendering: `PlanReport` and `ApplyReport` JSON/text --------------------
+
+#[test]
+fn plan_render_text_and_json_carry_the_resolved_fields_and_candidate_count() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    std::fs::create_dir_all(&clone).unwrap();
+    write_moc(&clone, "## kaibo\n");
+    let config = config_with_repo(&clone);
+    let response = r#"[{"score":0.5,"file":"qmd://knowledge/kaibo/reference/x.md?index=kaibo"}]"#;
+    let runner = FakeCommandRunner::new().on(QmdCommand::query(&config, "gist"), ok(response));
+    let report = ContributePlanVerb::new(
+        &config,
+        "gist",
+        Some("how-to".to_string()),
+        Some("kaibo".to_string()),
+    )
+    .gather(&runner);
+
+    let text = report.render_text(&RenderOptions::default());
+    assert!(!text.is_empty());
+    assert!(text.contains("kaibo/how-to/gist.md"));
+    assert!(text.contains("kaibo/reference/x.md"));
+
+    let json = report.render_json();
+    assert_eq!(json["target_path"], "kaibo/how-to/gist.md");
+    assert_eq!(
+        json["outcome"]["candidates"][0]["path"],
+        "kaibo/reference/x.md"
+    );
+}
+
+#[test]
+fn apply_render_json_carries_the_pr_url_and_push_route_on_completion() {
+    let report = ApplyReport {
+        path: "kaibo/how-to/x.md".to_string(),
+        branch: "contribute/x".to_string(),
+        clone_display: "/tmp/corpus".to_string(),
+        returned_to_main: Some(true),
+        outcome: ApplyOutcome::Completed {
+            push_route: PushRoute {
+                kind: PushRouteKind::Fork,
+                owner: Some("contributor".to_string()),
+            },
+            pr_url: "https://github.com/org/knowledge/pull/1".to_string(),
+            ci: CiVerdict::Passed,
+        },
+    };
+
+    let json = report.render_json();
+    assert_eq!(json["outcome"]["state"], "completed");
+    assert_eq!(json["outcome"]["push_route"], "fork");
+    assert_eq!(json["outcome"]["fork_owner"], "contributor");
+    assert_eq!(
+        json["outcome"]["pr_url"],
+        "https://github.com/org/knowledge/pull/1"
+    );
+    assert_eq!(json["outcome"]["ci"]["passed"], true);
+}
