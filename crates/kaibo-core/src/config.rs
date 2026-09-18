@@ -21,6 +21,12 @@ const ENV_INDEX: &str = "KAIBO_INDEX";
 const ENV_COLLECTION: &str = "KAIBO_COLLECTION";
 const ENV_API_URL: &str = "KAIBO_API_URL";
 
+/// Claude Code's own config-directory override. Read here rather than
+/// guessed at, because `kaibo install` has to write where Claude Code
+/// actually looks; a user who has moved that directory would otherwise get
+/// a plugin installed into a path nothing reads.
+const ENV_CLAUDE_CONFIG_DIR: &str = "CLAUDE_CONFIG_DIR";
+
 const DEFAULT_INDEX: &str = "kaibo";
 const DEFAULT_COLLECTION: &str = "knowledge";
 
@@ -51,6 +57,7 @@ pub enum ConfigKey {
     Index,
     Collection,
     ApiUrl,
+    SkillsDir,
 }
 
 /// Failure while resolving config. Resolution runs before anything else, so
@@ -130,6 +137,7 @@ pub struct Config {
     index: String,
     collection: String,
     api_url: Option<String>,
+    skills_dir: Option<PathBuf>,
     sources: HashMap<ConfigKey, ConfigSource>,
 }
 
@@ -145,6 +153,19 @@ impl Config {
     fn resolve_with(env: &dyn Environment) -> Result<Config, ConfigError> {
         let home = env.home_dir();
         let file = load_config_file(home.as_deref())?;
+
+        // `None` rather than an error, because only `install` needs this:
+        // a machine with no home directory and an explicit `KAIBO_CLONE`
+        // can still run every reading verb, and failing resolution here
+        // would take those down with it.
+        let (skills_dir, skills_dir_source) =
+            match env.var(ENV_CLAUDE_CONFIG_DIR).filter(|v| !v.is_empty()) {
+                Some(dir) => (Some(PathBuf::from(dir).join("skills")), ConfigSource::Env),
+                None => (
+                    home.as_ref().map(|h| h.join(".claude").join("skills")),
+                    ConfigSource::Default,
+                ),
+            };
 
         let (repo, repo_source) =
             resolve_optional(env, ENV_REPO, file.as_ref().and_then(|f| f.repo.clone()));
@@ -182,12 +203,13 @@ impl Config {
             file.as_ref().and_then(|f| f.api_url.clone()),
         );
 
-        let mut sources = HashMap::with_capacity(5);
+        let mut sources = HashMap::with_capacity(6);
         sources.insert(ConfigKey::Repo, repo_source);
         sources.insert(ConfigKey::Clone, clone_source);
         sources.insert(ConfigKey::Index, index_source);
         sources.insert(ConfigKey::Collection, collection_source);
         sources.insert(ConfigKey::ApiUrl, api_url_source);
+        sources.insert(ConfigKey::SkillsDir, skills_dir_source);
 
         Ok(Config {
             repo,
@@ -195,6 +217,7 @@ impl Config {
             index,
             collection,
             api_url,
+            skills_dir,
             sources,
         })
     }
@@ -225,6 +248,14 @@ impl Config {
     /// local backend.
     pub fn api_url(&self) -> Option<&str> {
         self.api_url.as_deref()
+    }
+
+    /// The directory Claude Code discovers plugins in:
+    /// `<CLAUDE_CONFIG_DIR>/skills` when that variable is set and non-empty,
+    /// otherwise `~/.claude/skills`. `None` when neither is available, which
+    /// only `kaibo install` has to care about.
+    pub fn skills_dir(&self) -> Option<&Path> {
+        self.skills_dir.as_deref()
     }
 
     /// Where the value for `key` came from: environment, file, or default.
@@ -301,29 +332,46 @@ pub(crate) mod testing {
         index: String,
         collection: String,
         api_url: Option<String>,
+        skills_dir: Option<PathBuf>,
         sources: HashMap<ConfigKey, ConfigSource>,
     }
 
     impl ConfigBuilder {
         pub(crate) fn new(clone: impl Into<PathBuf>) -> Self {
-            let mut sources = HashMap::with_capacity(5);
+            let mut sources = HashMap::with_capacity(6);
             for key in [
                 ConfigKey::Repo,
                 ConfigKey::Clone,
                 ConfigKey::Index,
                 ConfigKey::Collection,
                 ConfigKey::ApiUrl,
+                ConfigKey::SkillsDir,
             ] {
                 sources.insert(key, ConfigSource::Default);
             }
+            let clone = clone.into();
             Self {
+                skills_dir: Some(clone.join("skills-dir-fixture")),
+                clone,
                 repo: None,
-                clone: clone.into(),
                 index: DEFAULT_INDEX.to_string(),
                 collection: DEFAULT_COLLECTION.to_string(),
                 api_url: None,
                 sources,
             }
+        }
+
+        pub(crate) fn skills_dir(mut self, value: impl Into<PathBuf>) -> Self {
+            self.skills_dir = Some(value.into());
+            self.sources.insert(ConfigKey::SkillsDir, ConfigSource::Env);
+            self
+        }
+
+        /// The machine with no home directory and no `CLAUDE_CONFIG_DIR`:
+        /// every reading verb still works, and `install` has nowhere to go.
+        pub(crate) fn no_skills_dir(mut self) -> Self {
+            self.skills_dir = None;
+            self
         }
 
         pub(crate) fn index(mut self, value: &str, source: ConfigSource) -> Self {
@@ -357,6 +405,7 @@ pub(crate) mod testing {
                 index: self.index,
                 collection: self.collection,
                 api_url: self.api_url,
+                skills_dir: self.skills_dir,
                 sources: self.sources,
             }
         }
