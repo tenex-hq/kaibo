@@ -1126,9 +1126,14 @@ fn today(clock: &dyn Clock) -> Date {
         .unwrap_or(0);
     let days = secs / 86_400;
     // Civil-from-days, Howard Hinnant's algorithm: no date/time dependency
-    // for a crate that only ever needs "today" as Y-M-D.
+    // for a crate that only ever needs "today" as Y-M-D. The reference
+    // algorithm branches on `z < 0` to support dates before 0000-03-01, but
+    // `z` can never be negative here: `secs` is a `u64`, so `days` is at
+    // most `u64::MAX / 86_400`, far below `i64::MAX`, and adding `719_468`
+    // only pushes it further positive. That branch is dropped rather than
+    // kept unreachable.
     let z = days as i64 + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let era = z / 146_097;
     let doe = (z - era * 146_097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let y = yoe as i64 + era * 400;
