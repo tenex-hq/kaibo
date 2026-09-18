@@ -78,16 +78,16 @@ mod tests {
 
     #[test]
     fn all_kebab_case_tags_produce_no_violations() {
-        let f = file_with_tags(vec!["knowledge-backoffice", "cli", "rule-registry-v2"]);
+        let f = file_with_tags(vec!["knowledge-management", "cli", "rule-registry-v2"]);
         assert_eq!(TagsKebabCaseRule.check(&f), Vec::new());
     }
 
     #[test]
     fn a_camel_case_tag_is_reported() {
-        let f = file_with_tags(vec!["knowledgeBackoffice"]);
+        let f = file_with_tags(vec!["camelCaseTag"]);
         let violations = TagsKebabCaseRule.check(&f);
         assert_eq!(violations.len(), 1);
-        assert!(violations[0].message.contains("knowledgeBackoffice"));
+        assert!(violations[0].message.contains("camelCaseTag"));
     }
 
     #[test]
