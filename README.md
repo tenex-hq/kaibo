@@ -65,6 +65,13 @@ and the binary are one artefact at one version and cannot drift apart. No market
 `query` retrieves; it never calls a model and holds no API key. That separation is what keeps
 the whole thing usable when the AI layer is unavailable.
 
+## Documentation
+
+- [Getting Started](docs/getting-started.md) - from zero to `kaibo query` and `kaibo contribute` working.
+- [AXI - the agent experience interface](docs/axi.md) - the design frame behind the verb surface.
+- [QMD contract](docs/qmd-contract.md) - the exact QMD commands kaibo depends on.
+- [Corpus conventions](template/CONVENTIONS.md) - the frontmatter, folder and wikilink rules `kaibo lint` checks against.
+
 ## Licence
 
 MIT.
