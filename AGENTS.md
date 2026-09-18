@@ -139,7 +139,7 @@ by source-scanning tests.
   and PR bodies alike.
 - **This repository is public.** No private organisation names, no internal
   repository names, no individual's name, anywhere: files, commit messages, PR
-  bodies. The issue tracker is private, so do not cite issue numbers here.
+  bodies. The issue tracker lives here, so cite issue numbers freely.
 
 ## Toolchain
 
