@@ -33,16 +33,18 @@ jobs:
         run: cargo test --workspace --locked
 
   mutants:
-    name: mutation testing (trust-critical surface)
+    name: mutation testing (PR diff)
     runs-on: ubuntu-latest
-    # Report, don't gate: a surviving mutant is worth a human look, but a
-    # slow or environment-flaky mutation run must never block an otherwise
-    # good merge. Scope is deliberately narrow - see .cargo/mutants.toml -
-    # so this still finishes in a few minutes; widen the scope before ever
-    # making it required.
-    continue-on-error: true
+    # A full sweep is expensive and pays off least exactly when it runs most
+    # often: on code nothing touched. Scoping to the diff makes mutation
+    # testing cheap enough to gate every PR instead of reporting on a
+    # schedule nobody reads - so, unlike a full sweep, this one blocks.
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
 
       # Kept in sync with rust-toolchain.toml.
       - uses: dtolnay/rust-toolchain@1.97.1
@@ -51,11 +53,26 @@ jobs:
         with:
           key: mutants
 
-      # Never installed imperatively on a dev machine (see AGENTS.md) - a
-      # CI runner is the one place `cargo install` is the right tool, since
-      # there is no host-level package manager to go through instead.
-      - name: install cargo-mutants
-        run: cargo install --locked cargo-mutants
+      # A prebuilt release binary, not `cargo install`: building cargo-mutants
+      # from source costs several minutes before a single mutant runs, which
+      # defeats the point of a gate that exists to be fast. Version pinned so
+      # a new cargo-mutants release cannot change what a required gate does
+      # without a deliberate bump here.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants@27.1.0
 
-      - name: cargo mutants
-        run: cargo mutants --no-shuffle
+      - name: diff against the PR's merge base
+        run: |
+          git fetch origin "${{ github.event.pull_request.base.ref }}"
+          merge_base="$(git merge-base "origin/${{ github.event.pull_request.base.ref }}" HEAD)"
+          echo "merge base: $merge_base"
+          git diff "$merge_base" HEAD -- '*.rs' > pr.diff
+          cat pr.diff
+
+      # No `if:` guard needed: an empty diff (no Rust changed, or only files
+      # outside .cargo/mutants.toml's scope) makes cargo-mutants report zero
+      # mutants and exit 0 - a clean no-op, not a skip that could mask a
+      # future setup bug.
+      - name: cargo mutants (PR diff only)
+        run: cargo mutants --no-shuffle --in-diff pr.diff
