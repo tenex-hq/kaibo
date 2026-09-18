@@ -13,7 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 
 use crate::clock::Clock;
-use crate::config::{Config, ConfigKey, ConfigSource};
+use crate::config::{Config, ConfigKey, ConfigSource, LintConfig};
 use crate::error::ExitCode;
 use crate::explain::{Explainable, PlannedCommand};
 use crate::install::{self, InstalledSkills, PluginLayout};
@@ -47,6 +47,19 @@ pub struct ConfigSummary {
     pub index: ConfigValue<String>,
     pub collection: ConfigValue<String>,
     pub api_url: ConfigValue<Option<String>>,
+    pub lint: LintConfigSummary,
+}
+
+/// The `lint.*` half of [`ConfigSummary`]: every [`LintConfig`] field paired
+/// with where it came from, the same granularity every other config value
+/// gets.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LintConfigSummary {
+    pub disabled_rules: ConfigValue<Vec<String>>,
+    pub required_frontmatter_keys: ConfigValue<Vec<String>>,
+    pub allowed_status: ConfigValue<Vec<String>>,
+    pub type_folder_overrides: ConfigValue<std::collections::BTreeMap<String, String>>,
+    pub tag_pattern: ConfigValue<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -365,6 +378,32 @@ pub(crate) fn config_summary(config: &Config) -> ConfigSummary {
             value: config.api_url().map(str::to_string),
             source: config.source(ConfigKey::ApiUrl),
         },
+        lint: lint_config_summary(config.lint(), config),
+    }
+}
+
+fn lint_config_summary(lint: &LintConfig, config: &Config) -> LintConfigSummary {
+    LintConfigSummary {
+        disabled_rules: ConfigValue {
+            value: lint.disabled_rules.clone(),
+            source: config.source(ConfigKey::LintDisabledRules),
+        },
+        required_frontmatter_keys: ConfigValue {
+            value: lint.required_frontmatter_keys.clone(),
+            source: config.source(ConfigKey::LintRequiredFrontmatterKeys),
+        },
+        allowed_status: ConfigValue {
+            value: lint.allowed_status.clone(),
+            source: config.source(ConfigKey::LintAllowedStatus),
+        },
+        type_folder_overrides: ConfigValue {
+            value: lint.type_folder_overrides.clone(),
+            source: config.source(ConfigKey::LintTypeFolderOverrides),
+        },
+        tag_pattern: ConfigValue {
+            value: lint.tag_pattern.clone(),
+            source: config.source(ConfigKey::LintTagPattern),
+        },
     }
 }
 
@@ -639,6 +678,23 @@ impl Render for StatusReport {
             render_backend(&self.backend),
         ));
 
+        let lint = &self.config.lint;
+        lines.push(format!(
+            "lint: disabled_rules={:?} ({}), required_frontmatter_keys={:?} ({}), \
+             allowed_status={:?} ({}), type_folder_overrides={:?} ({}), \
+             tag_pattern={:?} ({})",
+            lint.disabled_rules.value,
+            lint.disabled_rules.source,
+            lint.required_frontmatter_keys.value,
+            lint.required_frontmatter_keys.source,
+            lint.allowed_status.value,
+            lint.allowed_status.source,
+            lint.type_folder_overrides.value,
+            lint.type_folder_overrides.source,
+            lint.tag_pattern.value,
+            lint.tag_pattern.source,
+        ));
+
         lines.push(match &self.clone {
             CloneStatus::Absent => "clone: absent".to_string(),
             CloneStatus::Present {
@@ -744,6 +800,13 @@ impl Render for StatusReport {
                 "index": {"value": self.config.index.value, "source": self.config.index.source.to_string()},
                 "collection": {"value": self.config.collection.value, "source": self.config.collection.source.to_string()},
                 "api_url": {"value": self.config.api_url.value, "source": self.config.api_url.source.to_string()},
+                "lint": {
+                    "disabled_rules": {"value": self.config.lint.disabled_rules.value, "source": self.config.lint.disabled_rules.source.to_string()},
+                    "required_frontmatter_keys": {"value": self.config.lint.required_frontmatter_keys.value, "source": self.config.lint.required_frontmatter_keys.source.to_string()},
+                    "allowed_status": {"value": self.config.lint.allowed_status.value, "source": self.config.lint.allowed_status.source.to_string()},
+                    "type_folder_overrides": {"value": self.config.lint.type_folder_overrides.value, "source": self.config.lint.type_folder_overrides.source.to_string()},
+                    "tag_pattern": {"value": self.config.lint.tag_pattern.value, "source": self.config.lint.tag_pattern.source.to_string()},
+                },
             },
             "backend": match &self.backend {
                 BackendMode::Local => serde_json::json!({"mode": "local"}),

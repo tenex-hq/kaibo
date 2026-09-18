@@ -17,6 +17,31 @@ that as its own error. See `Config::resolve()` in
 [`crates/kaibo-core/src/config.rs`](../crates/kaibo-core/src/config.rs) for the
 full precedence: environment, then config file, then default.
 
+The same file can carry a `[lint]` table to reparameterise `kaibo lint`'s
+compiled rules - which frontmatter keys are required, which `status` values
+are accepted, how a folder maps to an expected `type`, and the tag pattern -
+plus `lint.disabled_rules` to turn a rule off entirely. None of this can come
+from the knowledge repo itself: see the module docs on
+[`crates/kaibo-core/src/lint.rs`](../crates/kaibo-core/src/lint.rs) for why,
+and for the full shape of the table. `prose-style` (no em dash, no en dash,
+no `--`) is the rule most teams turn off - it's a house writing convention,
+not a fact about what the corpus needs to stay queryable:
+
+```toml
+[lint]
+disabled_rules = ["prose-style"]
+
+[lint.frontmatter_contract]
+required_keys = ["title", "tags", "status", "updated"]
+allowed_status = ["draft", "current", "deprecated"]
+
+[lint.frontmatter_contract.type_folder_overrides]
+howto = "how-to"
+
+[lint.tags_kebab_case]
+pattern = "[a-z0-9]+(-[a-z0-9]+)*"
+```
+
 ## 2. Bootstrap
 
 ```

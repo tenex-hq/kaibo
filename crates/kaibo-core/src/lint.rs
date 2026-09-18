@@ -32,6 +32,29 @@
 //! reaches `std::process::Command` or a second filesystem lookup - the
 //! only path construction in this module is the walk over already-
 //! validated directories above.
+//!
+//! **Rule parameters come from [`Config::lint`], never from a page.** Four
+//! parameters are configurable - `frontmatter-contract`'s required keys and
+//! allowed `status` values, its folder-to-type mapping, and
+//! `tags-kebab-case`'s pattern - plus which rules run at all
+//! ([`crate::config::LintConfig::disabled_rules`]). All five are bound by
+//! [`Config::resolve`] before `gather` reads a single corpus byte, the same
+//! lifecycle that keeps `repo` or `index` out of a page's reach. The
+//! intuitive place to put a "custom rule" is next to the content it
+//! governs, in the knowledge repo itself - that is exactly what this
+//! guarantee forbids: a parameter sourced from the corpus would let anyone
+//! who can merge a knowledge PR change what `lint` enforces. See
+//! [`rules::registry`] for where the four parameters turn into rules, and
+//! `tests::hostile_frontmatter_cannot_change_which_rules_run_or_how` for the
+//! guardrail proving a page cannot reach them.
+//!
+//! What stays out of reach on purpose: declarative rule files loaded from
+//! the corpus (rules are compiled, not authored in markdown) and shelling
+//! out to a user-named linter (arbitrary execution driven by a path is the
+//! one thing every guarantee in this crate exists to prevent). Both were
+//! considered and rejected - what's configurable is the four parameters
+//! above, because most "custom rules" a corpus actually wants turn out to
+//! be one of these three rules with different constants.
 
 use std::path::{Path, PathBuf};
 
@@ -73,6 +96,11 @@ pub enum LintOutcome {
     /// A `path` argument did not resolve to a file or directory contained
     /// in the clone. Bad input, not a corpus defect.
     InvalidPath { path: String },
+    /// `Config::lint()` could not build a registry from its parameters -
+    /// today, only an invalid `tags-kebab-case` regex pattern. A config
+    /// mistake, not a corpus defect, so it is reported before any file is
+    /// read rather than once per file.
+    InvalidConfig { detail: String },
     /// Every candidate path resolved, but none of them turned up a
     /// markdown file to check. The gap signal.
     NoFilesFound,
@@ -100,6 +128,7 @@ impl LintReport {
         match &self.outcome {
             LintOutcome::CloneMissing => ExitCode::Stale,
             LintOutcome::InvalidPath { .. } => ExitCode::Usage,
+            LintOutcome::InvalidConfig { .. } => ExitCode::Usage,
             LintOutcome::NoFilesFound => ExitCode::NoHits,
             LintOutcome::Finished { violations, .. } => {
                 if violations
@@ -179,7 +208,15 @@ fn gather(config: &Config, paths: &[String]) -> LintReport {
     candidates.sort();
     candidates.dedup();
 
-    let registry = rules::registry();
+    let registry = match rules::registry(config.lint()) {
+        Ok(registry) => registry,
+        Err(detail) => {
+            return LintReport {
+                paths: paths.to_vec(),
+                outcome: LintOutcome::InvalidConfig { detail },
+            };
+        }
+    };
     let mut violations = Vec::new();
     let mut files_checked = 0usize;
 
@@ -297,6 +334,13 @@ impl Render for LintReport {
                         .to_string(),
                 );
             }
+            LintOutcome::InvalidConfig { detail } => {
+                lines.push(format!("result: invalid lint configuration: {detail}"));
+                lines.push(
+                    "  - next: fix `[lint]` in `~/.kaibo/config.toml`, then re-run `kaibo lint`"
+                        .to_string(),
+                );
+            }
             LintOutcome::NoFilesFound => {
                 lines.push("result: gap, no markdown files found".to_string());
             }
@@ -333,6 +377,10 @@ impl Render for LintReport {
             LintOutcome::InvalidPath { path } => serde_json::json!({
                 "state": "invalid_path",
                 "path": path,
+            }),
+            LintOutcome::InvalidConfig { detail } => serde_json::json!({
+                "state": "invalid_config",
+                "detail": detail,
             }),
             LintOutcome::NoFilesFound => serde_json::json!({ "state": "no_files_found" }),
             LintOutcome::Finished {

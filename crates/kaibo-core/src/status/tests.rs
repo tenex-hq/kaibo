@@ -440,6 +440,51 @@ fn render_text_shows_every_resolved_config_value_and_its_source() {
     assert_eq!(json["backend"]["mode"], "api");
 }
 
+/// `status` reports the lint configuration the same way it reports every
+/// other config value: the resolved value paired with where it came from,
+/// distinguishing a configured field (file) from an untouched one
+/// (default) rather than reporting the whole `[lint]` table as one blob.
+#[test]
+fn render_text_and_json_show_the_lint_configuration_and_its_source() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = ConfigBuilder::new(tmp.path())
+        .lint_disabled_rules(vec!["prose-style".to_string()], ConfigSource::File)
+        .build();
+
+    let runner = FakeCommandRunner::new()
+        .on(git_branch_command(tmp.path()), ok("main\n"))
+        .on(
+            git_last_commit_command(tmp.path()),
+            ok(format!("{}\n", NOW_EPOCH - 60)),
+        )
+        .on(QmdCommand::version(), ok("qmd 2.8.3\n"))
+        .on(QmdCommand::status(&config), ok(sample_status_output()))
+        .on(
+            QmdCommand::default_index_collection_list(),
+            ok("some-other-collection\n"),
+        );
+    let clock = FixedClock(now());
+    let report = StatusVerb::new(&config).gather(&runner, &clock, "0.1.0");
+
+    let text = report.render_text(&RenderOptions::default());
+    assert!(text.contains("disabled_rules=[\"prose-style\"] (file)"));
+    assert!(text.contains("required_frontmatter_keys="));
+    assert!(text.contains("(default)"));
+    assert!(text.contains("tag_pattern="));
+
+    let json = report.render_json();
+    assert_eq!(
+        json["config"]["lint"]["disabled_rules"]["value"][0],
+        "prose-style"
+    );
+    assert_eq!(json["config"]["lint"]["disabled_rules"]["source"], "file");
+    assert_eq!(
+        json["config"]["lint"]["required_frontmatter_keys"]["source"],
+        "default"
+    );
+}
+
 #[test]
 fn render_json_reports_found_false_when_qmd_is_missing() {
     let tmp = tempfile::tempdir().unwrap();
