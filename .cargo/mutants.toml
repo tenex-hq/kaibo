@@ -2,9 +2,15 @@
 #
 # Scope is deliberately narrow, not the whole crate: trust.rs is the fencing
 # and path-containment core, query.rs/doctrine.rs are its two callers,
-# sync.rs/self_heal.rs decide when the corpus gets refreshed, and moc.rs is
-# the shared root-MOC parser both `doctrine` and `domains` read through.
+# sync.rs/self_heal.rs decide when the corpus gets refreshed, moc.rs is the
+# shared root-MOC parser both `doctrine` and `domains` read through, and the
+# lint.rs registry plus its three rules are the structural gate on what the
+# corpus is allowed to contain in the first place.
 # Widen this list file by file, not all at once - see AGENTS.md.
+#
+# What this list does not cover, so nobody reads it as "the crate is
+# mutation-tested": config/, frontmatter.rs, output.rs, process.rs,
+# status/, domains.rs and the `kaibo` binary crate are all outside it.
 examine_globs = [
     "crates/kaibo-core/src/trust.rs",
     "crates/kaibo-core/src/query.rs",
@@ -12,6 +18,11 @@ examine_globs = [
     "crates/kaibo-core/src/doctrine.rs",
     "crates/kaibo-core/src/moc.rs",
     "crates/kaibo-core/src/self_heal.rs",
+    "crates/kaibo-core/src/lint.rs",
+    "crates/kaibo-core/src/lint/rules.rs",
+    "crates/kaibo-core/src/lint/rules/frontmatter_contract.rs",
+    "crates/kaibo-core/src/lint/rules/tags_kebab_case.rs",
+    "crates/kaibo-core/src/lint/rules/prose_style.rs",
 ]
 
 # Every mutant here lives in kaibo-core; scoping the test run to that one

@@ -1,0 +1,357 @@
+//! `kaibo lint [path...]`: the structural gate on the corpus.
+//!
+//! A rule registry, not a hardcoded function: each rule in [`rules`]
+//! declares an id, a severity, and a check against one already-parsed
+//! file. **Structural rules gate** - any structural violation makes the
+//! run exit non-zero, the same "malformed corpus content is bad input, not
+//! a kaibo bug" mapping [`crate::frontmatter::FrontmatterError`] already
+//! uses ([`crate::error::ExitCode::Usage`]). **Heuristic rules annotate** -
+//! reported in the output, never blocking, because a judgement call must
+//! not stop a contributor at the door.
+//!
+//! `lint` never calls qmd and never self-heals: it reads whatever is
+//! already on disk under the configured clone, which is also what the
+//! knowledge repo's own CI checkout looks like. `--explain` therefore has
+//! nothing to print - `lint` shells out to nothing - and that empty plan
+//! is itself the proof that `--explain` runs nothing for this verb.
+//!
+//! **Every path this module reads comes from an argument or a directory
+//! walk, never from parsed page content.** A `path` argument is corpus-
+//! shaped user input (like `doctrine`'s `<domain>`), not a flag naming a
+//! repo, clone path, index or collection, so it carries no exemption from
+//! the trust boundary: each one is validated with
+//! [`trust::resolve_contained_path`] before anything is read from it, and
+//! every file discovered by walking a directory is validated again
+//! individually before its contents are read, exactly the defense-in-depth
+//! `doctrine::load_current_pages` already uses for a symlinked file
+//! discovered underneath an otherwise-contained directory.
+//!
+//! **Frontmatter and body values are corpus content, read by rules but
+//! never fed back into a command or a path.** A rule may *report* a tag or
+//! a folder name in its violation message; nothing a rule reads ever
+//! reaches `std::process::Command` or a second filesystem lookup - the
+//! only path construction in this module is the walk over already-
+//! validated directories above.
+
+use std::path::{Path, PathBuf};
+
+use serde_json::Value;
+
+use crate::config::Config;
+use crate::error::ExitCode;
+use crate::explain::{Explainable, PlannedCommand};
+use crate::frontmatter;
+use crate::output::{Render, RenderOptions};
+use crate::trust;
+
+mod rules;
+
+/// Whether a rule's violation blocks the run or merely annotates it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    /// Non-zero exit; this is the CI gate.
+    Structural,
+    /// Reported, never blocks.
+    Heuristic,
+}
+
+/// One rule's finding against one file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Violation {
+    pub rule_id: String,
+    pub severity: Severity,
+    pub path: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LintOutcome {
+    /// The configured clone does not exist (or isn't a directory) at all -
+    /// a broken/unsynced corpus, not a gap: this crate has no basis to say
+    /// whether the requested paths would have had anything to lint.
+    CloneMissing,
+    /// A `path` argument did not resolve to a file or directory contained
+    /// in the clone. Bad input, not a corpus defect.
+    InvalidPath { path: String },
+    /// Every candidate path resolved, but none of them turned up a
+    /// markdown file to check. The gap signal.
+    NoFilesFound,
+    /// At least one file was checked, with whatever violations (structural
+    /// or heuristic, possibly none) the registry found.
+    Finished {
+        files_checked: usize,
+        violations: Vec<Violation>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LintReport {
+    pub paths: Vec<String>,
+    pub outcome: LintOutcome,
+}
+
+impl LintReport {
+    /// `Stale` when the clone itself is missing; `Usage` for a bad `path`
+    /// argument *or* at least one structural violation (both are "bad
+    /// input", per [`crate::frontmatter::FrontmatterError::exit_code`]);
+    /// `NoHits` when nothing was there to check; `Success` otherwise - a
+    /// run with only heuristic findings, or none at all, still exits 0.
+    pub fn exit_code(&self) -> ExitCode {
+        match &self.outcome {
+            LintOutcome::CloneMissing => ExitCode::Stale,
+            LintOutcome::InvalidPath { .. } => ExitCode::Usage,
+            LintOutcome::NoFilesFound => ExitCode::NoHits,
+            LintOutcome::Finished { violations, .. } => {
+                if violations
+                    .iter()
+                    .any(|v| v.severity == Severity::Structural)
+                {
+                    ExitCode::Usage
+                } else {
+                    ExitCode::Success
+                }
+            }
+        }
+    }
+}
+
+/// The `kaibo lint` verb, bound to a resolved `Config` and zero or more
+/// path arguments taken verbatim from argv. An empty list means "the whole
+/// corpus".
+pub struct LintVerb<'a> {
+    config: &'a Config,
+    paths: Vec<String>,
+}
+
+impl<'a> LintVerb<'a> {
+    pub fn new(config: &'a Config, paths: Vec<String>) -> Self {
+        Self { config, paths }
+    }
+
+    pub fn gather(&self) -> LintReport {
+        gather(self.config, &self.paths)
+    }
+}
+
+impl Explainable for LintVerb<'_> {
+    fn explain(&self) -> Vec<PlannedCommand> {
+        // lint reads local markdown directly and shells out to nothing.
+        Vec::new()
+    }
+}
+
+fn gather(config: &Config, paths: &[String]) -> LintReport {
+    if !config.clone_path().is_dir() {
+        return LintReport {
+            paths: paths.to_vec(),
+            outcome: LintOutcome::CloneMissing,
+        };
+    }
+
+    let mut candidates = Vec::new();
+    if paths.is_empty() {
+        collect_markdown_files(config.clone_path(), &mut candidates);
+    } else {
+        for path in paths {
+            // Validated for containment before anything is read from it -
+            // but the *canonicalized* path this returns is deliberately
+            // not what gets walked below: canonicalizing can rewrite the
+            // clone root itself (e.g. a `/tmp` that is a symlink to
+            // `/private/tmp`), which would make a later
+            // `strip_prefix(config.clone_path())` fail for every file
+            // found, not just an escaping one. The raw join is what gets
+            // walked; this call exists purely to reject an escaping `path`
+            // up front, exactly as `doctrine::load_current_pages` does.
+            let Some(canonical) = trust::resolve_contained_path(config, path) else {
+                return LintReport {
+                    paths: paths.to_vec(),
+                    outcome: LintOutcome::InvalidPath { path: path.clone() },
+                };
+            };
+            let raw = config.clone_path().join(path);
+            if canonical.is_dir() {
+                collect_markdown_files(&raw, &mut candidates);
+            } else {
+                candidates.push(raw);
+            }
+        }
+    }
+    candidates.sort();
+    candidates.dedup();
+
+    let registry = rules::registry();
+    let mut violations = Vec::new();
+    let mut files_checked = 0usize;
+
+    for full_path in &candidates {
+        let Ok(repo_relative) = full_path.strip_prefix(config.clone_path()) else {
+            continue;
+        };
+        let repo_relative = repo_relative.to_string_lossy().replace('\\', "/");
+
+        // Re-validated per file, not just for the directory it was found
+        // under: a file discovered by the walk can itself be a symlink
+        // resolving outside the clone.
+        let Some(canonical) = trust::resolve_contained_path(config, &repo_relative) else {
+            continue;
+        };
+        let Ok(contents) = std::fs::read_to_string(&canonical) else {
+            continue;
+        };
+
+        files_checked += 1;
+
+        let linted = match frontmatter::parse(&contents) {
+            Ok(doc) => rules::LintedFile {
+                repo_relative_path: trust::strip_control_chars(&repo_relative),
+                frontmatter: Ok(doc.frontmatter),
+                body: doc.body,
+            },
+            Err(err) => rules::LintedFile {
+                repo_relative_path: trust::strip_control_chars(&repo_relative),
+                frontmatter: Err(err.to_string()),
+                body: String::new(),
+            },
+        };
+
+        for rule in &registry {
+            violations.extend(rule.check(&linted));
+        }
+    }
+
+    if files_checked == 0 {
+        return LintReport {
+            paths: paths.to_vec(),
+            outcome: LintOutcome::NoFilesFound,
+        };
+    }
+
+    LintReport {
+        paths: paths.to_vec(),
+        outcome: LintOutcome::Finished {
+            files_checked,
+            violations,
+        },
+    }
+}
+
+/// Recursively collect every `.md` file under `dir`, skipping any
+/// directory whose name starts with `.` (chiefly `.git`, which is neither
+/// corpus content nor safe to walk into wholesale) and not following a
+/// symlinked directory - `DirEntry::file_type` does not follow symlinks, so
+/// a symlinked subdirectory is skipped here rather than walked into.
+fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        let path = entry.path();
+        let name_is_hidden = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with('.'));
+        if name_is_hidden {
+            continue;
+        }
+        if file_type.is_dir() {
+            collect_markdown_files(&path, out);
+        } else if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
+            out.push(path);
+        }
+    }
+}
+
+fn severity_label(severity: Severity) -> &'static str {
+    match severity {
+        Severity::Structural => "structural",
+        Severity::Heuristic => "heuristic",
+    }
+}
+
+fn violation_json(violation: &Violation) -> Value {
+    serde_json::json!({
+        "rule_id": violation.rule_id,
+        "severity": severity_label(violation.severity),
+        "path": violation.path,
+        "message": violation.message,
+    })
+}
+
+impl Render for LintReport {
+    fn render_text(&self, options: &RenderOptions) -> String {
+        let mut lines = Vec::new();
+        lines.push(format!("kaibo lint {:?}", self.paths));
+
+        match &self.outcome {
+            LintOutcome::CloneMissing => {
+                lines.push("result: clone missing".to_string());
+                lines.push("  - next: `kaibo sync`".to_string());
+            }
+            LintOutcome::InvalidPath { path } => {
+                lines.push(format!("result: invalid path {path:?}"));
+                lines.push(
+                    "  - next: pass a path inside the configured clone, or none for the whole corpus"
+                        .to_string(),
+                );
+            }
+            LintOutcome::NoFilesFound => {
+                lines.push("result: gap, no markdown files found".to_string());
+            }
+            LintOutcome::Finished {
+                files_checked,
+                violations,
+            } => {
+                lines.push(format!(
+                    "result: {files_checked} file(s) checked, {} violation(s)",
+                    violations.len()
+                ));
+                for violation in violations {
+                    lines.push(format!(
+                        "- [{}] {} {}: {}",
+                        severity_label(violation.severity),
+                        violation.rule_id,
+                        violation.path,
+                        violation.message,
+                    ));
+                }
+            }
+        }
+
+        if options.full {
+            lines.push(format!("exit code: {}", self.exit_code().code()));
+        }
+
+        lines.join("\n")
+    }
+
+    fn render_json(&self) -> Value {
+        let outcome = match &self.outcome {
+            LintOutcome::CloneMissing => serde_json::json!({ "state": "clone_missing" }),
+            LintOutcome::InvalidPath { path } => serde_json::json!({
+                "state": "invalid_path",
+                "path": path,
+            }),
+            LintOutcome::NoFilesFound => serde_json::json!({ "state": "no_files_found" }),
+            LintOutcome::Finished {
+                files_checked,
+                violations,
+            } => serde_json::json!({
+                "state": "finished",
+                "files_checked": files_checked,
+                "violations": violations.iter().map(violation_json).collect::<Vec<_>>(),
+            }),
+        };
+
+        serde_json::json!({
+            "paths": self.paths,
+            "outcome": outcome,
+            "exit_code": self.exit_code().code(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests;

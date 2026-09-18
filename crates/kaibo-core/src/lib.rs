@@ -16,6 +16,7 @@ pub mod domains;
 pub mod error;
 pub mod explain;
 pub mod frontmatter;
+pub mod lint;
 pub mod moc;
 pub mod output;
 pub mod process;
