@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0002. AI-optional core, with an explicit degradation ladder
 
-**Status** Accepted
 **Decided** 2026-07-07
 
 ## Context

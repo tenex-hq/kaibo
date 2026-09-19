@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0003. Two answer classes: grounded answer and labeled proposal
 
-**Status** Accepted
 **Decided** 2026-07-07
 
 ## Context

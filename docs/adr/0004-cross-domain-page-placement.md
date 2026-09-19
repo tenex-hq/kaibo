@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0004. Cross-domain pages live with the constraint, not the technique
 
-**Status** Accepted
 **Decided** 2026-07-07
 
 ## Context

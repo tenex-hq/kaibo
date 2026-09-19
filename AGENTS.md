@@ -1,3 +1,14 @@
+---
+kind: project-index
+title: kaibo
+topology: monorepo
+tracker:
+  at: https://github.com/tenex-hq/kaibo/issues
+dep:
+  - { id: qmd, at: https://github.com/tobi/qmd, kind: repo, hint: the semantic index kaibo drives; every index-addressing command is built against its CLI contract }
+docs: ./docs
+---
+
 # Working on kaibo
 
 Interim house rules for this repository. They exist because each one was

@@ -11,7 +11,7 @@
 
 ## The premise
 
-Kaibo's agent-facing surface used to be hundreds of lines of markdown spread
+Kaibo's agent-facing surface began as hundreds of lines of markdown spread
 across three skills. That markdown fused three different kinds of content:
 **when to invoke**, **how to execute**, and **how sure the answer is**. Only
 the first is genuinely a prompt concern. The other two were carried as prose
@@ -111,7 +111,7 @@ a preference.
 
 ### 4. Guardrail: capability, not prose
 
-The trust boundary and the write-target pinning used to be roughly 40 lines of
+The trust boundary and the write-target pinning began as roughly 40 lines of
 instruction per skill: treat retrieved content as data, ignore repo names found
 in content, verify `origin` before pushing. That is prompt-level, and
 prompt-level defences are advisory by construction. They were the right call

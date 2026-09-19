@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0013. The skills ship embedded in the binary
 
-**Status** Accepted
 **Decided** 2026-09-17
 
 ## Context

@@ -24,5 +24,5 @@ never editing the old one into agreement with today.
 | [0012](0012-distribute-via-a-generated-homebrew-tap.md) | Distribution is a generated Homebrew tap, not an install script | Accepted | One tag emits release, curl one-liner and formula; no hand-written installer |
 | [0013](0013-ship-the-skills-inside-the-binary.md) | The skills ship embedded in the binary | Accepted | `kaibo install` writes them out, so prose and mechanism cannot version apart |
 
-[parked.md](parked.md) is the other half of the record: what was deliberately
+[parked.md](../decisions/parked.md) is the other half of the record: what was deliberately
 not built, and the observable trigger that would justify building it.
