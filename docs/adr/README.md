@@ -24,7 +24,8 @@ never editing the old one into agreement with today.
 | [0012](0012-distribute-via-a-generated-homebrew-tap.md) | Distribution is a generated Homebrew tap, not an install script | Accepted | One tag emits release, curl one-liner and formula; no hand-written installer |
 | [0013](0013-ship-the-skills-inside-the-binary.md) | The skills ship embedded in the binary | Accepted | `kaibo install` writes them out, so prose and mechanism cannot version apart |
 | [0014](0014-three-layers-and-where-kaibo-invests.md) | Three layers, and where kaibo invests | Accepted | Retrieval is commodity and stays boring; corpus quality and the consumption trigger are the funded halves, and L3 work waits on measurement |
-| [0015](0015-the-paper-trail-measures-the-corpus-not-the-trigger.md) | The paper trail measures the corpus, not the trigger | Accepted | A tool cannot record its own non-invocation, so the trail answers which gap recurs; activation is the eval suite's job |
+| [0015](0015-the-paper-trail-measures-the-corpus-not-the-trigger.md) | The paper trail measures the corpus, not the trigger | Accepted, sink superseded by 0016 | A tool cannot record its own non-invocation, so the trail answers which gap recurs; activation is the eval suite's job |
+| [0016](0016-one-wide-event-per-invocation-over-otlp.md) | One wide event per invocation, over OTLP | Accepted | Wide OTel events instead of a bespoke record; JSONL always, OTLP behind a non-default feature and an explicit config key |
 
 [parked.md](../decisions/parked.md) is the other half of the record: what was deliberately
 not built, and the observable trigger that would justify building it.
