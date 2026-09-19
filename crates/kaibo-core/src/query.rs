@@ -171,6 +171,28 @@ pub enum QueryOutcome {
     Hits(Vec<Hit>),
 }
 
+/// What became of every hit `qmd` returned.
+///
+/// `NoHits` fires on the *filtered* list, so an empty result can mean "the
+/// corpus has nothing" or "everything it had was withheld" - and those call
+/// for opposite editorial actions, writing a page versus promoting a draft.
+/// Without the buckets the two are the same signal. `raw` always equals the
+/// sum of the other four, which
+/// `every_hit_qmd_returned_is_accounted_for_in_exactly_one_census_bucket`
+/// enforces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct HitCensus {
+    pub raw: usize,
+    /// `qmd` named a file kaibo will not address: outside the clone, or not
+    /// a repo-relative path at all.
+    pub unaddressable: usize,
+    /// Frontmatter could not be parsed, so the page is treated with the same
+    /// caution as a draft.
+    pub withheld_unverified: usize,
+    pub withheld_draft: usize,
+    pub kept: usize,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueryReport {
     pub question: String,
@@ -179,6 +201,8 @@ pub struct QueryReport {
     /// looks successful.
     pub self_heal: Option<sync::SyncOutcome>,
     pub outcome: QueryOutcome,
+    /// Empty on the paths where `qmd query` never ran.
+    pub census: HitCensus,
 }
 
 impl QueryReport {
@@ -327,6 +351,7 @@ fn gather(
                     exit_code: sync_exit,
                     findings,
                 },
+                census: HitCensus::default(),
             };
         }
 
@@ -345,6 +370,7 @@ fn gather(
                 outcome: QueryOutcome::QueryFailed {
                     detail: output.stderr.trim().to_string(),
                 },
+                census: HitCensus::default(),
             };
         }
         Err(err) => {
@@ -355,6 +381,7 @@ fn gather(
                 outcome: QueryOutcome::QueryFailed {
                     detail: err.to_string(),
                 },
+                census: HitCensus::default(),
             };
         }
     };
@@ -379,6 +406,7 @@ fn gather(
                 outcome: QueryOutcome::UnexpectedOutputShape {
                     detail: format!("qmd query did not return a JSON array of hits: {err}"),
                 },
+                census: HitCensus::default(),
             };
         }
     };
@@ -388,13 +416,27 @@ fn gather(
         .filter_map(|value| serde_json::from_value::<RawHit>(value).ok())
         .collect();
 
-    let mut hits: Vec<Hit> = raw_hits
-        .into_iter()
-        .filter_map(|raw| build_hit(config, raw))
-        .filter(|(_, verified)| trust::admits_unverified(*verified, include_drafts))
-        .map(|(hit, _)| hit)
-        .filter(|hit| trust::admits_draft_status(&hit.status, include_drafts))
-        .collect();
+    let mut census = HitCensus {
+        raw: raw_hits.len(),
+        ..HitCensus::default()
+    };
+    let mut hits: Vec<Hit> = Vec::new();
+    for raw in raw_hits {
+        let Some((hit, verified)) = build_hit(config, raw) else {
+            census.unaddressable += 1;
+            continue;
+        };
+        if !trust::admits_unverified(verified, include_drafts) {
+            census.withheld_unverified += 1;
+            continue;
+        }
+        if !trust::admits_draft_status(&hit.status, include_drafts) {
+            census.withheld_draft += 1;
+            continue;
+        }
+        hits.push(hit);
+    }
+    census.kept = hits.len();
     // Stable partition: current (and everything else) first, deprecated
     // last - `sort_by_key` on a bool is stable, so relevance order within
     // each group is preserved.
@@ -413,6 +455,7 @@ fn gather(
         include_drafts,
         self_heal,
         outcome,
+        census,
     }
 }
 
