@@ -26,15 +26,18 @@
 //! watches CI. None of these verbs will ever accept a flag that names a
 //! repo, a clone path, or an index: that is what `Config` is for.
 
+use std::io::IsTerminal;
 use std::process::ExitCode;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Args, Parser, Subcommand};
-use kaibo_core::clock::SystemClock;
+use kaibo_core::clock::{Clock, SystemClock};
 use kaibo_core::config::Config;
 use kaibo_core::contribute::{ApplyInput, ContributeApplyVerb, ContributePlanVerb, Placement};
 use kaibo_core::doctrine::DoctrineVerb;
 use kaibo_core::domains::DomainsVerb;
 use kaibo_core::error::ExitCoded;
+use kaibo_core::event::{Caller, Event};
 use kaibo_core::explain::Explainable;
 use kaibo_core::install::{InstallMode, InstallVerb};
 use kaibo_core::lint::LintVerb;
@@ -43,6 +46,7 @@ use kaibo_core::process::RealCommandRunner;
 use kaibo_core::query::QueryVerb;
 use kaibo_core::status::StatusVerb;
 use kaibo_core::sync::SyncVerb;
+use kaibo_core::trail::{self, TrailWrite};
 
 /// A typed CLI interface to a git-backed markdown knowledge corpus.
 #[derive(Parser, Debug)]
@@ -62,6 +66,11 @@ struct Cli {
     /// Print the underlying git/qmd commands a verb would run, instead of running them.
     #[arg(long, global = true)]
     explain: bool,
+
+    /// Skip this invocation's line in the paper trail at `~/.kaibo/trail.jsonl`.
+    /// Equivalent to `no_log = true` in `~/.kaibo/config.toml`.
+    #[arg(long, global = true)]
+    no_log: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -215,6 +224,48 @@ fn main() -> ExitCode {
     }
 }
 
+/// Facts the process can see about itself. ADR 0015: never a label someone
+/// declared, because anything settable is settable by a test harness.
+fn observed() -> Caller {
+    Caller::observed(std::io::stdout().is_terminal())
+}
+
+/// When the invocation started, in Unix milliseconds, and how long the verb
+/// took. A clock reporting a start before the epoch, or an end before its own
+/// start, yields zero rather than suppressing the record: one nonsensical
+/// duration is worth less than the rest of the event, not more.
+fn timings(clock: &dyn Clock, started: SystemTime) -> (u128, u64) {
+    let at = started
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis())
+        .unwrap_or_default();
+    let took = clock
+        .now()
+        .duration_since(started)
+        .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or_default();
+    (at, took)
+}
+
+/// Append one event, unless this invocation or this installation turned the
+/// trail off.
+///
+/// A failure goes to stderr and nowhere else. stdout carries the caller's
+/// answer and the exit code carries the verb's result: neither belongs to the
+/// log, and `trail::append` returns no `Result` precisely so that a failure
+/// here cannot be propagated into either by accident.
+fn record(config: &Config, cli: &Cli, event: &Event) {
+    if cli.no_log {
+        return;
+    }
+    let Some(path) = config.trail_path() else {
+        return;
+    };
+    if let TrailWrite::Failed { detail } = trail::append(path, event) {
+        eprintln!("warning: {detail}");
+    }
+}
+
 fn run_status(config: &Config, cli: &Cli) -> ExitCode {
     let verb = StatusVerb::new(config);
 
@@ -276,7 +327,14 @@ fn run_query(config: &Config, cli: &Cli, question: &str, include_drafts: bool) -
 
     let runner = RealCommandRunner;
     let clock = SystemClock;
+    let started = clock.now();
     let report = verb.gather(&runner, &clock, include_drafts);
+    let (at, took) = timings(&clock, started);
+    record(
+        config,
+        cli,
+        &Event::from_query(&report, at, took, observed()),
+    );
 
     if cli.json {
         println!("{}", report.render_json());
@@ -299,7 +357,14 @@ fn run_doctrine(config: &Config, cli: &Cli, domain: &str) -> ExitCode {
 
     let runner = RealCommandRunner;
     let clock = SystemClock;
+    let started = clock.now();
     let report = verb.gather(&runner, &clock);
+    let (at, took) = timings(&clock, started);
+    record(
+        config,
+        cli,
+        &Event::from_doctrine(&report, at, took, observed()),
+    );
 
     if cli.json {
         println!("{}", report.render_json());

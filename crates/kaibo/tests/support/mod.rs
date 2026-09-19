@@ -262,6 +262,36 @@ impl Harness {
         self.home_dir().join(".claude").join("skills").join("kaibo")
     }
 
+    /// Where the binary appends its paper trail, given the scratch `HOME`.
+    pub fn trail_path(&self) -> PathBuf {
+        self.home_dir().join(".kaibo").join("trail.jsonl")
+    }
+
+    /// Every event recorded so far, one parsed value per line. An absent
+    /// file reads as no events, which is exactly what "nothing was logged"
+    /// looks like from outside the process.
+    pub fn trail(&self) -> Vec<serde_json::Value> {
+        let Ok(contents) = fs::read_to_string(self.trail_path()) else {
+            return Vec::new();
+        };
+        contents
+            .lines()
+            .map(|line| {
+                serde_json::from_str(line)
+                    .unwrap_or_else(|err| panic!("trail line is not JSON ({err}): {line}"))
+            })
+            .collect()
+    }
+
+    /// Replace `~/.kaibo` with a regular file, so the trail's directory
+    /// cannot be created and every write fails. Stands in for an unwritable
+    /// or otherwise broken workspace.
+    pub fn block_the_trail(&self) {
+        let workspace = self.home_dir().join(".kaibo");
+        let _ = fs::remove_dir_all(&workspace);
+        fs::write(&workspace, "not a directory").expect("write trail blocker");
+    }
+
     /// A directory outside `clone_dir()`, for a symlink to escape to.
     pub fn outside_dir(&self) -> PathBuf {
         self.root.path().join("outside")

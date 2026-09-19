@@ -28,4 +28,5 @@ pub mod query;
 mod self_heal;
 pub mod status;
 pub mod sync;
+pub mod trail;
 mod trust;

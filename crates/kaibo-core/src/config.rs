@@ -25,6 +25,13 @@ const ENV_CLONE: &str = "KAIBO_CLONE";
 const ENV_INDEX: &str = "KAIBO_INDEX";
 const ENV_COLLECTION: &str = "KAIBO_COLLECTION";
 const ENV_API_URL: &str = "KAIBO_API_URL";
+const ENV_NO_LOG: &str = "KAIBO_NO_LOG";
+
+/// Where the paper trail is appended, under the `~/.kaibo/` workspace
+/// ADR 0005 fixes. Not configurable: the trail is written by the binary for
+/// the corpus's stewards, and a per-installation path would give a reader no
+/// idea where to look.
+const TRAIL_FILE: &str = "trail.jsonl";
 
 /// Compiled default for `lint.frontmatter_contract.required_keys`: the four
 /// fields `frontmatter-contract` has always required. Naming any of the
@@ -75,6 +82,7 @@ pub enum ConfigKey {
     Index,
     Collection,
     ApiUrl,
+    NoLog,
     SkillsDir,
     LintDisabledRules,
     LintRequiredFrontmatterKeys,
@@ -127,6 +135,7 @@ struct ConfigFile {
     index: Option<String>,
     collection: Option<String>,
     api_url: Option<String>,
+    no_log: Option<bool>,
     lint: Option<LintConfigFile>,
 }
 
@@ -231,6 +240,8 @@ pub struct Config {
     index: String,
     collection: String,
     api_url: Option<String>,
+    no_log: bool,
+    trail: Option<PathBuf>,
     skills_dir: Option<PathBuf>,
     lint: LintConfig,
     sources: HashMap<ConfigKey, ConfigSource>,
@@ -261,6 +272,16 @@ impl Config {
                     ConfigSource::Default,
                 ),
             };
+
+        let (no_log, no_log_source) =
+            resolve_bool(env, ENV_NO_LOG, file.as_ref().and_then(|f| f.no_log));
+
+        // Derived from `home`, never from `clone`: the two are siblings under
+        // `~/.kaibo`, and an explicit `KAIBO_CLONE` pointing at a checkout
+        // elsewhere must not scatter trail files beside it. `None` when there
+        // is no home at all, which is the one case the reading verbs still
+        // have to survive.
+        let trail = home.as_ref().map(|h| h.join(".kaibo").join(TRAIL_FILE));
 
         let (repo, repo_source) =
             resolve_optional(env, ENV_REPO, file.as_ref().and_then(|f| f.repo.clone()));
@@ -341,12 +362,13 @@ impl Config {
             tag_pattern,
         };
 
-        let mut sources = HashMap::with_capacity(11);
+        let mut sources = HashMap::with_capacity(12);
         sources.insert(ConfigKey::Repo, repo_source);
         sources.insert(ConfigKey::Clone, clone_source);
         sources.insert(ConfigKey::Index, index_source);
         sources.insert(ConfigKey::Collection, collection_source);
         sources.insert(ConfigKey::ApiUrl, api_url_source);
+        sources.insert(ConfigKey::NoLog, no_log_source);
         sources.insert(ConfigKey::SkillsDir, skills_dir_source);
         sources.insert(ConfigKey::LintDisabledRules, disabled_rules_source);
         sources.insert(
@@ -366,6 +388,8 @@ impl Config {
             index,
             collection,
             api_url,
+            no_log,
+            trail,
             skills_dir,
             lint,
             sources,
@@ -398,6 +422,19 @@ impl Config {
     /// local backend.
     pub fn api_url(&self) -> Option<&str> {
         self.api_url.as_deref()
+    }
+
+    /// Where to append the paper trail, or `None` when nothing should be
+    /// written: either `no_log` is set, or there is no home directory to
+    /// resolve `~/.kaibo` against.
+    ///
+    /// One accessor rather than a path plus a flag, so a caller cannot
+    /// consult the path and forget the switch.
+    pub fn trail_path(&self) -> Option<&Path> {
+        if self.no_log {
+            return None;
+        }
+        self.trail.as_deref()
     }
 
     /// The directory Claude Code discovers plugins in:
@@ -473,6 +510,34 @@ fn resolve_file_only<T>(file_value: Option<T>, default: T) -> (T, ConfigSource) 
     }
 }
 
+/// Boolean resolution, same three layers as [`resolve_optional`]. A value
+/// that is neither a recognised yes nor a recognised no falls through to the
+/// next layer rather than being read as either: `KAIBO_NO_LOG=maybe` is a
+/// typo, and taking any non-empty string as "on" would let one silently stop
+/// the paper trail for good. `0` is a deliberate no, not an empty-ish value,
+/// which is why this cannot reuse the string helper.
+fn resolve_bool(
+    env: &dyn Environment,
+    env_key: &str,
+    file_value: Option<bool>,
+) -> (bool, ConfigSource) {
+    if let Some(value) = env.var(env_key).as_deref().and_then(parse_bool) {
+        return (value, ConfigSource::Env);
+    }
+    if let Some(value) = file_value {
+        return (value, ConfigSource::File);
+    }
+    (false, ConfigSource::Default)
+}
+
+fn parse_bool(raw: &str) -> Option<bool> {
+    match raw.to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
 fn resolve_with_default(
     env: &dyn Environment,
     env_key: &str,
@@ -499,6 +564,8 @@ pub(crate) mod testing {
         index: String,
         collection: String,
         api_url: Option<String>,
+        no_log: bool,
+        trail: Option<PathBuf>,
         skills_dir: Option<PathBuf>,
         lint: LintConfig,
         sources: HashMap<ConfigKey, ConfigSource>,
@@ -506,13 +573,14 @@ pub(crate) mod testing {
 
     impl ConfigBuilder {
         pub(crate) fn new(clone: impl Into<PathBuf>) -> Self {
-            let mut sources = HashMap::with_capacity(11);
+            let mut sources = HashMap::with_capacity(12);
             for key in [
                 ConfigKey::Repo,
                 ConfigKey::Clone,
                 ConfigKey::Index,
                 ConfigKey::Collection,
                 ConfigKey::ApiUrl,
+                ConfigKey::NoLog,
                 ConfigKey::SkillsDir,
                 ConfigKey::LintDisabledRules,
                 ConfigKey::LintRequiredFrontmatterKeys,
@@ -532,6 +600,11 @@ pub(crate) mod testing {
                 index: DEFAULT_INDEX.to_string(),
                 collection: DEFAULT_COLLECTION.to_string(),
                 api_url: None,
+                // No trail unless a test asks for one, for the same reason
+                // as `skills_dir`: a fixture that silently wrote somewhere
+                // would be writing during every other module's tests.
+                no_log: false,
+                trail: None,
                 lint: LintConfig::default(),
                 sources,
             }
@@ -622,6 +695,8 @@ pub(crate) mod testing {
                 index: self.index,
                 collection: self.collection,
                 api_url: self.api_url,
+                no_log: self.no_log,
+                trail: self.trail,
                 skills_dir: self.skills_dir,
                 lint: self.lint,
                 sources: self.sources,
