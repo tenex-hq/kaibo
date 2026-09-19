@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0012. Distribution is a generated Homebrew tap, not an install script
 
-**Status** Accepted
 **Decided** 2026-09 (the record carries no exact date)
 
 ## Context

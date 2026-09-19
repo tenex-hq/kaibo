@@ -70,7 +70,7 @@ the whole thing usable when the AI layer is unavailable.
 - [Getting Started](docs/getting-started.md) - from zero to `kaibo query` and `kaibo contribute` working.
 - [AXI - the agent experience interface](docs/axi.md) - the design frame behind the verb surface.
 - [QMD contract](docs/qmd-contract.md) - the exact QMD commands kaibo depends on.
-- [Decision records](docs/decisions/README.md) - why the guarantees are what they are, and what was deliberately not built.
+- [Decision records](docs/adr/README.md) - why the guarantees are what they are, and what was deliberately not built.
 - [Corpus conventions](template/CONVENTIONS.md) - the frontmatter, folder and wikilink rules `kaibo lint` checks against.
 - [Evals](evals/README.md) - the caliper suites that grade the skills' activation and behaviour, and what they have found so far.
 

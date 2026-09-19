@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0005. The workspace is `~/.kaibo/`
 
-**Status** Accepted
 **Decided** 2026-07-03 or earlier (the record carries no separate date)
 
 ## Context

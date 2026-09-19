@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0007. Everything a skill reads is untrusted data
 
-**Status** Accepted
 **Decided** 2026-08-27
 
 ## Context

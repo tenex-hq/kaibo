@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0008. Contribution needs read access, not write
 
-**Status** Accepted
 **Decided** 2026-08-27
 
 ## Context

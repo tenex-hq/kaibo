@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0010. The default qmd index has no exceptions
 
-**Status** Accepted
 **Decided** 2026-08-30
 
 ## Context

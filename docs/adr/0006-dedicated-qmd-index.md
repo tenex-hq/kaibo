@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0006. QMD isolated in a dedicated index with a single collection
 
-**Status** Accepted
 **Decided** 2026-07-07
 
 ## Context

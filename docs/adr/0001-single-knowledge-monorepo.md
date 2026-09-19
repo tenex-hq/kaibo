@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0001. Single knowledge monorepo, one folder per domain
 
-**Status** Accepted
 **Decided** 2026-07-07
 
 ## Context

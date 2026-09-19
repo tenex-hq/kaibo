@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0011. Rust, not Go
 
-**Status** Accepted
 **Decided** 2026-09 (the record carries no exact date)
 
 ## Context

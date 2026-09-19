@@ -1,6 +1,9 @@
+---
+status: accepted
+---
+
 # 0009. Agents consume kaibo on task entry, not on felt gaps
 
-**Status** Accepted
 **Decided** 2026-08-29
 
 ## Context
