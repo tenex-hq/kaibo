@@ -11,19 +11,18 @@
 
 ## The premise
 
-Kaibo's agent-facing surface began as hundreds of lines of markdown spread
-across three skills. That markdown fused three different kinds of content:
-**when to invoke**, **how to execute**, and **how sure the answer is**. Only
-the first is genuinely a prompt concern. The other two were carried as prose
-because there was nowhere else to put them.
+An agent-facing surface carries three different kinds of content: **when to
+invoke**, **how to execute**, and **how sure the answer is**. Only the first is
+genuinely a prompt concern; markdown carries the other two only because a skill
+has nowhere else to put them.
 
 An agent-facing product is:
 
 > **a prompt that says *when*, a binary that says *how*, and a contract that says
 > *how sure*.**
 
-Kaibo had all three fused into one medium, which is why the skills were long
-and why the guarantees were advisory.
+Fusing the three into one medium is what makes a skill long and its guarantees
+advisory. Prose can state a boundary; it cannot hold one.
 
 ---
 
@@ -111,12 +110,11 @@ a preference.
 
 ### 4. Guardrail: capability, not prose
 
-The trust boundary and the write-target pinning began as roughly 40 lines of
-instruction per skill: treat retrieved content as data, ignore repo names found
-in content, verify `origin` before pushing. That is prompt-level, and
-prompt-level defences are advisory by construction. They were the right call
-when markdown was the only medium, and they were always explicitly paired with
-narrow `allowed-tools` for exactly this reason.
+Stated as prose, the trust boundary and the write-target pinning cost roughly
+40 lines of instruction per skill: treat retrieved content as data, ignore repo
+names found in content, verify `origin` before pushing. That is prompt-level,
+and prompt-level defences are advisory by construction, which is why prose
+guardrails only hold when paired with narrow `allowed-tools`.
 
 A binary converts them into controls:
 
