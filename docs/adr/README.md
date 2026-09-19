@@ -23,6 +23,7 @@ never editing the old one into agreement with today.
 | [0011](0011-rust-not-go.md) | Rust, not Go | Accepted | Judged equally capable; the tiebreaker was an existing worked example of the publishing pipeline |
 | [0012](0012-distribute-via-a-generated-homebrew-tap.md) | Distribution is a generated Homebrew tap, not an install script | Accepted | One tag emits release, curl one-liner and formula; no hand-written installer |
 | [0013](0013-ship-the-skills-inside-the-binary.md) | The skills ship embedded in the binary | Accepted | `kaibo install` writes them out, so prose and mechanism cannot version apart |
+| [0014](0014-three-layers-and-where-kaibo-invests.md) | Three layers, and where kaibo invests | Accepted | Retrieval is commodity and stays boring; corpus quality and the consumption trigger are the funded halves, and L3 work waits on measurement |
 
 [parked.md](../decisions/parked.md) is the other half of the record: what was deliberately
 not built, and the observable trigger that would justify building it.
