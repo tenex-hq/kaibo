@@ -1787,3 +1787,191 @@ fn sync_collection_add_command(
         "*/{reference,how-to,faq}/**/*.md",
     )
 }
+
+// --- why the hit list ended up empty ----------------------------------
+
+#[test]
+fn a_gap_caused_by_withheld_drafts_is_distinguishable_from_an_empty_corpus() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_page(
+        &clone,
+        "kaibo/reference/draft-page.md",
+        "status: draft",
+        "Draft body.",
+    );
+
+    let hits = vec![qmd_hit(
+        "qmd://knowledge/kaibo/reference/draft-page.md?index=kaibo",
+        "Draft Page",
+        0.9,
+        "some snippet",
+    )];
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        ok(qmd_query_json(&hits)),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert_eq!(report.exit_code(), ExitCode::NoHits);
+    assert_eq!(report.census.raw, 1);
+    assert_eq!(report.census.withheld_draft, 1);
+    assert_eq!(report.census.kept, 0);
+}
+
+#[test]
+fn a_gap_with_nothing_retrieved_at_all_records_no_withholding() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        ok(qmd_query_json(&[])),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert_eq!(report.exit_code(), ExitCode::NoHits);
+    assert_eq!(report.census.raw, 0);
+    assert_eq!(report.census.withheld_draft, 0);
+    assert_eq!(report.census.withheld_unverified, 0);
+    assert_eq!(report.census.unaddressable, 0);
+    assert_eq!(report.census.kept, 0);
+}
+
+#[test]
+fn a_hit_whose_frontmatter_will_not_parse_is_counted_as_unverified_not_as_a_draft() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_page(
+        &clone,
+        "kaibo/reference/broken.md",
+        "status: [unclosed",
+        "Body.",
+    );
+
+    let hits = vec![qmd_hit(
+        "qmd://knowledge/kaibo/reference/broken.md?index=kaibo",
+        "Broken",
+        0.9,
+        "some snippet",
+    )];
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        ok(qmd_query_json(&hits)),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert_eq!(report.census.raw, 1);
+    assert_eq!(report.census.withheld_unverified, 1);
+    assert_eq!(report.census.withheld_draft, 0);
+    assert_eq!(report.census.kept, 0);
+}
+
+#[test]
+fn a_hit_qmd_addresses_outside_the_repo_is_counted_as_unaddressable() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+
+    let hits = vec![qmd_hit("/etc/passwd", "Elsewhere", 0.9, "some snippet")];
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        ok(qmd_query_json(&hits)),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert_eq!(report.census.raw, 1);
+    assert_eq!(report.census.unaddressable, 1);
+    assert_eq!(report.census.kept, 0);
+}
+
+#[test]
+fn every_hit_qmd_returned_is_accounted_for_in_exactly_one_census_bucket() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_page(
+        &clone,
+        "kaibo/reference/current.md",
+        "status: current",
+        "Current body.",
+    );
+    write_page(
+        &clone,
+        "kaibo/reference/draft.md",
+        "status: draft",
+        "Draft body.",
+    );
+    write_page(
+        &clone,
+        "kaibo/reference/broken.md",
+        "status: [unclosed",
+        "Body.",
+    );
+
+    let hits = vec![
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/current.md?index=kaibo",
+            "Current",
+            0.9,
+            "snippet",
+        ),
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/draft.md?index=kaibo",
+            "Draft",
+            0.8,
+            "snippet",
+        ),
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/broken.md?index=kaibo",
+            "Broken",
+            0.7,
+            "snippet",
+        ),
+        qmd_hit("/etc/passwd", "Elsewhere", 0.6, "snippet"),
+    ];
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        ok(qmd_query_json(&hits)),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    let census = report.census;
+    assert_eq!(census.raw, 4);
+    assert_eq!(census.kept, 1);
+    assert_eq!(census.withheld_draft, 1);
+    assert_eq!(census.withheld_unverified, 1);
+    assert_eq!(census.unaddressable, 1);
+    assert_eq!(
+        census.raw,
+        census.kept + census.withheld_draft + census.withheld_unverified + census.unaddressable
+    );
+}
