@@ -15,6 +15,7 @@ pub mod contribute;
 pub mod doctrine;
 pub mod domains;
 pub mod error;
+pub mod event;
 pub mod explain;
 pub mod frontmatter;
 pub mod install;
