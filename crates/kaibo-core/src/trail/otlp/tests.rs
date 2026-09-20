@@ -97,3 +97,22 @@ fn a_timestamp_beyond_what_milliseconds_can_hold_saturates_instead_of_wrapping()
         Duration::from_millis(1_700_000_000_000)
     );
 }
+
+#[test]
+fn a_failed_export_names_the_switch_that_stops_it_trying() {
+    // Errors are instructions. A collector that has moved leaves a warning
+    // on every invocation, so the warning has to say how to stop it.
+    let TrailWrite::Failed { detail } = failed("connection refused".to_string()) else {
+        panic!("`failed` must not report success");
+    };
+
+    assert!(detail.contains("connection refused"));
+    assert!(
+        detail.contains("otlp_export = false"),
+        "the warning has to name the way out: {detail}"
+    );
+    assert!(
+        detail.contains("local trail was written"),
+        "a reader must not conclude the invocation went unrecorded: {detail}"
+    );
+}
