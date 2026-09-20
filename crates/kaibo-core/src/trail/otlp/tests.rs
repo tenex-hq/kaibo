@@ -85,16 +85,41 @@ fn a_boolean_stays_a_boolean_so_a_filter_on_it_can_be_written() {
 }
 
 #[test]
+fn the_record_is_stamped_forward_from_the_epoch_not_backward_from_it() {
+    let stamped = timestamp_of(1_700_000_000_000);
+
+    assert!(
+        stamped > UNIX_EPOCH,
+        "an event before the epoch is not a late clock, it is a sign error"
+    );
+    assert_eq!(
+        stamped.duration_since(UNIX_EPOCH).unwrap().as_millis(),
+        1_700_000_000_000
+    );
+}
+
+#[test]
+fn an_attribute_that_is_not_a_scalar_arrives_as_text_rather_than_vanishing() {
+    // Nothing on the event is nested today. If something ever is, arriving
+    // as readable text beats arriving as nothing at all.
+    let Some(AnyValue::String(rendered)) = any_value(json!({"depth": 2})) else {
+        panic!("a nested value must still cross as something");
+    };
+
+    assert_eq!(rendered.as_str(), r#"{"depth":2}"#);
+}
+
+#[test]
 fn a_timestamp_beyond_what_milliseconds_can_hold_saturates_instead_of_wrapping() {
     // One millisecond past what a `u64` holds. `u128::MAX` is the wrong
     // probe: truncating all-ones gives all-ones, so a wrapping cast passes
     // it. This value truncates to zero, putting the event at the epoch,
     // which reads as a real timestamp and is the worse failure.
     let just_over = u128::from(u64::MAX) + 1;
-    assert_eq!(duration_of(just_over), Duration::from_millis(u64::MAX));
+
     assert_eq!(
-        duration_of(1_700_000_000_000),
-        Duration::from_millis(1_700_000_000_000)
+        timestamp_of(just_over),
+        UNIX_EPOCH + Duration::from_millis(u64::MAX)
     );
 }
 

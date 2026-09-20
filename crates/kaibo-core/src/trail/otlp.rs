@@ -19,7 +19,7 @@
 //!   is built at all - see [`crate::config::Config::otlp`] for why that gate
 //!   is deliberately not the environment's to open.
 
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use opentelemetry::logs::{AnyValue, LogRecord, Logger, LoggerProvider, Severity};
 use opentelemetry::{Key, KeyValue};
@@ -65,7 +65,7 @@ pub fn export(target: &OtlpTarget, event: &Event) -> TrailWrite {
     let logger = provider.logger("kaibo");
     let mut record = logger.create_log_record();
     record.set_event_name(event.event_name);
-    record.set_timestamp(UNIX_EPOCH + duration_of(event.time_unix_ms));
+    record.set_timestamp(timestamp_of(event.time_unix_ms));
     // An invocation that completed is not a problem report. `Gap` is a
     // result, not a failure, so nothing here is ever raised to Warn or
     // Error - the outcome is an attribute and the reader classifies.
@@ -94,11 +94,13 @@ fn failed(detail: String) -> TrailWrite {
     }
 }
 
+/// The event's own timestamp, forward from the epoch.
+///
 /// Saturating rather than wrapping: a clock far enough ahead to overflow a
 /// `u64` of milliseconds should give a timestamp at the end of time, not one
 /// near the epoch.
-fn duration_of(time_unix_ms: u128) -> Duration {
-    Duration::from_millis(u64::try_from(time_unix_ms).unwrap_or(u64::MAX))
+fn timestamp_of(time_unix_ms: u128) -> SystemTime {
+    UNIX_EPOCH + Duration::from_millis(u64::try_from(time_unix_ms).unwrap_or(u64::MAX))
 }
 
 /// The event's own JSON encoding is the single source of attribute names and
