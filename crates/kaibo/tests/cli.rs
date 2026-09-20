@@ -1512,3 +1512,186 @@ fn a_run_through_the_harness_resolves_its_install_location_inside_the_sandbox() 
         );
     }
 }
+
+// --- the paper trail ------------------------------------------------------
+//
+// The trail is a bystander: it records what the verb did and is never
+// allowed to change it. Every test here asserts the verb's own result
+// alongside the trail, because a sink that quietly turned a gap into a
+// failure would otherwise pass.
+
+#[test]
+fn a_query_records_one_event_naming_the_question_and_the_page_it_found() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    let response =
+        support::write_query_response(&harness.outside_dir(), support::MINIMAL_QUERY_RESPONSE);
+
+    let output = harness.run(
+        &["query", "a question about the fixture"],
+        &[("KAIBO_TEST_QMD_QUERY_RESPONSE", response.to_str().unwrap())],
+    );
+
+    assert_eq!(output.status.code(), Some(0));
+    let events = harness.trail();
+    assert_eq!(events.len(), 1, "expected exactly one event: {events:?}");
+    let attrs = &events[0]["attributes"];
+    assert_eq!(events[0]["event_name"], "kaibo.query");
+    assert_eq!(attrs["kaibo.subject"], "a question about the fixture");
+    assert_eq!(attrs["kaibo.outcome"], "hit");
+    assert_eq!(attrs["kaibo.top_hit_path"], "docs/reference/good.md");
+    assert_eq!(attrs["process.exit.code"], 0);
+    assert_eq!(
+        attrs["kaibo.stdout_tty"], false,
+        "a piped run is observably not a terminal"
+    );
+}
+
+#[test]
+fn a_query_that_found_nothing_records_a_gap_and_the_verb_still_exits_three() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    // No `KAIBO_TEST_QMD_QUERY_RESPONSE`: the stub answers with `[]`.
+    let output = harness.run(&["query", "a question with no answer"], &[]);
+
+    assert_eq!(output.status.code(), Some(3));
+    let events = harness.trail();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["attributes"]["kaibo.outcome"], "gap");
+    assert_eq!(events[0]["attributes"]["process.exit.code"], 3);
+    assert_eq!(events[0]["attributes"]["kaibo.raw_hit_count"], 0);
+}
+
+#[test]
+fn doctrine_records_the_domain_it_was_asked_to_load() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    harness.run(&["doctrine", support::DOMAIN], &[]);
+
+    let events = harness.trail();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["event_name"], "kaibo.doctrine");
+    assert_eq!(events[0]["attributes"]["kaibo.domain"], support::DOMAIN);
+}
+
+#[test]
+fn a_second_invocation_appends_rather_than_replacing_the_first() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    harness.run(&["query", "the first question"], &[]);
+    harness.run(&["query", "the second question"], &[]);
+
+    let events = harness.trail();
+    assert_eq!(events.len(), 2, "the second run overwrote the first");
+    assert_eq!(
+        events[0]["attributes"]["kaibo.subject"],
+        "the first question"
+    );
+    assert_eq!(
+        events[1]["attributes"]["kaibo.subject"],
+        "the second question"
+    );
+}
+
+#[test]
+fn no_log_suppresses_the_trail_without_changing_a_byte_of_output() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    let response =
+        support::write_query_response(&harness.outside_dir(), support::MINIMAL_QUERY_RESPONSE);
+    let env = [("KAIBO_TEST_QMD_QUERY_RESPONSE", response.to_str().unwrap())];
+
+    let logged = harness.run(&["query", "a question about the fixture"], &env);
+    let suppressed = harness.run(&["--no-log", "query", "a question about the fixture"], &env);
+
+    assert_eq!(suppressed.stdout, logged.stdout);
+    assert_eq!(suppressed.status.code(), logged.status.code());
+    assert_eq!(
+        harness.trail().len(),
+        1,
+        "the `--no-log` run added an event"
+    );
+}
+
+#[test]
+fn the_config_key_suppresses_the_trail_without_anyone_passing_a_flag() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    let output = harness.run(&["query", "a question"], &[("KAIBO_NO_LOG", "1")]);
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(
+        !harness.trail_path().exists(),
+        "the trail file was created despite KAIBO_NO_LOG"
+    );
+}
+
+#[test]
+fn an_unwritable_trail_leaves_a_successful_query_reporting_success() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    let response =
+        support::write_query_response(&harness.outside_dir(), support::MINIMAL_QUERY_RESPONSE);
+    let env = [("KAIBO_TEST_QMD_QUERY_RESPONSE", response.to_str().unwrap())];
+
+    let healthy = harness.run(&["--json", "query", "a question about the fixture"], &env);
+    harness.block_the_trail();
+    let blocked = harness.run(&["--json", "query", "a question about the fixture"], &env);
+
+    assert_eq!(blocked.status.code(), Some(0));
+    assert_eq!(
+        blocked.stdout, healthy.stdout,
+        "a failing trail changed the answer the caller reads"
+    );
+}
+
+#[test]
+fn an_unwritable_trail_neither_manufactures_nor_masks_the_gap_signal() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    harness.block_the_trail();
+
+    let output = harness.run(&["--json", "query", "a question with no answer"], &[]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "exit 3 is the gap signal and belongs to the query, not to the log"
+    );
+    let json = parse_json(&output.stdout);
+    assert_eq!(json["outcome"]["state"], "no_hits");
+}
+
+#[test]
+fn a_failing_trail_says_so_on_stderr_and_keeps_stdout_machine_readable() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    harness.block_the_trail();
+
+    let output = harness.run(&["--json", "query", "a question"], &[]);
+
+    parse_json(&output.stdout);
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("trail.jsonl") && stderr.contains("no_log"),
+        "a silent failure leaves no way to find out why the trail is empty: {stderr:?}"
+    );
+}
+
+#[test]
+fn explain_writes_no_trail_because_the_verb_never_ran() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    harness.run(&["--explain", "query", "a question"], &[]);
+    harness.run(&["--explain", "doctrine", support::DOMAIN], &[]);
+
+    assert!(
+        !harness.trail_path().exists(),
+        "`--explain` recorded an invocation that did nothing"
+    );
+}

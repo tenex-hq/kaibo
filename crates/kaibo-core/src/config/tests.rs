@@ -286,3 +286,98 @@ Body also names a `lint:` table, just in case something greps the body.\n";
     assert_eq!(config.lint(), config_after.lint());
     assert_eq!(config_after.lint(), &LintConfig::default());
 }
+
+// --- the paper trail's path and its off switch ------------------------
+
+#[test]
+fn the_trail_is_written_beside_the_clone_inside_the_kaibo_workspace() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()));
+    let config = Config::resolve_with(&env).unwrap();
+
+    assert_eq!(
+        config.trail_path(),
+        Some(tmp.path().join(".kaibo").join("trail.jsonl").as_path())
+    );
+    assert_eq!(config.source(ConfigKey::NoLog), ConfigSource::Default);
+}
+
+#[test]
+fn an_explicit_clone_elsewhere_does_not_drag_the_trail_out_of_the_workspace() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
+        .with_var(ENV_CLONE, "/elsewhere/corpus");
+    let config = Config::resolve_with(&env).unwrap();
+
+    assert_eq!(config.clone_path(), Path::new("/elsewhere/corpus"));
+    assert_eq!(
+        config.trail_path(),
+        Some(tmp.path().join(".kaibo").join("trail.jsonl").as_path())
+    );
+}
+
+#[test]
+fn a_machine_with_no_home_directory_writes_no_trail_rather_than_failing_resolution() {
+    // `KAIBO_CLONE` is what lets resolution succeed without a home; the
+    // trail has no such escape hatch and must simply not happen.
+    let env = FakeEnvironment::new(None).with_var(ENV_CLONE, "/explicit/clone");
+    let config = Config::resolve_with(&env).unwrap();
+
+    assert_eq!(config.trail_path(), None);
+}
+
+#[test]
+fn the_config_file_can_turn_the_trail_off() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_config_file(tmp.path(), "no_log = true\n");
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()));
+    let config = Config::resolve_with(&env).unwrap();
+
+    assert_eq!(config.trail_path(), None);
+    assert_eq!(config.source(ConfigKey::NoLog), ConfigSource::File);
+}
+
+#[test]
+fn the_environment_can_turn_the_trail_back_on_over_a_file_that_turned_it_off() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_config_file(tmp.path(), "no_log = true\n");
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var(ENV_NO_LOG, "0");
+    let config = Config::resolve_with(&env).unwrap();
+
+    assert!(config.trail_path().is_some());
+    assert_eq!(config.source(ConfigKey::NoLog), ConfigSource::Env);
+}
+
+#[test]
+fn a_word_that_is_not_a_boolean_falls_through_instead_of_silently_disabling_the_trail() {
+    // `KAIBO_NO_LOG=maybe` is a typo, not a decision. Reading any non-empty
+    // value as "on" would let one silently stop the trail for good.
+    let tmp = tempfile::tempdir().unwrap();
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var(ENV_NO_LOG, "maybe");
+    let config = Config::resolve_with(&env).unwrap();
+
+    assert!(config.trail_path().is_some());
+    assert_eq!(config.source(ConfigKey::NoLog), ConfigSource::Default);
+}
+
+#[test]
+fn every_spelling_of_yes_turns_the_trail_off_and_every_spelling_of_no_leaves_it_on() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    for on in ["1", "true", "TRUE", "yes", "on"] {
+        let env = FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var(ENV_NO_LOG, on);
+        assert_eq!(
+            Config::resolve_with(&env).unwrap().trail_path(),
+            None,
+            "`KAIBO_NO_LOG={on}` should have disabled the trail"
+        );
+    }
+
+    for off in ["0", "false", "FALSE", "no", "off"] {
+        let env = FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var(ENV_NO_LOG, off);
+        assert!(
+            Config::resolve_with(&env).unwrap().trail_path().is_some(),
+            "`KAIBO_NO_LOG={off}` should have left the trail on"
+        );
+    }
+}
