@@ -88,3 +88,25 @@ check:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo test --workspace --locked
+    just deps-stay-lean
+
+# The `otlp` feature roughly triples the dependency closure, so it builds on
+# its own recipe rather than on every `just check`. CI runs both.
+check-otlp:
+    cargo clippy --workspace --all-targets --features kaibo/otlp --locked -- -D warnings
+    cargo test --workspace --features kaibo/otlp --locked
+
+# The default build must pull in no part of the async and HTTP stack: the
+# whole point of making OTLP export a feature is that not enabling it costs
+# nothing. Names, not a package count, so a routine dependency bump does not
+# fail a check about something else entirely.
+deps-stay-lean:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tree=$(cargo tree -p kaibo --edges normal --prefix none --locked | sed 's/ v[0-9].*//' | sort -u)
+    found=$(grep -E '^(opentelemetry|tokio|hyper|reqwest|prost)' <<<"$tree" || true)
+    if [ -n "$found" ]; then
+      echo "the default build pulls in the OTLP stack:" >&2
+      echo "$found" >&2
+      exit 1
+    fi

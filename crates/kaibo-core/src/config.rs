@@ -15,6 +15,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use serde::Deserialize;
 
@@ -26,6 +27,15 @@ const ENV_INDEX: &str = "KAIBO_INDEX";
 const ENV_COLLECTION: &str = "KAIBO_COLLECTION";
 const ENV_API_URL: &str = "KAIBO_API_URL";
 const ENV_NO_LOG: &str = "KAIBO_NO_LOG";
+const ENV_OTLP_EXPORT: &str = "KAIBO_OTLP_EXPORT";
+
+/// The OTLP export timeout, read from the standard variable but defaulted
+/// low. The specification's own default is 10 seconds, which is the right
+/// number for a long-lived service and the wrong one for a CLI an agent is
+/// waiting on: a collector that has gone away would add ten seconds to every
+/// `kaibo query`. An explicit `OTEL_EXPORTER_OTLP_TIMEOUT` still wins.
+const ENV_OTEL_TIMEOUT: &str = "OTEL_EXPORTER_OTLP_TIMEOUT";
+const DEFAULT_OTLP_TIMEOUT_MS: u64 = 2_000;
 
 /// Where the paper trail is appended, under the `~/.kaibo/` workspace
 /// ADR 0005 fixes. Not configurable: the trail is written by the binary for
@@ -83,6 +93,7 @@ pub enum ConfigKey {
     Collection,
     ApiUrl,
     NoLog,
+    OtlpExport,
     SkillsDir,
     LintDisabledRules,
     LintRequiredFrontmatterKeys,
@@ -136,6 +147,7 @@ struct ConfigFile {
     collection: Option<String>,
     api_url: Option<String>,
     no_log: Option<bool>,
+    otlp_export: Option<bool>,
     lint: Option<LintConfigFile>,
 }
 
@@ -231,6 +243,18 @@ impl Environment for ProcessEnvironment {
     }
 }
 
+/// Where the wide event goes after the file, once export is switched on.
+///
+/// Carries no endpoint on purpose. Endpoint resolution is the OTel SDK's,
+/// straight from `OTEL_EXPORTER_OTLP_ENDPOINT` and its signal-specific
+/// sibling, so kaibo does not reimplement a spec it would only get subtly
+/// wrong. What kaibo decides is *whether* to build an exporter at all, and
+/// how long it may block.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OtlpTarget {
+    pub timeout: Duration,
+}
+
 /// Resolved, immutable configuration for a kaibo process. Fields are
 /// private with no setters; read them through the getters below.
 #[derive(Debug, Clone)]
@@ -242,6 +266,8 @@ pub struct Config {
     api_url: Option<String>,
     no_log: bool,
     trail: Option<PathBuf>,
+    otlp_export: bool,
+    otlp_timeout: Duration,
     skills_dir: Option<PathBuf>,
     lint: LintConfig,
     sources: HashMap<ConfigKey, ConfigSource>,
@@ -282,6 +308,18 @@ impl Config {
         // is no home at all, which is the one case the reading verbs still
         // have to survive.
         let trail = home.as_ref().map(|h| h.join(".kaibo").join(TRAIL_FILE));
+
+        let (otlp_export, otlp_export_source) = resolve_bool(
+            env,
+            ENV_OTLP_EXPORT,
+            file.as_ref().and_then(|f| f.otlp_export),
+        );
+        let otlp_timeout = Duration::from_millis(
+            env.var(ENV_OTEL_TIMEOUT)
+                .and_then(|raw| raw.parse::<u64>().ok())
+                .filter(|ms| *ms > 0)
+                .unwrap_or(DEFAULT_OTLP_TIMEOUT_MS),
+        );
 
         let (repo, repo_source) =
             resolve_optional(env, ENV_REPO, file.as_ref().and_then(|f| f.repo.clone()));
@@ -362,13 +400,14 @@ impl Config {
             tag_pattern,
         };
 
-        let mut sources = HashMap::with_capacity(12);
+        let mut sources = HashMap::with_capacity(13);
         sources.insert(ConfigKey::Repo, repo_source);
         sources.insert(ConfigKey::Clone, clone_source);
         sources.insert(ConfigKey::Index, index_source);
         sources.insert(ConfigKey::Collection, collection_source);
         sources.insert(ConfigKey::ApiUrl, api_url_source);
         sources.insert(ConfigKey::NoLog, no_log_source);
+        sources.insert(ConfigKey::OtlpExport, otlp_export_source);
         sources.insert(ConfigKey::SkillsDir, skills_dir_source);
         sources.insert(ConfigKey::LintDisabledRules, disabled_rules_source);
         sources.insert(
@@ -390,6 +429,8 @@ impl Config {
             api_url,
             no_log,
             trail,
+            otlp_export,
+            otlp_timeout,
             skills_dir,
             lint,
             sources,
@@ -435,6 +476,24 @@ impl Config {
             return None;
         }
         self.trail.as_deref()
+    }
+
+    /// Where to push the same event after the JSONL line is written, or
+    /// `None` when nothing should leave the machine.
+    ///
+    /// The gate is kaibo's own key and nothing else. `OTEL_EXPORTER_OTLP_*`
+    /// is honoured for conformance once export is on, but an endpoint in the
+    /// ambient environment must never by itself start sending: that variable
+    /// is commonly exported machine-wide, and the event carries the question
+    /// someone asked. Inheriting a network target ambiently is exactly what
+    /// resolving config in one place exists to prevent.
+    pub fn otlp(&self) -> Option<OtlpTarget> {
+        if !self.otlp_export {
+            return None;
+        }
+        Some(OtlpTarget {
+            timeout: self.otlp_timeout,
+        })
     }
 
     /// The directory Claude Code discovers plugins in:
@@ -566,6 +625,8 @@ pub(crate) mod testing {
         api_url: Option<String>,
         no_log: bool,
         trail: Option<PathBuf>,
+        otlp_export: bool,
+        otlp_timeout: Duration,
         skills_dir: Option<PathBuf>,
         lint: LintConfig,
         sources: HashMap<ConfigKey, ConfigSource>,
@@ -573,7 +634,7 @@ pub(crate) mod testing {
 
     impl ConfigBuilder {
         pub(crate) fn new(clone: impl Into<PathBuf>) -> Self {
-            let mut sources = HashMap::with_capacity(12);
+            let mut sources = HashMap::with_capacity(13);
             for key in [
                 ConfigKey::Repo,
                 ConfigKey::Clone,
@@ -581,6 +642,7 @@ pub(crate) mod testing {
                 ConfigKey::Collection,
                 ConfigKey::ApiUrl,
                 ConfigKey::NoLog,
+                ConfigKey::OtlpExport,
                 ConfigKey::SkillsDir,
                 ConfigKey::LintDisabledRules,
                 ConfigKey::LintRequiredFrontmatterKeys,
@@ -605,6 +667,8 @@ pub(crate) mod testing {
                 // would be writing during every other module's tests.
                 no_log: false,
                 trail: None,
+                otlp_export: false,
+                otlp_timeout: Duration::from_millis(DEFAULT_OTLP_TIMEOUT_MS),
                 lint: LintConfig::default(),
                 sources,
             }
@@ -697,6 +761,8 @@ pub(crate) mod testing {
                 api_url: self.api_url,
                 no_log: self.no_log,
                 trail: self.trail,
+                otlp_export: self.otlp_export,
+                otlp_timeout: self.otlp_timeout,
                 skills_dir: self.skills_dir,
                 lint: self.lint,
                 sources: self.sources,

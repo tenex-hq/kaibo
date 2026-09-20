@@ -1695,3 +1695,147 @@ fn explain_writes_no_trail_because_the_verb_never_ran() {
         "`--explain` recorded an invocation that did nothing"
     );
 }
+
+// --- OTLP export (feature `otlp`) -----------------------------------------
+//
+// Compiled only when the feature is on, because the exporter does not exist
+// otherwise. `support::FakeCollector` is a loopback listener: nothing here
+// leaves the machine, and asserting that nothing was exported needs a real
+// listener to be silent, not just a happy exit code.
+
+#[cfg(feature = "otlp")]
+mod otlp {
+    use super::*;
+    use std::time::Duration;
+    use support::{FakeCollector, refused_endpoint};
+
+    #[test]
+    fn one_event_reaches_the_collector_when_the_feature_and_the_key_are_both_on() {
+        let harness = Harness::new();
+        support::write_minimal_corpus(&harness.clone_dir());
+        let collector = FakeCollector::start();
+
+        let output = harness.run(
+            &["query", "a question about the fixture"],
+            &[
+                ("KAIBO_OTLP_EXPORT", "1"),
+                ("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.endpoint()),
+            ],
+        );
+
+        assert_eq!(output.status.code(), Some(3));
+        let requests = collector.requests();
+        assert_eq!(requests.len(), 1, "expected exactly one export");
+        assert_eq!(requests[0].path, "/v1/logs");
+        assert_eq!(requests[0].content_type, "application/x-protobuf");
+        assert!(
+            String::from_utf8_lossy(&requests[0].body).contains("a question about the fixture"),
+            "the exported record does not carry the subject it was built with"
+        );
+    }
+
+    #[test]
+    fn an_endpoint_in_the_environment_exports_nothing_while_the_key_is_off() {
+        let harness = Harness::new();
+        support::write_minimal_corpus(&harness.clone_dir());
+        let collector = FakeCollector::start();
+
+        // `OTEL_EXPORTER_OTLP_ENDPOINT` is commonly exported machine-wide,
+        // and `kaibo.subject` is the question someone asked. An ambient
+        // variable must not be enough to put it on the wire.
+        let output = harness.run(
+            &["query", "a question that must stay on this machine"],
+            &[("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.endpoint())],
+        );
+
+        assert_eq!(output.status.code(), Some(3));
+        assert!(
+            collector.nothing_arrived_within(Duration::from_millis(300)),
+            "an ambient endpoint alone started an export: {:?}",
+            collector.requests()
+        );
+        assert_eq!(
+            harness.trail().len(),
+            1,
+            "the local trail is unconditional and must still have the event"
+        );
+    }
+
+    #[test]
+    fn no_log_suppresses_the_export_as_well_as_the_file() {
+        let harness = Harness::new();
+        support::write_minimal_corpus(&harness.clone_dir());
+        let collector = FakeCollector::start();
+
+        harness.run(
+            &["--no-log", "query", "a question"],
+            &[
+                ("KAIBO_OTLP_EXPORT", "1"),
+                ("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.endpoint()),
+            ],
+        );
+
+        assert!(
+            collector.nothing_arrived_within(Duration::from_millis(300)),
+            "`--no-log` means this invocation is not recorded, anywhere"
+        );
+        assert!(!harness.trail_path().exists());
+    }
+
+    #[test]
+    fn a_collector_refusing_connections_neither_changes_the_exit_code_nor_costs_the_local_trail() {
+        let harness = Harness::new();
+        support::write_minimal_corpus(&harness.clone_dir());
+        let refused = refused_endpoint();
+
+        let output = harness.run(
+            &["--json", "query", "a question with no answer"],
+            &[
+                ("KAIBO_OTLP_EXPORT", "1"),
+                ("OTEL_EXPORTER_OTLP_ENDPOINT", &refused),
+            ],
+        );
+
+        assert_eq!(
+            output.status.code(),
+            Some(3),
+            "exit 3 is the gap signal and belongs to the query, not to the collector"
+        );
+        assert_eq!(parse_json(&output.stdout)["outcome"]["state"], "no_hits");
+        assert_eq!(
+            harness.trail().len(),
+            1,
+            "an unreachable collector must not cost the local line"
+        );
+    }
+
+    #[test]
+    fn a_successful_export_and_a_failed_one_produce_the_same_answer() {
+        let harness = Harness::new();
+        support::write_minimal_corpus(&harness.clone_dir());
+        let response =
+            support::write_query_response(&harness.outside_dir(), support::MINIMAL_QUERY_RESPONSE);
+        let collector = FakeCollector::start();
+        let qmd = ("KAIBO_TEST_QMD_QUERY_RESPONSE", response.to_str().unwrap());
+
+        let exported = harness.run(
+            &["--json", "query", "a question about the fixture"],
+            &[
+                qmd,
+                ("KAIBO_OTLP_EXPORT", "1"),
+                ("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.endpoint()),
+            ],
+        );
+        let unreachable = harness.run(
+            &["--json", "query", "a question about the fixture"],
+            &[
+                qmd,
+                ("KAIBO_OTLP_EXPORT", "1"),
+                ("OTEL_EXPORTER_OTLP_ENDPOINT", &refused_endpoint()),
+            ],
+        );
+
+        assert_eq!(exported.stdout, unreachable.stdout);
+        assert_eq!(exported.status.code(), unreachable.status.code());
+    }
+}

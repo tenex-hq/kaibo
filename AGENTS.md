@@ -24,8 +24,16 @@ ship embedded in the binary.
 
 ## Working here
 
-- `just check` - fmt, clippy with `-D warnings`, and the tests, all `--locked`.
-  Mirrors [CI](.github/workflows/ci.yml).
+- `just check` - fmt, clippy with `-D warnings`, the tests, and
+  `just deps-stay-lean`, all `--locked`. `just check-otlp` is the same clippy
+  and tests with the `otlp` feature on; it builds roughly three times the
+  dependency closure, so it is a separate recipe. Together the two mirror
+  [CI](.github/workflows/ci.yml).
+- The `otlp` feature adds the OTLP exporter and nothing else. It is off by
+  default because enabling it triples the dependency count
+  ([0016](docs/adr/0016-one-wide-event-per-invocation-over-otlp.md)), and
+  `just deps-stay-lean` fails if the default build ever grows an async or
+  HTTP dependency.
 - The toolchain is pinned in [`rust-toolchain.toml`](rust-toolchain.toml) and CI
   installs the same pin. A `Cargo.lock` that has drifted from `Cargo.toml` is a
   CI failure, so commit the lockfile with any dependency change.

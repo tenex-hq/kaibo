@@ -163,6 +163,22 @@ impl Event {
         serde_json::to_string(self).expect("event attributes are all plain JSON scalars")
     }
 
+    /// The attribute set as a flat map, in the field order the JSONL line
+    /// uses.
+    ///
+    /// Both sinks read this rather than each walking the struct, so the OTLP
+    /// export cannot drift from the file: adding an attribute adds it to
+    /// both, and `the_two_sinks_describe_the_same_invocation` holds them
+    /// together.
+    pub fn attribute_map(&self) -> serde_json::Map<String, serde_json::Value> {
+        match serde_json::to_value(&self.attributes) {
+            Ok(serde_json::Value::Object(map)) => map,
+            // `Attributes` is a struct of scalars: serde cannot render it as
+            // anything but an object, and cannot fail rendering it at all.
+            _ => unreachable!("Attributes serialises to a JSON object"),
+        }
+    }
+
     pub fn from_query(
         report: &QueryReport,
         time_unix_ms: u128,
