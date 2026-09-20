@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 10889,
+  "stop_reason": "end_turn",
+  "session_id": "b266867d-1576-4764-a805-5974dbce657b",
+  "total_cost_usd": 0.011622599999999999,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 8418,
+    "output_tokens": 716,
+    "output_tokens_details": {
+      "thinking_tokens": 0
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 716,
+        "cache_read_input_tokens": 8418,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2715,
+      "outputTokens": 12,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.002775,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 716,
+      "cacheReadInputTokens": 8418,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.008847599999999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "Findings, one per test:\n\n**`a_second_invocation_appends_and_leaves_the_first_line_intact`** \u2014 violates \"expected value never comes from code under test.\" `lines[0]` and `lines[1]` are asserted against `event(\"first question\").to_jsonl()` / `event(\"second question\").to_jsonl()`, i.e. the same serialization path used to produce the data. If `to_jsonl()` is internally consistent but wrong (bad field order, wrong timestamp encoding, corrupted escaping), the test still passes. Should assert against a literal JSON string (or parsed fields with literal expected values).\n\n**`the_first_write_creates_the_workspace_directory_it_needs`** \u2014 fine. Name matches behavior; breaking directory-creation logic turns it red; no self-derived expectation.\n\n**`every_record_is_terminated_so_the_next_one_starts_a_new_line`** \u2014 fine, checks a literal property (`ends_with('\\n')`).\n\n**`append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file`** \u2014 fine. Situation-described, hermetic (tempdir), asserts on literal substring in error detail, not derived from the code under test.\n\n**`a_failed_write_leaves_no_partial_file_behind_for_a_reader_to_trip_over`** \u2014 fine, same setup, clear failure-mode check.\n\n**`a_long_run_of_appends_leaves_one_line_per_invocation_and_no_torn_record`** \u2014 matches the \"opt-in behind an env var, inert unless set\" exception correctly. However the guard is `if var not set { return }` inside the test rather than `#[ignore]` \u2014 this makes the test silently pass (not skip) when run normally, so CI reports green with zero assertions executed. Not a standards violation per se (still inert in CI), but worth noting: a reader running `cargo test` sees \"test result: ok\" with no indication the body never ran. Consider `#[ignore]` + explicit `--ignored` invocation instead, for clarity, though this is a minor style point, not a rubric breach.\n\n**Main issue to fix:** the self-consistency assertion in the second test. Everything else complies with the standards as written.",
+  "ttft_ms": 9924,
+  "type": "result",
+  "duration_ms": 10161,
+  "uuid": "dcd1fbaa-c0d1-4036-8d81-e85d55da3ad6",
+  "ttft_stream_ms": 1584,
+  "time_to_request_ms": 396,
+  "first_content_frame_ms": 1584,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

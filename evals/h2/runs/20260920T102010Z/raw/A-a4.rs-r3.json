@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 48191,
+  "stop_reason": "end_turn",
+  "session_id": "9f66eed4-70d4-4846-9abe-2543119b9cdd",
+  "total_cost_usd": 0.0463924,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 9187,
+    "output_tokens": 4120,
+    "output_tokens_details": {
+      "thinking_tokens": 3118
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4120,
+        "cache_read_input_tokens": 9187,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3281,
+      "outputTokens": 14,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0033510000000000002,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 4120,
+      "cacheReadInputTokens": 9187,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0430414,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 3118,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "Two clear violations, one minor concern.\n\n**`a_missing_clone_exits_4_stale_not_a_gap` \u2014 reads real `$HOME` (hermeticity violation)**\n```rust\nlet home = std::env::var(\"HOME\").unwrap();\nlet clone = Path::new(&home).join(\".kaibo-absent-clone\");\n```\nThis touches ambient environment state, exactly what the standards forbid (\"no test touches ambient state... `Environment` [is] injected\"). It also `.unwrap()`s on `HOME`, so it fails outright on any machine/CI where that var isn't set, and its correctness silently depends on `~/.kaibo-absent-clone` never existing on the machine running it. Every other test in the file builds its clone path from a `tempfile::tempdir()`; this one should do the same \u2014 e.g. point at a path inside a tempdir that is never created \u2014 to test \"clone missing\" without touching real `$HOME`.\n\n**`every_rule_that_fires_names_the_file_it_fired_on` \u2014 enumerates instead of sweeping**\n```rust\nfor rule_id in [\"frontmatter-contract\", \"tags-kebab-case\"] {\n    let violation = violations.iter().find(|v| v.rule_id == rule_id)...\n    assert!(!violation.path.is_empty(), ...);\n}\n```\nThe test's name makes a universal claim (\"every rule\"), but the check only looks at two hardcoded rule IDs. A third rule added later that fires without naming its file escapes this test entirely \u2014 the exact failure mode the \"sweep, don't enumerate\" standard calls out. It should assert over the whole `violations` list, e.g. `assert!(violations.iter().all(|v| !v.path.is_empty()))`, with the two targeted fixtures kept only to guarantee at least two different rules actually fired (a non-empty `violations` sanity check), not as the enumeration boundary of what gets checked.\n\n**Minor: exit-code names promise numbers the tests don't check**\nNames like `a_missing_clone_exits_4_stale_not_a_gap`, `an_empty_corpus_exits_3_...`, `exit_2_as_bad_input` claim specific numeric process exit codes, but every assertion compares against the `ExitCode` enum variant (`ExitCode::Stale`, `ExitCode::NoHits`, `ExitCode::Usage`), not the literal integer. If the enum-to-process-exit-code mapping ever changes (e.g. `Stale` becomes `5`), these tests stay green while the name's claim goes false \u2014 unless that mapping is pinned down in a test elsewhere (not shown in this excerpt). Worth confirming that mapping is covered somewhere, or drop the numbers from the names.\n\nEverything else holds up: no test computes its expectation from the function under test, fixtures are otherwise hermetic (`tempfile::tempdir`), names describe situations rather than calls, and the path-traversal/invalid-file/structural-violation tests all assert on values that would actually flip if the described behavior broke.",
+  "ttft_ms": 37112,
+  "type": "result",
+  "duration_ms": 46729,
+  "uuid": "7ff5dffa-09ac-418a-855e-bf01f81a8c03",
+  "ttft_stream_ms": 1446,
+  "time_to_request_ms": 271,
+  "first_content_frame_ms": 1447,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

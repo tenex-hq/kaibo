@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 81581,
+  "stop_reason": "end_turn",
+  "session_id": "edfdecec-4158-4256-8956-06e6daa9f456",
+  "total_cost_usd": 0.10932000000000001,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 17625,
+    "output_tokens": 9578,
+    "output_tokens_details": {
+      "thinking_tokens": 6732
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 9578,
+        "cache_read_input_tokens": 17625,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 9946,
+      "outputTokens": 13,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.010011,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 9578,
+      "cacheReadInputTokens": 17625,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.09930900000000001,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 6732,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## t1 \u2014 expected value never from code under test\n\n**Violation** found in `a_second_invocation_appends_and_leaves_the_first_line_intact`: the expectations at lines 54\u201355 are produced by calling `event(...).to_jsonl()` \u2014 the same serialization the code under test (`append`) uses to produce the actual file content \u2014 making the assertion self-consistent rather than a check against a written literal.\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"violation\",\n      \"span\": {\"function\": \"a_second_invocation_appends_and_leaves_the_first_line_intact\", \"line\": 54, \"excerpt\": \"assert_eq!(lines[0], event(\\\"first question\\\").to_jsonl());\"},\n      \"reason\": \"Expected side calls to_jsonl(), the same serialization append() uses, so both sides move together.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"violation\",\n      \"span\": {\"function\": \"a_second_invocation_appends_and_leaves_the_first_line_intact\", \"line\": 55, \"excerpt\": \"assert_eq!(lines[1], event(\\\"second question\\\").to_jsonl());\"},\n      \"reason\": \"Same self-consistency issue: to_jsonl() reruns the code under test to build the expectation.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"the_first_write_creates_the_workspace_directory_it_needs\", \"line\": 34, \"excerpt\": \"assert_eq!(append(&path, &event(\\\"first question\\\")), TrailWrite::Written);\"},\n      \"reason\": \"TrailWrite::Written is a hand-written literal enum variant in product vocabulary, not a computed value.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file\", \"line\": 83, \"excerpt\": \"let TrailWrite::Failed { detail } = outcome else {\"},\n      \"reason\": \"Asserts a relation (variant match) written into the test, not a value computed by rerunning the code.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"a_long_run_of_appends_leaves_one_line_per_invocation_and_no_torn_record\", \"line\": 123, \"excerpt\": \"assert_eq!(contents.lines().count(), 10_000);\"},\n      \"reason\": \"Expected value 10_000 is a literal matching the loop bound the author wrote, not computed from the code under test.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t2 \u2014 every test must be able to fail for its stated reason\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file\", \"line\": 79, \"excerpt\": \"fs::write(&blocker, \\\"not a directory\\\").unwrap();\"},\n      \"reason\": \"Fixture genuinely blocks the directory path so the Failed branch, not something incidental, drives the outcome.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"a_long_run_of_appends_leaves_one_line_per_invocation_and_no_torn_record\", \"line\": 111, \"excerpt\": \"if std::env::var_os(\\\"KAIBO_TRAIL_SOAK\\\").is_none() { return; }\"},\n      \"reason\": \"Early return only skips execution when opted out; when run, the loop and assertions can genuinely fail for torn records.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"a_second_invocation_appends_and_leaves_the_first_line_intact\"},\n      \"reason\": \"Asserts both line count and each line's exact content, so appending-without-overwrite is genuinely discriminated.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"<file>\"},\n      \"reason\": \"Remaining tests set up a situation matching their name and assert a check that would fail if the named mechanism broke.\",\n      \"confidence\": \"medium\"\n    }\n  ]\n}\n```\n\n## t3 \u2014 situation, not function call\n\n**Violation**: `append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file` names the callee (`append`) and the mechanical shape of its return (`TrailWrite::Failed`) as the subject of the name, rather than leading with the situation.\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"violation\",\n      \"span\": {\"function\": \"append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file\", \"line\": 73},\n      \"reason\": \"Name's subject is the callee append and its return variant TrailWrite::Failed, not the situation, so renaming append breaks it.\",\n      \"confidence\": \"medium\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"the_first_write_creates_the_workspace_directory_it_needs\", \"line\": 30},\n      \"reason\": \"Describes a situation (first write, missing workspace dir) with no callee named.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"a_failed_write_leaves_no_partial_file_behind_for_a_reader_to_trip_over\", \"line\": 93},\n      \"reason\": \"Describes the situation and consequence without naming the function or its return type.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"a_long_run_of_appends_leaves_one_line_per_invocation_and_no_torn_record\", \"line\": 110},\n      \"reason\": \"\\\"Appends\\\" is used as a domain noun describing the situation, not as a reference to a specific callee's return shape.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t4 \u2014 hermetic by default\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"<file>\"},\n      \"reason\": \"All filesystem mutations (append, fs::write for blockers) are rooted under tempfile::tempdir() paths; no network, subprocess, or mocking crate used.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"a_long_run_of_appends_leaves_one_line_per_invocation_and_no_torn_record\", \"line\": 111, \"excerpt\": \"if std::env::var_os(\\\"KAIBO_TRAIL_SOAK\\\").is_none() { return; }\"},\n      \"reason\": \"This is the rule's named exception: an env-var-gated test that is inert unless explicitly set.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": {\"function\": \"append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file\", \"line\": 79, \"excerpt\": \"fs::write(&blocker, \\\"not a directory\\\").unwrap();\"},\n      \"reason\": \"Write targets a path joined beneath the test's own tempdir, so it stays inside the sandbox.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t5 \u2014 sweep, don't enumerate\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"not_applicable\",\n      \"span\": {\"function\": \"<file>\"},\n      \"reason\": \"No test asserts a property over an open-ended population (all functions, modules, files); all tests target one function, append, directly.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 60486,
+  "type": "result",
+  "duration_ms": 80690,
+  "uuid": "d7184bb7-1c21-4181-bc90-1d4007469f40",
+  "ttft_stream_ms": 2225,
+  "time_to_request_ms": 570,
+  "first_content_frame_ms": 2226,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

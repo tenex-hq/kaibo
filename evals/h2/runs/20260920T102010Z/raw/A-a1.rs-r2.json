@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 42111,
+  "stop_reason": "end_turn",
+  "session_id": "e247c6da-299b-4349-9d72-aa3c265bafd2",
+  "total_cost_usd": 0.059376399999999996,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 4151,
+    "cache_read_input_tokens": 4267,
+    "output_tokens": 3914,
+    "output_tokens_details": {
+      "thinking_tokens": 3053
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 4151,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3914,
+        "cache_read_input_tokens": 4267,
+        "cache_creation_input_tokens": 4151,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4151
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2715,
+      "outputTokens": 12,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.002775,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 3914,
+      "cacheReadInputTokens": 4267,
+      "cacheCreationInputTokens": 4151,
+      "webSearchRequests": 0,
+      "costUSD": 0.056601399999999996,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 3053,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Violation: expected value computed from code under test\n\n`a_second_invocation_appends_and_leaves_the_first_line_intact` (lines 54\u201355) asserts:\n\n```rust\nassert_eq!(lines[0], event(\"first question\").to_jsonl());\nassert_eq!(lines[1], event(\"second question\").to_jsonl());\n```\n\n`to_jsonl()` is the same serialization path `append` presumably calls internally. This checks that `append` and `to_jsonl` agree with each other, not that either produces a correct or stable line. A bug in `to_jsonl()` (wrong field order, dropped field, wrong timestamp format) would leave this test green forever. Write the literal JSON string for at least the first line, or assert on parsed field values.\n\n## Weak spot: test name names the function and the return type, not a situation\n\n`append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file` (line ~in the fourth test) bakes `append` and `TrailWrite::Failed` into the name. Every other test in the file is phrased as a situation (\"a second invocation appends and leaves the first line intact\"); this one reads as \"call X, assert enum variant Y\" and will need renaming the moment either identifier moves, even though the underlying scenario (writing where a directory is expected but a file exists) hasn't changed. Rename to the situation, e.g. `writing_under_a_path_where_a_directory_is_expected_fails_naming_the_path`.\n\n## Everything else holds up\n\n- **Literal expectations elsewhere**: `TrailWrite::Written`, `path.is_file()`, `contents.ends_with('\\n')`, `!trail.is_file()`, `detail.contains(\"trail.jsonl\")` are all independent of the code under test's internals \u2014 fine.\n- **Fails for the stated reason**: verified each name against what would actually go red \u2014 directory-creation, line-count-after-second-append, trailing-newline, failure-on-blocked-path, and no-partial-file-on-failure tests all check the specific mechanism their names claim (modulo the `to_jsonl()` issue above).\n- **Situation-based names**: all six read as scenarios, not function calls, except the one noted above.\n- **Hermetic**: `tempfile::tempdir()` throughout, no real filesystem paths, `event()` hardcodes timestamp/count instead of reading the clock, `Caller` is passed in rather than read from the environment. The soak test is correctly gated behind `KAIBO_TRAIL_SOAK`, inert by default.\n- **No guardrail-by-enumeration pattern present** \u2014 not applicable to this file.",
+  "ttft_ms": 32104,
+  "type": "result",
+  "duration_ms": 41375,
+  "uuid": "6ee20c8c-5fe1-4c68-9cc8-1fb9a3c6cf69",
+  "ttft_stream_ms": 2304,
+  "time_to_request_ms": 295,
+  "first_content_frame_ms": 2304,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

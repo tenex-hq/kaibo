@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 66725,
+  "stop_reason": "end_turn",
+  "session_id": "77050117-2bac-4a5c-9bc8-0a250f9ca2ab",
+  "total_cost_usd": 0.0632586,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 8463,
+    "output_tokens": 5876,
+    "output_tokens_details": {
+      "thinking_tokens": 4662
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 5876,
+        "cache_read_input_tokens": 8463,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2732,
+      "outputTokens": 14,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0028020000000000002,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 5876,
+      "cacheReadInputTokens": 8463,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0604566,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 4662,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Findings\n\n**1. `every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix` cannot fail \u2014 dead assertions (critical)**\n\n```rust\nfor key in attrs.keys().filter(|key| key.starts_with(\"kaibo.\")) {\n    assert!(!key.starts_with(\"otel.\"), ...);\n    assert!(key.starts_with(\"kaibo.\") || key.starts_with(\"process.\"), ...);\n}\n```\n\nThe loop only iterates over keys that already passed `starts_with(\"kaibo.\")`. A key can't start with both `\"kaibo.\"` and `\"otel.\"`, so the first assertion is tautologically true for every element the filter admits \u2014 it can never fire, no matter what the code does. The second assertion is likewise vacuous since the filter guarantees `starts_with(\"kaibo.\")`. Worse, the filter *excludes* the exact keys the test claims to police: if `Event::from_query` ever emitted an attribute under `otel.` or with no namespace at all, this test would never see it, because it never inspects any key outside the `kaibo.` prefix. This fails the \"must be able to fail for the reason its name gives\" standard outright \u2014 break the described invariant and the test stays green.\n\n**2. `from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census` names a function call, not a situation**\n\nThe name embeds `from_query`, the function under test, rather than describing what's being verified. It also duplicates the situation already covered by `a_gap_whose_pages_were_all_withheld_as_drafts_is_readable_as_such` (same outcome, different census), just with an all-zero census \u2014 worth naming for what's distinct about it (e.g. \"a gap with no withheld or unaddressable activity is still reported as a gap\") rather than the call it makes.\n\n**3. `caller()` reads real ambient state**\n\n```rust\nstdout_tty: std::io::stdout().is_terminal(),\n```\n\nThis queries the actual test-runner's stdout rather than injecting a fixed value, violating \"no test touches ambient state.\" Whether `cargo test` is run interactively, piped, or under CI changes this field's value across otherwise-identical runs. Nothing currently asserts on it, but it's a latent flakiness source the moment a test does, and it's exactly the kind of implicit environment coupling the hermeticity standard calls out. Inject a fixed `bool` instead.\n\n**4. Forbidden-attribute enumeration is a list, not a sweep**\n\n```rust\nfor forbidden in [\"kaibo.useful\", \"kaibo.helpful\", \"kaibo.session_id\", \"kaibo.activation\", \"kaibo.activated\"] { ... }\n```\n\nThis asserts a property of the list, not of the event: a sixth ill-advised attribute (`kaibo.usefulness_score`, `kaibo.was_helpful`, etc.) added later escapes silently. There's no obvious structural sweep for \"no attribute implies usefulness was measured\" since that's a semantic judgment, not a syntactic pattern \u2014 so this may be an acceptable exception to the sweep standard, but it's worth flagging since it has the same shape as the anti-pattern.\n\n## What's solid\n\n- `a_gap_whose_pages_were_all_withheld_as_drafts_is_readable_as_such` and `no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured` are named as situations, use literal expected values, and don't derive their oracle from the code under test.\n- No test computes its assertion by calling back into `Event`/`from_query` logic \u2014 all expected values (`\"gap\"`, `3`, `0`, forbidden strings) are hand-authored literals.",
+  "ttft_ms": 53786,
+  "type": "result",
+  "duration_ms": 66153,
+  "uuid": "7dae8f7a-04a0-4095-8bee-1ce8bf2e7e16",
+  "ttft_stream_ms": 1477,
+  "time_to_request_ms": 526,
+  "first_content_frame_ms": 1478,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

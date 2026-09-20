@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 63665,
+  "stop_reason": "end_turn",
+  "session_id": "8f0e1eb6-9aad-4c58-b069-3c7efb3872d1",
+  "total_cost_usd": 0.0917132,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 17841,
+    "output_tokens": 7803,
+    "output_tokens_details": {
+      "thinking_tokens": 5621
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 7803,
+        "cache_read_input_tokens": 17841,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 10046,
+      "outputTokens": 13,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.010111,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 7803,
+      "cacheReadInputTokens": 17841,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0816022,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 5621,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "# Conformance Findings \u2014 a3.rs\n\n## t1\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 111,\n        \"excerpt\": \"assert_eq!(names, rendered);\"\n      },\n      \"reason\": \"names comes from report.render_json() and rendered comes from report.outcome; both sides derive from the same code-under-test output, not a literal.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 78,\n        \"excerpt\": \"assert_eq!(report.exit_code(), ExitCode::Success);\"\n      },\n      \"reason\": \"Expected side is a hand-written enum variant literal in the crate's vocabulary.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 82,\n        \"excerpt\": \"assert_eq!(domains[0].name, \\\"kaibo\\\");\"\n      },\n      \"reason\": \"Expected side is a hand-written string literal, not produced by calling the code under test.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 88,\n        \"excerpt\": \"assert_eq!(domains[0].summary.as_deref(), Some(KAIBO_SUMMARY));\"\n      },\n      \"reason\": \"KAIBO_SUMMARY is a top-level const literal shared with the fixture, not computed from the code under test.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_moc_with_no_domain_headings_is_a_gap\",\n        \"line\": 128,\n        \"excerpt\": \"assert_eq!(report.exit_code(), ExitCode::NoHits);\"\n      },\n      \"reason\": \"Expected side is a hand-written enum variant literal.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t2\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"lists_every_domain_with_owner_topics_and_summary\" },\n      \"reason\": \"Name claims listing every domain with owner/topics/summary; body checks both domains' name, owner, topics and summary against distinct literals.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_moc_with_no_domain_headings_is_a_gap\" },\n      \"reason\": \"Fixture has zero headings and the assertion checks the specific NoDomains/NoHits outcome rather than a weak ok/empty check.\",\n      \"confidence\": \"medium\"\n    }\n  ]\n}\n```\n\n## t3\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"lists_every_domain_with_owner_topics_and_summary\" },\n      \"reason\": \"Name describes a situation (domains with owner, topics, summary), not a callee or return-shape.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_moc_with_no_domain_headings_is_a_gap\" },\n      \"reason\": \"Name describes a fixture situation and its domain-level interpretation ('a gap'), surviving any rename of the function under test.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t4\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"healthy_fixture\",\n        \"line\": 35,\n        \"excerpt\": \"let last_commit = SystemTime::now()\"\n      },\n      \"reason\": \"Reads the real wall clock to build fixture data instead of using the FixedClock already injected elsewhere in the test.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"git_dir\", \"line\": 21, \"excerpt\": \"std::fs::create_dir_all(clone.join(\\\".git\\\")).unwrap();\" },\n      \"reason\": \"Mutation is rooted under the tempfile::tempdir() path passed in by each test.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"write_moc\", \"line\": 25, \"excerpt\": \"std::fs::write(clone.join(\\\"_index.md\\\"), contents).unwrap();\" },\n      \"reason\": \"Mutation is rooted under the tempfile-derived clone path.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"<file>\" },\n      \"reason\": \"FakeCommandRunner is a hand-written fake for process execution rather than a mocking crate, and no command is actually spawned.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t5\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"not_applicable\",\n      \"span\": { \"function\": \"<file>\" },\n      \"reason\": \"No test asserts a property over an open-ended population (every function/module/file); both tests are ordinary unit tests of DomainsVerb behavior.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n**Notable finding to flag:** t1 violation at `lists_every_domain_with_owner_topics_and_summary` line 111 (`assert_eq!(names, rendered)`) and t4 violation at `healthy_fixture` line 35 (`SystemTime::now()`) are both `must`-severity and warrant fixing.",
+  "ttft_ms": 47993,
+  "type": "result",
+  "duration_ms": 62799,
+  "uuid": "2e4cebc2-f2f3-4b62-825f-f49e66e8e850",
+  "ttft_stream_ms": 2302,
+  "time_to_request_ms": 369,
+  "first_content_frame_ms": 2302,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

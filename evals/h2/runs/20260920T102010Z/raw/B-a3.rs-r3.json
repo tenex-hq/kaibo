@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 65664,
+  "stop_reason": "end_turn",
+  "session_id": "07a26555-4948-44ed-b8dd-53fa60260215",
+  "total_cost_usd": 0.09065319999999999,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 17841,
+    "output_tokens": 7697,
+    "output_tokens_details": {
+      "thinking_tokens": 5801
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 7697,
+        "cache_read_input_tokens": 17841,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 10046,
+      "outputTokens": 13,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.010111,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 7697,
+      "cacheReadInputTokens": 17841,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0805422,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 5801,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "Five separate assertions found across two tests; here are all five verdicts.\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 111,\n        \"excerpt\": \"assert_eq!(names, rendered);\"\n      },\n      \"reason\": \"Both names and rendered are derived from report, the gather() output under test; neither side is a written literal.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 78,\n        \"excerpt\": \"assert_eq!(report.exit_code(), ExitCode::Success);\"\n      },\n      \"reason\": \"Expected side is the crate's own enum variant spelled as a literal, not a computed value.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 88,\n        \"excerpt\": \"assert_eq!(domains[0].summary.as_deref(), Some(KAIBO_SUMMARY));\"\n      },\n      \"reason\": \"KAIBO_SUMMARY is a hand-written const also embedded in the fixture text, so this is the round-trip literal anchor.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_moc_with_no_domain_headings_is_a_gap\",\n        \"line\": 128,\n        \"excerpt\": \"assert_eq!(report.exit_code(), ExitCode::NoHits);\"\n      },\n      \"reason\": \"Expected value is a hand-written enum literal, not produced by exercising the code under test.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 82,\n        \"excerpt\": \"assert_eq!(domains[0].name, \\\"kaibo\\\");\"\n      },\n      \"reason\": \"Assertions check specific owner, topics and summary values distinct per domain, discriminating rather than checking mere presence.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_moc_with_no_domain_headings_is_a_gap\",\n        \"line\": 130,\n        \"excerpt\": \"DomainsOutcome::NoDomains => {}\"\n      },\n      \"reason\": \"Fixture removes all domain headings and the assertion requires the specific NoDomains/NoHits outcome, which would not hold if heading detection were inverted.\",\n      \"confidence\": \"medium\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\"\n      },\n      \"reason\": \"Name describes a situation (domains with owner, topics, summary), not a function it calls.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_moc_with_no_domain_headings_is_a_gap\"\n      },\n      \"reason\": \"Name describes fixture content and resulting situation, survives renaming any implementation function.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"healthy_fixture\",\n        \"line\": 35,\n        \"excerpt\": \"let last_commit = SystemTime::now()\"\n      },\n      \"reason\": \"healthy_fixture reads the real wall clock instead of the injected FixedClock, and both tests call it.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"git_dir\",\n        \"line\": 21,\n        \"excerpt\": \"std::fs::create_dir_all(clone.join(\\\".git\\\")).unwrap();\"\n      },\n      \"reason\": \"Mutation path is rooted under tempfile::tempdir(), staying inside the sandbox.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"healthy_fixture\",\n        \"line\": 40,\n        \"excerpt\": \"FakeCommandRunner::new()\"\n      },\n      \"reason\": \"Hand-written fake command runner is used rather than a mocking crate, and no subprocess is actually spawned.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"not_applicable\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"No test asserts a property over an open-ended population (every function/module/file); both tests check one fixture's behavior.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 52789,
+  "type": "result",
+  "duration_ms": 65045,
+  "uuid": "5c6ec1d1-e86a-45a6-ae30-c0e33eba8264",
+  "ttft_stream_ms": 1646,
+  "time_to_request_ms": 364,
+  "first_content_frame_ms": 1647,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

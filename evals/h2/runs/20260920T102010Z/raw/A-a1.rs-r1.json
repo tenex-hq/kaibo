@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 46927,
+  "stop_reason": "end_turn",
+  "session_id": "c95187ac-a2c9-40a7-83a1-79892e6a57fc",
+  "total_cost_usd": 0.0590384,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 4144,
+    "cache_read_input_tokens": 4267,
+    "output_tokens": 3883,
+    "output_tokens_details": {
+      "thinking_tokens": 3141
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 4144,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3883,
+        "cache_read_input_tokens": 4267,
+        "cache_creation_input_tokens": 4144,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4144
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2715,
+      "outputTokens": 12,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.002775,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 3883,
+      "cacheReadInputTokens": 4267,
+      "cacheCreationInputTokens": 4144,
+      "webSearchRequests": 0,
+      "costUSD": 0.0562634,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 3141,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "Reviewed against the five standards; one clear violation, one likely gap, rest look solid.\n\n**Violation \u2014 expected value derived from code under test**\n`a_second_invocation_appends_and_leaves_the_first_line_intact` (trail/tests.rs) asserts:\n```rust\nassert_eq!(lines[0], event(\"first question\").to_jsonl());\nassert_eq!(lines[1], event(\"second question\").to_jsonl());\n```\n`to_jsonl()` is the same serialization path `append` uses internally to write each line. If `to_jsonl` had a bug (wrong field, bad escaping, dropped question text), both sides of the comparison would be wrong identically and the test would stay green \u2014 it only proves append doesn't corrupt whatever `to_jsonl` happens to produce, not that the content is correct. Fix: assert against a literal JSON string (all inputs \u2014 timestamp, pid, build profile, question \u2014 are fixed, so the literal is writable, not painful).\n\n**Likely gap \u2014 test can't fail for its stated reason**\n`a_failed_write_leaves_no_partial_file_behind_for_a_reader_to_trip_over` checks `!trail.is_file()` where `trail = blocker.join(\"trail.jsonl\")` and `blocker` is a regular file. That path can never exist on any filesystem regardless of what `append` does internally \u2014 you cannot create an entry under a non-directory. So this assertion is guaranteed to pass even if `append` leaves a stray partial file elsewhere (e.g., a temp file from a write-then-rename strategy). As written it doesn't actually exercise the \"no partial file\" guarantee the name promises. Worth checking `append`'s implementation for any temp/staging file and asserting on the directory contents instead of just this one unreachable path.\n\nEverything else holds up:\n- Names describe situations (\"second invocation appends and leaves first line intact\", \"every record is terminated\"), not function calls, and read fine after a refactor.\n- All I/O goes through `tempfile::tempdir()`; no ambient filesystem/network/clock use.\n- The soak test is correctly gated behind `KAIBO_TRAIL_SOAK`, inert by default \u2014 matches the stated exception.\n- No enumeration-style guardrail tests present here.",
+  "ttft_ms": 38745,
+  "type": "result",
+  "duration_ms": 46328,
+  "uuid": "41a80ff8-16e5-4078-a712-2d0859d9bae0",
+  "ttft_stream_ms": 1793,
+  "time_to_request_ms": 689,
+  "first_content_frame_ms": 1795,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

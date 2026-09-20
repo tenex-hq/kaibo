@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 47759,
+  "stop_reason": "end_turn",
+  "session_id": "2e2e4b0e-6e62-453f-87d6-49f8d6878001",
+  "total_cost_usd": 0.051498600000000005,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 8463,
+    "output_tokens": 4701,
+    "output_tokens_details": {
+      "thinking_tokens": 3595
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4701,
+        "cache_read_input_tokens": 8463,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2732,
+      "outputTokens": 12,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.002792,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 4701,
+      "cacheReadInputTokens": 8463,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0487066,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 3595,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Critical: a test that can never fail\n\n`every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix` is vacuous. The filter already restricts the loop to keys where `key.starts_with(\"kaibo.\")`:\n\n```rust\nfor key in attrs.keys().filter(|key| key.starts_with(\"kaibo.\")) {\n    assert!(!key.starts_with(\"otel.\"), ...);           // kaibo.* can never start with otel. \u2014 always true\n    assert!(key.starts_with(\"kaibo.\") || key.starts_with(\"process.\"), ...); // already guaranteed by the filter \u2014 always true\n}\n```\n\nBoth assertions are tautologies given the filter. An attribute literally named `otel.something` \u2014 the exact violation the name promises to catch \u2014 is excluded from the loop before it can be checked. This test passes today, will pass after the namespacing logic is deleted, and would pass even if the code started emitting bare `otel.*` keys. This directly violates \"every test must be able to fail for the reason its name gives.\" Fix: iterate `attrs.keys()` without the pre-filter.\n\n## Guardrail enumerates instead of sweeping\n\n`no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured` checks a hardcoded blocklist of five strings. A sixth attribute that implies usefulness (e.g. `kaibo.engaged`, `kaibo.click_through`) added later escapes silently while the test keeps reporting success \u2014 exactly the failure mode the \"sweep, don't enumerate\" standard describes. If the contract is \"no attribute implies user engagement was observed,\" that needs to be enforced by scanning the source for the field/type that represents such a claim, not by naming five strings.\n\n## Test named after the function, not a situation\n\n`from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census` is named after the function under test and its return value (`from_query` \u2026 `sets X to Y`), not a situation. It also duplicates the first test's scenario (a no-hits gap) with a different census, so it reads as filler coverage rather than a distinct case. Rename to describe what's being verified about the world \u2014 e.g. \"a gap with no data at all reports zero counts, not missing/null ones\" \u2014 or fold it into the drafts test as a second assertion on the same behavior if the distinction matters.\n\n## Hermeticity leak in `caller()`\n\n```rust\nstdout_tty: std::io::stdout().is_terminal(),\n```\n\nThis reads real ambient state (whether the test binary's stdout happens to be a TTY) instead of injecting a fixed value. No current assertion depends on it, so it isn't causing flakiness today, but it's a landmine: any future test that asserts on `Caller`/`stdout_tty` will pass or fail based on how the suite is invoked (terminal vs CI vs piped) rather than on the code. Should be a literal (`true`/`false`) like every other field in this helper.\n\n## What's solid\n\n- Both `HitCensus`/`QueryReport` builders and all assertions in the \"gap\" tests use literals, not values derived from the function under test \u2014 good adherence to \"write the literal.\"\n- The drafts-gap test's assertions (`outcome == \"gap\"`, `withheld_draft == 3`, `hit_count == 0`) do trace back to its name and would catch a broken draft-gap mapping.",
+  "ttft_ms": 36210,
+  "type": "result",
+  "duration_ms": 46954,
+  "uuid": "cac55d62-018f-46af-9314-1aefe2c18ec9",
+  "ttft_stream_ms": 920,
+  "time_to_request_ms": 245,
+  "first_content_frame_ms": 920,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

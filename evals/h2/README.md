@@ -135,4 +135,88 @@ is what makes a run reproducible from the manifest alone.
 
 ## Verdict
 
-Not run yet.
+**The hypothesis does not hold. The rubric does not buy recall, and it costs
+2.6x.** Run `runs/20260920T102010Z`, `claude-sonnet-5`, k=3, 14 defects, 24
+attempts, no harness errors.
+
+| arm | recall | false positives per attempt | decoy hits | precision | cost |
+|---|---|---|---|---|---|
+| A, prose | **0.72** | 0.50 | 1 | 0.83 | $0.56 |
+| B, rubric | 0.67 | 0.33 | 0 | 0.87 | $1.43 |
+
+Paired by (artifact, repeat), the rubric is 0.049 *behind* on recall, sd 0.330
+over 12 pairs: B wins 2, ties 6, A wins 4. That is not a rubric that loses, it
+is a difference the experiment cannot resolve from noise. The honest reading is
+**no measurable difference in recall, at 2.6x the price**.
+
+This is the kill condition as written: "if the prose arm finds the same defects
+at comparable cost, the rubric is ceremony." The prose arm found the same
+defects at *lower* cost.
+
+### What the rubric did buy
+
+Not nothing, and not what the hypothesis claimed:
+
+- **Precision 0.87 against 0.83**, and it flagged none of the three decoys while
+  the prose arm flagged one. The rubric's "what does NOT count" carve-outs
+  appear to do their job.
+- **Closure.** Every standard came back with an explicit verdict, so a dropped
+  item is detectable. The prose arm simply omits what it did not consider, and
+  nothing distinguishes that from a clean bill.
+
+Closure is the epic's "single most valuable change here", and **H2 did not test
+it**. Recall was the claim on trial. A verdict-accounting mechanism that costs
+2.6x and finds no more defects is a different proposition from a rubric that
+reads better, and it should be argued on its own terms rather than rescued by
+this result.
+
+### Where the two arms actually disagreed
+
+Per-rule recall, which matters because the defects are not evenly spread:
+
+| rule | defects | arm A | arm B |
+|---|---|---|---|
+| t1 expected value from code under test | 2 | 1.00 | 0.83 |
+| t2 can fail for the reason its name gives | 5 | 0.33 | 0.27 |
+| t3 situation, not a function call | 2 | 0.67 | **1.00** |
+| t4 hermetic | 3 | 1.00 | 1.00 |
+| t5 sweep, do not enumerate | 2 | **1.00** | 0.50 |
+
+Two splits carry almost the whole difference and they point opposite ways. The
+rubric took t3 3/3 where prose managed 1/3: naming quality is exactly the kind
+of rule a locator ("every `#[test]` function's name") aims attention at. It lost
+t5 entirely on `a2-d1`, the pre-existing guardrail that enumerates five attribute
+names, which prose caught 3/3.
+
+**The hermeticity pair worked as designed.** `a4-d2` is a real `std::env::var`
+violation and `a1-x1` is the opt-in env-gated exception t4 carves out in its own
+text; the two are lexically near-identical. Both arms called the violation 3/3
+and neither called the exception. Neither arm was pattern-matching on
+vocabulary, which is the most reassuring single fact in the run.
+
+### What this does not establish
+
+- **One model, one k, 14 defects.** `claude-sonnet-5` only. A rubric is an
+  instruction competing for a given model's attention, and the activation suite
+  already found two models disagreeing in opposite directions on one prompt.
+- **t2 is 5 of 14 defects and both arms are bad at it** (0.33 and 0.27). The
+  aggregate is partly a statement about t2. Three of its five defects argue from
+  confounding rather than from "this assertion can never fail", and both arms
+  missed `a3-d2` and `a3-d4` 0/3.
+- **The rubric is one author's rubric.** A stronger one may exist. It was written
+  blind and machine-checked against the standards text, which is the best
+  available guard, not a proof.
+- **Artifacts are Rust test code judged against testing standards.** Another
+  domain may behave differently.
+
+### Recommendation
+
+Do not build the judgment half on the strength of H2. Specifically: drop
+`judgment` checks from #29's schema, drop the judgment half of #30's lint gate,
+and drop the `Stop`-hook continuation, which exists only to collect judgment
+verdicts and is the friction the epic already flagged as revisitable. The
+decidable half is untouched by this result: it produces facts, needs no model,
+and was never what H2 questioned.
+
+If the judgment half is kept anyway, keep it for closure and argue *that*, with
+its own measurement. Do not cite H2 as support.

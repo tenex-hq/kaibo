@@ -1,0 +1,905 @@
+[
+  {
+    "claim": "The test asserts expected values using to_jsonl(), the same serialization path append uses internally, so a bug in to_jsonl would make both sides of the comparison wrong identically and the test would stay green, meaning it only proves append doesn't corrupt whatever to_jsonl produces rather than proving the content is correct.",
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": null,
+    "cited_rule": "expected value derived from code under test",
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 1,
+    "src": "A-a1.rs-r1#0"
+  },
+  {
+    "claim": "The assertion checks a path (blocker.join(\"trail.jsonl\")) that can never exist on any filesystem since blocker is a regular file, so the assertion is guaranteed to pass even if append leaves a stray partial file elsewhere (e.g., a temp file from a write-then-rename strategy), meaning the test doesn't actually exercise the \"no partial file\" guarantee its name promises.",
+    "fn": "a_failed_write_leaves_no_partial_file_behind_for_a_reader_to_trip_over",
+    "lines": null,
+    "cited_rule": "test can't fail for its stated reason",
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 1,
+    "src": "A-a1.rs-r1#1"
+  },
+  {
+    "claim": "The assertions compare the actual output against event(...).to_jsonl(), and since to_jsonl() is the same serialization path append presumably calls internally, this checks that append and to_jsonl agree with each other rather than that either produces a correct or stable line, so a bug in to_jsonl() (wrong field order, dropped field, wrong timestamp format) would leave this test green forever.",
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": [
+      54,
+      55
+    ],
+    "cited_rule": "expected value computed from code under test",
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 2,
+    "src": "A-a1.rs-r2#0"
+  },
+  {
+    "claim": "The test name bakes the function name 'append' and the return type 'TrailWrite::Failed' into the name instead of describing a situation, unlike every other test in the file, and will need renaming the moment either identifier moves even though the underlying scenario hasn't changed.",
+    "fn": "append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file",
+    "lines": null,
+    "cited_rule": "test name names the function and the return type, not a situation",
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 2,
+    "src": "A-a1.rs-r2#1"
+  },
+  {
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": [
+      0,
+      1
+    ],
+    "claim": "The test asserts lines[0] and lines[1] against event(\"first question\").to_jsonl() and event(\"second question\").to_jsonl(), the same serialization path used to produce the data, so if to_jsonl() is internally consistent but wrong (bad field order, wrong timestamp encoding, corrupted escaping), the test still passes; it should instead assert against a literal JSON string or parsed fields with literal expected values.",
+    "cited_rule": "expected value never comes from code under test",
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 3,
+    "src": "A-a1.rs-r3#0"
+  },
+  {
+    "fn": "a_long_run_of_appends_leaves_one_line_per_invocation_and_no_torn_record",
+    "lines": null,
+    "claim": "The test's opt-in guard is implemented as \"if var not set { return }\" inside the test rather than #[ignore], which makes the test silently pass (not skip) when run normally, so CI reports green with zero assertions executed, and a reader running cargo test sees \"test result: ok\" with no indication the body never ran.",
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 3,
+    "src": "A-a1.rs-r3#1"
+  },
+  {
+    "claim": "The caller() helper reads real ambient state via stdout_tty: std::io::stdout().is_terminal(), so the same test run behaves differently depending on whether it's invoked in a terminal or piped (e.g., in CI vs. interactively), breaking hermeticity.",
+    "fn": "caller",
+    "lines": null,
+    "cited_rule": "hermeticity",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "A-a2.rs-r1#0"
+  },
+  {
+    "claim": "The caller() helper's build_profile: if cfg!(debug_assertions) {...} field also breaks hermeticity because the fixture value flips depending on how the binary was compiled.",
+    "fn": "caller",
+    "lines": null,
+    "cited_rule": "hermeticity",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "A-a2.rs-r1#1"
+  },
+  {
+    "claim": "Neither the stdout_tty nor build_profile ambient values in caller() are gated behind an opt-in env var.",
+    "fn": "caller",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "A-a2.rs-r1#2"
+  },
+  {
+    "claim": "Because caller() is a shared helper used by every test in the file, the hermeticity exposure from stdout_tty and build_profile is systemic, not isolated to one test.",
+    "fn": "caller",
+    "lines": null,
+    "cited_rule": "hermeticity",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "A-a2.rs-r1#3"
+  },
+  {
+    "claim": "The test no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured enumerates a fixed list of forbidden attribute names instead of sweeping the event schema, which is the enumeration antipattern, asserting a property of the five-item list rather than of the schema.",
+    "fn": "no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured",
+    "lines": null,
+    "cited_rule": "enumeration antipattern",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "A-a2.rs-r1#4"
+  },
+  {
+    "claim": "A sixth forbidden field (e.g. kaibo.engagement_score) added later would escape the enumeration in no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured silently, and the test would keep passing while the hole it exists to close is open.",
+    "fn": "no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "A-a2.rs-r1#5"
+  },
+  {
+    "claim": "The function name from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census is built around the function under test (from_query sets X) rather than a scenario, and it will need rewriting the moment from_query is renamed or the mapping logic moves.",
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "A-a2.rs-r1#6"
+  },
+  {
+    "claim": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census adds little value because, with a fully-default census (all zeros), it re-asserts the same 'gap' mapping as the first test but with a degenerate, non-narrative fixture.",
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "A-a2.rs-r1#7"
+  },
+  {
+    "claim": "Since outcome is set directly by the test via the QueryOutcome::NoHits variant rather than derived from the census, from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census doesn't actually exercise any census-dependent behavior, making it redundant with the first test.",
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "A-a2.rs-r1#8"
+  },
+  {
+    "claim": "The loop only iterates over keys that already passed starts_with(\"kaibo.\"), so the first assertion (!key.starts_with(\"otel.\")) is tautologically true for every element the filter admits and can never fire, no matter what the code does.",
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": null,
+    "cited_rule": "must be able to fail for the reason its name gives",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#0"
+  },
+  {
+    "claim": "The second assertion (key.starts_with(\"kaibo.\") || key.starts_with(\"process.\")) is likewise vacuous since the filter guarantees starts_with(\"kaibo.\").",
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": null,
+    "cited_rule": "must be able to fail for the reason its name gives",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#1"
+  },
+  {
+    "claim": "The filter excludes the exact keys the test claims to police: if Event::from_query ever emitted an attribute under otel. or with no namespace at all, this test would never see it, because it never inspects any key outside the kaibo. prefix.",
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": null,
+    "cited_rule": "must be able to fail for the reason its name gives",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#2"
+  },
+  {
+    "claim": "The name embeds from_query, the function under test, rather than describing what's being verified.",
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#3"
+  },
+  {
+    "claim": "It duplicates the situation already covered by a_gap_whose_pages_were_all_withheld_as_drafts_is_readable_as_such (same outcome, different census), just with an all-zero census, and should instead be named for what's distinct about it.",
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#4"
+  },
+  {
+    "claim": "caller() queries the actual test-runner's stdout (std::io::stdout().is_terminal()) rather than injecting a fixed value, violating the rule that no test touches ambient state.",
+    "fn": "caller",
+    "lines": null,
+    "cited_rule": "no test touches ambient state",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#5"
+  },
+  {
+    "claim": "Whether cargo test is run interactively, piped, or under CI changes the stdout_tty field's value across otherwise-identical runs, and while nothing currently asserts on it, it is a latent flakiness source and an implicit environment coupling that the hermeticity standard calls out.",
+    "fn": "caller",
+    "lines": null,
+    "cited_rule": "hermeticity standard",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#6"
+  },
+  {
+    "claim": "The forbidden-attribute enumeration (a for loop over a literal list of five attribute names) asserts a property of the list, not of the event, so a sixth ill-advised attribute added later would escape silently, which has the same shape as the anti-pattern the sweep standard flags.",
+    "fn": null,
+    "lines": null,
+    "cited_rule": "sweep standard",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#7"
+  },
+  {
+    "claim": "The test is vacuous because the filter already restricts the loop to keys where key.starts_with(\"kaibo.\"), making both assertions inside the loop tautologies that can never fail.",
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": null,
+    "cited_rule": "every test must be able to fail for the reason its name gives",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "A-a2.rs-r3#0"
+  },
+  {
+    "claim": "An attribute literally named otel.something, the exact violation the test's name promises to catch, is excluded from the loop before it can be checked, so the test passes today, would pass after the namespacing logic is deleted, and would pass even if the code started emitting bare otel.* keys.",
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": null,
+    "cited_rule": "every test must be able to fail for the reason its name gives",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "A-a2.rs-r3#1"
+  },
+  {
+    "claim": "The test checks a hardcoded blocklist of five strings, so a sixth attribute that implies usefulness added later would escape silently while the test keeps reporting success.",
+    "fn": "no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured",
+    "lines": null,
+    "cited_rule": "sweep, don't enumerate",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "A-a2.rs-r3#2"
+  },
+  {
+    "claim": "The test is named after the function under test and its return value rather than a situation.",
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "A-a2.rs-r3#3"
+  },
+  {
+    "claim": "The test duplicates the first test's scenario (a no-hits gap) with a different census, so it reads as filler coverage rather than a distinct case.",
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "A-a2.rs-r3#4"
+  },
+  {
+    "claim": "The stdout_tty field reads real ambient state (whether the test binary's stdout happens to be a TTY) instead of injecting a fixed value, making it a landmine where any future test asserting on Caller/stdout_tty would pass or fail based on how the suite is invoked rather than on the code.",
+    "fn": "caller",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "A-a2.rs-r3#5"
+  },
+  {
+    "claim": "In healthy_fixture, last_commit is computed from real SystemTime::now() - 60 rather than from the injected FixedClock, so the test touches ambient state.",
+    "fn": "healthy_fixture",
+    "lines": null,
+    "cited_rule": "no test touches ambient state",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 1,
+    "src": "A-a3.rs-r1#0"
+  },
+  {
+    "claim": "Because last_commit is derived from the real wall clock while NOW_EPOCH is fixed at Nov 2023, the fixture feeds the code a commit that is effectively 60 seconds in the future relative to the code's notion of now, which is a fixture bug if DomainsVerb does any recency comparison between last-commit time and the injected clock.",
+    "fn": "healthy_fixture",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 1,
+    "src": "A-a3.rs-r1#1"
+  },
+  {
+    "claim": "Both tests inherit the healthy_fixture clock inconsistency, so both are exposed to it.",
+    "fn": null,
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 1,
+    "src": "A-a3.rs-r1#2"
+  },
+  {
+    "claim": "In lists_every_domain_with_owner_topics_and_summary, the assertion assert_eq!(names, rendered) compares two values (names from report.render_json() and rendered from report.outcome) that are both views of the same computed report, so it only proves the JSON serializer agrees with the struct it serializes and doesn't pin either against an expectation; if both paths shared a bug (e.g. both silently drop a domain, or both reorder), the assertion would stay green.",
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 1,
+    "src": "A-a3.rs-r1#3"
+  },
+  {
+    "claim": "The assertion checks that the JSON serialization agrees with the struct that produced it, which is self-consistency, because `rendered` is pulled from `report.outcome` (the output of the function under test) rather than a literal, so a bug that renders both wrong the same way stays green.",
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": null,
+    "cited_rule": "self-consistency",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 2,
+    "src": "A-a3.rs-r2#0"
+  },
+  {
+    "claim": "The `healthy_fixture` fixture computes `last_commit` from the real wall clock (SystemTime::now()) instead of from the injected FixedClock pinned to NOW_EPOCH, making the two time sources inconsistent by construction (last commit ends up years after the injected 'now'), which will cause failures or misbehavior if staleness/freshness logic against the clock is ever added.",
+    "fn": "healthy_fixture",
+    "lines": null,
+    "cited_rule": "no test touches ambient state",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 2,
+    "src": "A-a3.rs-r2#1"
+  },
+  {
+    "claim": "healthy_fixture reads the real wall clock via SystemTime::now() instead of using the file's own now() helper that returns the fixed NOW_EPOCH, so the git-commit fixture data is generated from actual wall-clock time rather than the frozen instant the verb sees, making the test's behavior depend on real-world timing and potentially fail non-deterministically or pass for the wrong reason.",
+    "fn": "healthy_fixture",
+    "lines": null,
+    "cited_rule": "Hermeticity violation",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 3,
+    "src": "A-a3.rs-r3#0"
+  },
+  {
+    "claim": "In lists_every_domain_with_owner_topics_and_summary, the expected value (names) and the actual value (rendered) are both derived from the same report produced by the call under test, so the assertion only checks that two output representations agree with each other rather than against a literal expected value, meaning a bug that corrupts domain names identically on both paths would leave the assertion green.",
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": null,
+    "cited_rule": "Self-consistency assertion",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 3,
+    "src": "A-a3.rs-r3#1"
+  },
+  {
+    "claim": "The test named lists_every_domain_with_owner_topics_and_summary also asserts on render_text substrings and render_json structure, none of which is implied by the test's name, so if text rendering breaks the test fails for a reason a reader wouldn't expect from the name.",
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": null,
+    "cited_rule": "Scope smell",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 3,
+    "src": "A-a3.rs-r3#2"
+  },
+  {
+    "claim": "The test reads the real HOME env var and builds a path under it (~/.kaibo-absent-clone) instead of using a tempfile dir that's simply never created, touching ambient state by depending on HOME being set and on that specific path not existing on the machine running it.",
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": null,
+    "cited_rule": "Hermeticity violation",
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "src": "A-a4.rs-r1#0"
+  },
+  {
+    "claim": "The test uses the argument \"../nowhere.md\", the same class of clone-escaping path exercised in the previous test, so it claims to check that a nonexistent-but-in-clone file is rejected as invalid but the fixture never actually stays inside the clone, meaning it would keep passing on path-escape detection alone even if existence-checking were deleted from the code entirely.",
+    "fn": "a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "src": "A-a4.rs-r1#1"
+  },
+  {
+    "claim": "The test's name makes a universal claim (\"every rule\") but it only checks two hardcoded rule_ids (\"frontmatter-contract\", \"tags-kebab-case\"), so a third rule added later that fires with an empty path would escape this test silently.",
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": null,
+    "cited_rule": "list of three functions",
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "src": "A-a4.rs-r1#2"
+  },
+  {
+    "claim": "This test reads the real HOME environment variable and builds a path under the actual home directory, which violates hermeticity.",
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": null,
+    "cited_rule": "hermeticity",
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "src": "A-a4.rs-r2#0"
+  },
+  {
+    "claim": "The test panics on any machine/container where HOME is unset, and depends on ~/.kaibo-absent-clone never existing on the machine running the test, which is an assumption about ambient state rather than something the test controls.",
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "src": "A-a4.rs-r2#1"
+  },
+  {
+    "claim": "This test can't fail for the reason it names, because ../nowhere.md also leaves the clone, which is exactly the condition already covered by the previous test (a_path_argument_that_leaves_the_clone_by_any_route...), so if the code rejects it purely because it's outside the clone (checked before existence), this test stays green even if nonexistent-but-in-bounds handling were deleted entirely.",
+    "fn": "a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "src": "A-a4.rs-r2#2"
+  },
+  {
+    "claim": "This test enumerates instead of sweeping, listing two rule IDs by name and checking only those, which is the guardrail pattern the standards specifically warn against; a third rule added later that fires without naming its file would escape this test silently even though the test's name claims to cover 'every rule.'",
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "src": "A-a4.rs-r2#3"
+  },
+  {
+    "claim": "The test reads the real HOME environment variable, which is a hermeticity violation touching ambient environment state.",
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": null,
+    "cited_rule": "no test touches ambient state... Environment [is] injected",
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "A-a4.rs-r3#0"
+  },
+  {
+    "claim": "The test calls .unwrap() on the HOME variable, so it fails outright on any machine/CI where that variable isn't set.",
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "A-a4.rs-r3#1"
+  },
+  {
+    "claim": "The test's correctness silently depends on ~/.kaibo-absent-clone never existing on the machine running it.",
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "A-a4.rs-r3#2"
+  },
+  {
+    "claim": "The test's name makes a universal claim ('every rule') but the check only looks at two hardcoded rule IDs, so a third rule added later that fires without naming its file escapes this test entirely.",
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": null,
+    "cited_rule": "sweep, don't enumerate",
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "A-a4.rs-r3#3"
+  },
+  {
+    "claim": "Test names like a_missing_clone_exits_4_stale_not_a_gap, an_empty_corpus_exits_3_..., and exit_2_as_bad_input claim specific numeric process exit codes, but every assertion compares against the ExitCode enum variant, not the literal integer, so if the enum-to-process-exit-code mapping ever changes, these tests stay green while the name's claim goes false.",
+    "fn": null,
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "A-a4.rs-r3#4"
+  },
+  {
+    "claim": "The expected side of the assertion calls Event::to_jsonl, the same serialization the trail module uses to produce the line under test, making it a self-consistency issue.",
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": [
+      54
+    ],
+    "cited_rule": "t1",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 1,
+    "src": "B-a1.rs-r1#0"
+  },
+  {
+    "claim": "The expected side of the assertion calls to_jsonl() from the trail module under test to produce the expectation at run time, the same self-consistency issue as the prior line.",
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": [
+      55
+    ],
+    "cited_rule": "t1",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 1,
+    "src": "B-a1.rs-r1#1"
+  },
+  {
+    "claim": "The test's name leads with the callee `append` and the mechanical shape of its return variant `TrailWrite::Failed`, matching the forbidden `*_returns_*` shape.",
+    "fn": "append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file",
+    "lines": [
+      73
+    ],
+    "cited_rule": "t3",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 1,
+    "src": "B-a1.rs-r1#2"
+  },
+  {
+    "claim": "In a_second_invocation_appends_and_leaves_the_first_line_intact, the expected value at line 54 (lines[0]) is produced by calling event(\"first question\").to_jsonl(), the same serialization the code under test (append) uses, making the assertion self-consistent rather than a check against a written literal.",
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": [
+      54
+    ],
+    "cited_rule": "t1",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 2,
+    "src": "B-a1.rs-r2#0"
+  },
+  {
+    "claim": "In a_second_invocation_appends_and_leaves_the_first_line_intact, the expected value at line 55 (lines[1]) is produced by calling event(\"second question\").to_jsonl(), the same self-consistency issue as line 54.",
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": [
+      55
+    ],
+    "cited_rule": "t1",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 2,
+    "src": "B-a1.rs-r2#1"
+  },
+  {
+    "claim": "The test name append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file names the callee (append) and the mechanical shape of its return (TrailWrite::Failed) as the subject of the name, rather than leading with the situation, so renaming append would break it.",
+    "fn": "append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file",
+    "lines": [
+      73
+    ],
+    "cited_rule": "t3",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 2,
+    "src": "B-a1.rs-r2#2"
+  },
+  {
+    "claim": "The expected side of the assertion calls Event::to_jsonl(), the same serialization the crate under test presumably uses to produce the line, so the expected value does not come independently from the code under test; this pattern repeats on the next line.",
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": [
+      55,
+      56
+    ],
+    "cited_rule": "t1",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 3,
+    "src": "B-a1.rs-r3#0"
+  },
+  {
+    "claim": "Because the trail's parent is a regular file, the OS refuses file creation unconditionally, so no cleanup mechanism is ever exercised and the assertion holds regardless, meaning the test cannot fail for the reason its name gives.",
+    "fn": "a_failed_write_leaves_no_partial_file_behind_for_a_reader_to_trip_over",
+    "lines": [
+      103
+    ],
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 3,
+    "src": "B-a1.rs-r3#1"
+  },
+  {
+    "claim": "The test's name is built around the callee 'append' and the mechanical shape of its return variant 'TrailWriteFailed', rather than describing a situation.",
+    "fn": "append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file",
+    "lines": [
+      74
+    ],
+    "cited_rule": "t3",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 3,
+    "src": "B-a1.rs-r3#2"
+  },
+  {
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": [
+      126
+    ],
+    "claim": "The filter pre-restricts to keys already starting with \"kaibo.\", so both inner asserts are tautologically true and can never catch an otel-prefixed leak.",
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "B-a2.rs-r1#0"
+  },
+  {
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": [
+      74
+    ],
+    "claim": "The test name is built around the callee `from_query` and the mechanical field it sets, not a situation, and breaks if the function is renamed.",
+    "cited_rule": "t3",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "B-a2.rs-r1#1"
+  },
+  {
+    "fn": "caller",
+    "lines": [
+      17
+    ],
+    "claim": "The test reads the real process's stdout terminal attachment instead of an injected environment value, and this is used by every test via caller().",
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "B-a2.rs-r1#2"
+  },
+  {
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": [
+      74
+    ],
+    "claim": "The test name is built around \"from_query\", the callee (Event::from_query), rather than a situation, and would misname after a rename.",
+    "cited_rule": "t3",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "B-a2.rs-r2#0"
+  },
+  {
+    "fn": "caller",
+    "lines": [
+      17
+    ],
+    "claim": "The test reads real process stdout tty state instead of an injected value, and this is used by every test via caller().",
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "B-a2.rs-r2#1"
+  },
+  {
+    "claim": "The test name's subject is the callee \"from_query\" itself (\"from_query sets kaibo.outcome...\"), so it breaks if that function is renamed.",
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": [
+      63
+    ],
+    "cited_rule": "t3 \u2014 test describes a situation, not a function call",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "B-a2.rs-r3#0"
+  },
+  {
+    "claim": "The caller helper reads the real process's stdout terminal state instead of an injected value, and this helper backs every test in the file.",
+    "fn": "caller",
+    "lines": [
+      13
+    ],
+    "cited_rule": "t4 \u2014 tests are hermetic by default",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "B-a2.rs-r3#1"
+  },
+  {
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": [
+      111
+    ],
+    "claim": "The expected value `rendered` is extracted from `report.outcome`, the output of the `gather()` call under test, rather than being a hand-written literal.",
+    "cited_rule": "t1",
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 1,
+    "src": "B-a3.rs-r1#0"
+  },
+  {
+    "fn": "healthy_fixture",
+    "lines": [
+      35
+    ],
+    "claim": "The fixture reads the real wall clock via `SystemTime::now()` instead of using the injected FixedClock already used elsewhere, and both tests call this helper.",
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 1,
+    "src": "B-a3.rs-r1#1"
+  },
+  {
+    "claim": "In lists_every_domain_with_owner_topics_and_summary, `assert_eq!(names, rendered);` compares two values that both derive from the code-under-test output rather than comparing against a literal.",
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": [
+      111
+    ],
+    "cited_rule": "t1",
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 2,
+    "src": "B-a3.rs-r2#0"
+  },
+  {
+    "claim": "In healthy_fixture, `let last_commit = SystemTime::now()` reads the real wall clock to build fixture data instead of using the FixedClock already injected elsewhere in the test.",
+    "fn": "healthy_fixture",
+    "lines": [
+      35
+    ],
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 2,
+    "src": "B-a3.rs-r2#1"
+  },
+  {
+    "claim": "Both names and rendered are derived from report, the gather() output under test; neither side is a written literal.",
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": [
+      111
+    ],
+    "cited_rule": "t1",
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 3,
+    "src": "B-a3.rs-r3#0"
+  },
+  {
+    "claim": "healthy_fixture reads the real wall clock instead of the injected FixedClock, and both tests call it.",
+    "fn": "healthy_fixture",
+    "lines": [
+      35
+    ],
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 3,
+    "src": "B-a3.rs-r3#1"
+  },
+  {
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": [
+      142
+    ],
+    "claim": "The test's name claims each rule names the file it fired on, but the check only verifies non-emptiness of the path, not that the path matches the file that actually triggered that rule.",
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "src": "B-a4.rs-r1#0"
+  },
+  {
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": [
+      26
+    ],
+    "claim": "The test reads the real process environment variable HOME instead of an injected environment, making it depend on the host machine's home directory.",
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "src": "B-a4.rs-r1#1"
+  },
+  {
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": [
+      136
+    ],
+    "claim": "The test's name claims a universal property of every firing rule, but it only examines two hard-coded rule ids instead of sweeping the discovered violations list.",
+    "cited_rule": "t5",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "src": "B-a4.rs-r1#2"
+  },
+  {
+    "fn": "a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap",
+    "lines": [
+      78
+    ],
+    "claim": "The argument uses the same '..'-escape shape already proven to trigger InvalidPath in the prior test, so it can't isolate a non-existence check from the escape check.",
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "src": "B-a4.rs-r2#0"
+  },
+  {
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": [
+      143
+    ],
+    "claim": "The test's name claims each rule names the file it fired on, but the assertion only checks non-emptiness, not that the path matches the actual written file.",
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "src": "B-a4.rs-r2#1"
+  },
+  {
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": [
+      26
+    ],
+    "claim": "The test reads the real process environment and builds a path under the real home directory instead of an injected environment/temp root.",
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "src": "B-a4.rs-r2#2"
+  },
+  {
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": [
+      137
+    ],
+    "claim": "The test's name claims 'every rule' but the checked population is a hard-coded 2-item list, not discovered from the rule registry, so a new rule escapes silently.",
+    "cited_rule": "t5",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "src": "B-a4.rs-r2#3"
+  },
+  {
+    "claim": "The test name claims each rule names the file it fired on, but the body only checks that the path is non-empty, not that the path matches the file that actually triggered it.",
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": [
+      121
+    ],
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "B-a4.rs-r3#0"
+  },
+  {
+    "claim": "The argument \"../nowhere.md\" also escapes the clone the same way the three arguments in the adjacent traversal test do, so this test could pass via the escape check alone and never exercises a distinct 'nonexistent file' mechanism.",
+    "fn": "a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap",
+    "lines": [
+      88
+    ],
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "B-a4.rs-r3#1"
+  },
+  {
+    "claim": "The test reads the real process environment variable HOME instead of an injected Environment, so the test's behavior depends on the machine it runs on.",
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": [
+      34
+    ],
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "B-a4.rs-r3#2"
+  },
+  {
+    "claim": "The test claims to check 'every rule that fires' but obtains that set from a hardcoded id list instead of iterating the produced violations, so a third rule that fires in this fixture is never checked.",
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": [
+      120
+    ],
+    "cited_rule": "t5",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "B-a4.rs-r3#3"
+  }
+]
