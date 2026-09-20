@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 134623,
+  "stop_reason": "end_turn",
+  "session_id": "a2d40d19-0f85-4a69-b04c-b6ed67896e2d",
+  "total_cost_usd": 0.08641679999999999,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 13458,
+    "output_tokens": 15011,
+    "output_tokens_details": {
+      "thinking_tokens": 13463
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 15011,
+        "cache_read_input_tokens": 13458,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 9956,
+      "outputTokens": 15023,
+      "cacheReadInputTokens": 13458,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.08641679999999999,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 13463,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "I'll examine each standard against the artifact methodically.\n\n## t1 - Expected values from code under test\n\nScanning assertions for expected values:\n\n- Line 24: `TrailWrite::Written` - literal enum variant, compliant per rule (a)\n- Lines 38-39: `event(\"first question\").to_jsonl()` and `event(\"second question\").to_jsonl()`\n  - The expected values are computed, but NOT by calling the code under test (`append`)\n  - Instead, they're computed by `event()` (a test helper) and `.to_jsonl()` (Event method)\n  - This is a round-trip pattern: literal inputs \u2192 helper constructs data \u2192 `append` preserves it \u2192 verify against same construction\n  - Per rule (d), round-trip assertions are compliant when the literal inputs anchor the test\n  - The literal inputs are \"first question\" and \"second question\"\n  - Verdict: **compliant** - expected values are not computed by calling the code under test\n\nAll other assertions (lines 44, 57, 65, 80-81) use literals or check relations.\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"<file>\" },\n      \"reason\": \"Expected values are literals or are computed by helpers, not the code under test.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t2 - Tests fail for their named reason\n\nChecking if each test would fail if its mechanism were removed:\n\n- `the_first_write_creates_the_workspace_directory_it_needs` - would fail without directory creation \u2713\n- `a_second_invocation_appends_and_leaves_the_first_line_intact` - would fail if append didn't preserve earlier content \u2713\n- `every_record_is_terminated_so_the_next_one_starts_a_new_line` - would fail without newline termination \u2713\n- `append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file` - would fail without blocked-path handling \u2713\n- `a_failed_write_leaves_no_partial_file_behind_for_a_reader_to_trip_over` - would fail if partial files were left \u2713\n- `a_long_run_of_appends_leaves_one_line_per_invocation_and_no_torn_record` - properly gated; would fail without correct append behavior \u2713\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"<file>\" },\n      \"reason\": \"Each test would fail if its named mechanism were removed or inverted.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t3 - Tests describe situations, not function calls\n\nExamining test names:\n\n- `the_first_write_creates_the_workspace_directory_it_needs` - describes situation \u2713\n- `a_second_invocation_appends_and_leaves_the_first_line_intact` - describes situation \u2713\n- `every_record_is_terminated_so_the_next_one_starts_a_new_line` - describes situation \u2713\n- `append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file` - **names the callee and describes the mechanical return shape** \u2717\n  - Matches the pattern `*_returns_*`, making the function call and return type the subject\n  - Would require renaming if `append` is refactored\n  - Should describe: \"blocked_parent_prevents_write\" or \"unwritable_parent_causes_failure\"\n- `a_failed_write_leaves_no_partial_file_behind_for_a_reader_to_trip_over` - describes situation \u2713\n- `a_long_run_of_appends_leaves_one_line_per_invocation_and_no_torn_record` - describes situation \u2713\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file\",\n        \"line\": 48\n      },\n      \"reason\": \"Name centers on function and return type, not the situation; would require renaming if implementation refactors.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t4 - Tests are hermetic\n\nScanning for non-hermetic behavior:\n\n- All filesystem operations use `tempfile::tempdir()` \u2713\n- No network calls \u2713\n- No real subprocesses \u2713\n- No wall-clock reads in test code (timestamp `1_700_000_000_000` is a fixed literal passed as argument) \u2713\n- One environment variable read: `KAIBO_TRAIL_SOAK` is gated with `is_none()` check, making the test inert unless set \u2713\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"<file>\" },\n      \"reason\": \"All filesystem operations rooted in tempfile; environment gate is inert by default.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t5 - Guardrail tests sweep\n\nThis artifact contains no guardrail tests. Each test is a unit test of `append()` with specific conditions, not a test asserting properties over an open-ended population (like \"all functions should\u2026\" or \"every file in a tree should\u2026\").\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"not_applicable\",\n      \"span\": { \"function\": \"<file>\" },\n      \"reason\": \"Artifact contains only unit tests of append(), not guardrail tests over open-ended populations.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 121356,
+  "type": "result",
+  "duration_ms": 133910,
+  "uuid": "4ee1d2fa-985a-467d-ad08-953240305bf0",
+  "ttft_stream_ms": 1042,
+  "time_to_request_ms": 259,
+  "first_content_frame_ms": 1042,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

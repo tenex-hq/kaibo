@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 25441,
+  "stop_reason": "end_turn",
+  "session_id": "e6ce69e5-962b-4e38-aad1-a2089e6ee7b1",
+  "total_cost_usd": 0.029419999999999998,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 6244,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 2826,
+    "output_tokens_details": {
+      "thinking_tokens": 2492
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 6244,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 2826,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 6244,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6244
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2742,
+      "outputTokens": 2838,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 6244,
+      "webSearchRequests": 0,
+      "costUSD": 0.029419999999999998,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 2492,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Issues found\n\n### 1. Non-hermetic: `caller()` reads ambient state\n\nThe `caller()` function calls `std::io::stdout().is_terminal()`, which depends on whether tests run in a TTY. Tests using `caller()` will pass or fail differently in CI, an IDE, or a terminal. All four test functions depend on it.\n\n**Fix**: Inject the TTY state, don't read it. Make `caller()` accept a parameter or construct `Caller` directly in tests with a fixed `stdout_tty` value.\n\n### 2. Enumeration guardrail: `no_attribute_claims_...()`\n\nThe test lists five forbidden attributes by name. If someone adds a sixth forbidden attribute (e.g., `kaibo.useful_score`), the test stays green. It should scan the actual code for what attributes get set and verify none of them are in a property-based forbidden set, rather than hardcoding a list.\n\n### 3. Logic error: `every_custom_attribute_is_namespaced_...()`\n\nThe loop filters for keys starting with `\"kaibo.\"`, then asserts they start with `\"kaibo.\"` or `\"process.\"`. Since the filter ensures they already start with `\"kaibo.\"`, the second assertion always passes and doesn't verify non-kaibo attributes are valid. The intent seems to be checking *all* attributes, not just kaibo ones\u2014remove the filter and adjust the logic accordingly.",
+  "ttft_ms": 21026,
+  "type": "result",
+  "duration_ms": 24622,
+  "uuid": "1b168f63-fda3-4447-a8fb-3a334fadc7c6",
+  "ttft_stream_ms": 2005,
+  "time_to_request_ms": 358,
+  "first_content_frame_ms": 2006,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

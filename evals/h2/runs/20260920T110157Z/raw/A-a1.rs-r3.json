@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 20204,
+  "stop_reason": "end_turn",
+  "session_id": "e51d3b72-8357-4f9e-b95f-d0ae4b6e73b0",
+  "total_cost_usd": 0.025932999999999998,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 5994,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 2232,
+    "output_tokens_details": {
+      "thinking_tokens": 1824
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 5994,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 2232,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 5994,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 5994
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2725,
+      "outputTokens": 2244,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 5994,
+      "webSearchRequests": 0,
+      "costUSD": 0.025932999999999998,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 1824,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Findings\n\n### Standard 1: Expected values must be literals\n**Violation in `a_second_invocation_appends_and_leaves_the_first_line_intact`**\n\nThe assertions compute expected values by calling the code under test:\n```rust\nassert_eq!(lines[0], event(\"first question\").to_jsonl());\nassert_eq!(lines[1], event(\"second question\").to_jsonl());\n```\n\nIf `to_jsonl()` is broken, these assertions will still pass\u2014the test is merely verifying self-consistency of the serialization, not that append behavior is correct. The expected JSON should be written as literals.\n\n### Standard 2: Every test must fail for its stated reason\n**Related violation in `a_second_invocation_appends_and_leaves_the_first_line_intact`**\n\nThe test name claims it verifies \"appends and leaves the first line intact,\" but because expected values come from the code under test, the test conflates append behavior with serialization correctness. A bug in `to_jsonl()` would cause this test to fail, even though append logic is sound. The test can't actually distinguish between a broken append and a broken serialization.\n\nTo fix: use literal JSON strings as expected values, and write a separate test with literals to verify serialization.\n\n### Standard 3: Minor\n**`append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file`** names the function call rather than the situation. Better: something like \"writing fails when a parent directory is actually a file\" (avoids mentioning `append_returns`).\n\n### Standards 4 & 5\nBoth met. Tests use `tempfile`, are hermetic, inject `Event` objects, and don't enumerate.",
+  "ttft_ms": 15599,
+  "type": "result",
+  "duration_ms": 19462,
+  "uuid": "8bd7865b-a6fb-42b3-98ca-7e7dd5f2554f",
+  "ttft_stream_ms": 1181,
+  "time_to_request_ms": 413,
+  "first_content_frame_ms": 1181,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

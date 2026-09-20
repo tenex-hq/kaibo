@@ -136,8 +136,10 @@ is what makes a run reproducible from the manifest alone.
 ## Verdict
 
 **The hypothesis does not hold. The rubric does not buy recall, and it costs
-2.6x.** Run `runs/20260920T102010Z`, `claude-sonnet-5`, k=3, 14 defects, 24
-attempts, no harness errors.
+2.6x to 3.3x.** Tested on two models; neither shows a recall difference. The
+primary run below is `runs/20260920T102010Z`, `claude-sonnet-5`, k=3, 14
+defects, 24 attempts, no harness errors. The replication on
+`claude-haiku-4-5-20251001` follows.
 
 | arm | recall | false positives per attempt | decoy hits | precision | cost |
 |---|---|---|---|---|---|
@@ -194,11 +196,62 @@ text; the two are lexically near-identical. Both arms called the violation 3/3
 and neither called the exception. Neither arm was pattern-matching on
 vocabulary, which is the most reassuring single fact in the run.
 
+## Replicated on a second model
+
+Run `20260920T110157Z`, `claude-haiku-4-5-20251001`, same truth set, same
+rubric, same k, same grader.
+
+| arm | recall | FP per attempt | precision | cost |
+|---|---|---|---|---|
+| A, prose | 0.59 | 0.33 | 0.86 | $0.30 |
+| B, rubric | 0.59 | 0.17 | 0.93 | $0.97 |
+
+Paired, the difference is **+0.000**, sd 0.207: B wins 3, ties 6, A wins 3. An
+exact tie, at 3.3x the cost.
+
+Haiku was chosen over a second strong model deliberately. A rubric is an
+instruction competing for a model's attention, so the strongest remaining case
+for it is that structure helps most where unaided reasoning is weakest. It does
+not. Both models land on no recall difference, and the cheaper model pays a
+*higher* multiple for it.
+
+### The per-rule signature replicates, which is the real finding
+
+| rule | sonnet A / B | haiku A / B |
+|---|---|---|
+| t1 expected value from code under test | 1.00 / 0.83 | 1.00 / 0.83 |
+| t2 can fail for the reason its name gives | 0.33 / 0.27 | 0.20 / 0.27 |
+| t3 situation, not a function call | 0.67 / **1.00** | 0.33 / **0.83** |
+| t4 hermetic | 1.00 / 1.00 | 0.89 / 0.89 |
+| t5 sweep, do not enumerate | **1.00** / 0.50 | **1.00** / 0.50 |
+
+Three rules give the same answer on both models to two decimal places, including
+t5 at exactly 1.00 against 0.50 twice. That is not two runs agreeing by luck: the
+effect is a property of the rubric, not of the model that read it.
+
+So the rubric is not uniformly neutral. It has a shape:
+
+- **It helps where attention is the problem.** t3 is judged entirely from test
+  function names, and a locator saying "every `#[test]` function's name" is
+  exactly the instruction a model reading prose forgets to follow. This is the
+  rubric's largest and most reliable win, and it is bigger on the weaker model
+  (+0.50) than on the stronger one (+0.33).
+- **It hurts where the rule needs a whole-artifact argument.** t5 asks whether a
+  guardrail enumerates rather than sweeps, which requires holding the entire
+  test in view and asking what it would miss. Both models lost exactly half of
+  t5 under the rubric. Decomposing that rule into located spans appears to break
+  the judgement it requires.
+- **It consistently buys precision**: 0.87 against 0.83, and 0.93 against 0.86.
+
+The honest summary is that a rubric is a way of *aiming* a model, and aiming is
+not free. It buys recall on rules whose evidence is local and costs recall on
+rules whose evidence is global. Averaged over a rule set, those cancel, which is
+precisely what both runs show.
+
 ### What this does not establish
 
-- **One model, one k, 14 defects.** `claude-sonnet-5` only. A rubric is an
-  instruction competing for a given model's attention, and the activation suite
-  already found two models disagreeing in opposite directions on one prompt.
+- **Two models, 14 defects, k=3.** Both are Anthropic models read by one
+  grader. A different vendor, or a much longer artifact, may behave differently.
 - **t2 is 5 of 14 defects and both arms are bad at it** (0.33 and 0.27). The
   aggregate is partly a statement about t2. Three of its five defects argue from
   confounding rather than from "this assertion can never fail", and both arms

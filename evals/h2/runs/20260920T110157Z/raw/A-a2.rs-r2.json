@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 25723,
+  "stop_reason": "end_turn",
+  "session_id": "2583f39c-6784-4ead-babb-af558f6f2d42",
+  "total_cost_usd": 0.0174214,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 6244,
+    "output_tokens": 2799,
+    "output_tokens_details": {
+      "thinking_tokens": 2396
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 2799,
+        "cache_read_input_tokens": 6244,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2742,
+      "outputTokens": 2811,
+      "cacheReadInputTokens": 6244,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0174214,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 2396,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Issues Found\n\n### 1. **Hermeticity violation in `caller()` helper**\nThe function calls `std::io::stdout().is_terminal()`, which reads ambient state. Every test using this helper is non-hermetic and will produce different results depending on whether it's run in a TTY. This should be injected as a parameter or tested separately.\n\n### 2. **Logic error in `every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix`**\nThe filter `key.starts_with(\"kaibo.\")` narrows the iteration, then the second assertion checks `key.starts_with(\"kaibo.\") || key.starts_with(\"process.\")`. This assertion always passes because keys already match the filter. A kaibo-prefixed key cannot start with `otel.`, so the first assertion is vacuous too.\n\nThe test name says \"every custom attribute\" but only checks kaibo-prefixed ones. The test should either:\n- Iterate all attributes and assert all are `kaibo.*` or `process.*` prefixed\n- Then separately check that kaibo-prefixed ones don't start with `otel.` (though this is impossible by definition)\n\n### 3. **Enumeration instead of sweeping in `no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured`**\nThe test lists five specific forbidden attribute names. If someone adds a sixth forbidden attribute type (e.g., `kaibo.annotated`), the test stays green. This is a guardrail that enumerates rather than sweeps. If the contract is \"these specific claims are forbidden,\" that's fine; if the contract is \"this category of claims is forbidden,\" the test is incomplete.",
+  "ttft_ms": 21432,
+  "type": "result",
+  "duration_ms": 25047,
+  "uuid": "cad31345-6646-4b68-be63-c92a8a255d4d",
+  "ttft_stream_ms": 938,
+  "time_to_request_ms": 323,
+  "first_content_frame_ms": 939,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 23807,
+  "stop_reason": "end_turn",
+  "session_id": "416192d8-dd04-4dc9-896e-ce5517dfb8d1",
+  "total_cost_usd": 0.028468999999999998,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 6227,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 2646,
+    "output_tokens_details": {
+      "thinking_tokens": 2280
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 6227,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 2646,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 6227,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6227
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2725,
+      "outputTokens": 2658,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 6227,
+      "webSearchRequests": 0,
+      "costUSD": 0.028468999999999998,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 2280,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Violations found:\n\n### Standard 1 violation: Expected values computed from code under test\n\nIn `a_second_invocation_appends_and_leaves_the_first_line_intact()`:\n\n```rust\nassert_eq!(lines[0], event(\"first question\").to_jsonl());\nassert_eq!(lines[1], event(\"second question\").to_jsonl());\n```\n\nThe expected values call `.to_jsonl()` on the Event returned by the helper. This tests self-consistency: if `to_jsonl()` has a bug and `append()` uses the same buggy serialization, both sides fail in the same way and the test passes. The test verifies the round-trip works, not that the serialization is correct.\n\nEither write the expected JSON as literals, or restructure the test to verify `append()` writes what was passed to it without calling `to_jsonl()` on the expectation side.\n\n---\n\n## No violations in other standards:\n\n**Standard 2** \u2713 \u2014 All test names describe specific situations; breaking the named behavior breaks the test.\n\n**Standard 3** \u2713 \u2014 All test names describe situations (\"the first write creates...\", \"every record is terminated...\"), not implementation details.\n\n**Standard 4** \u2713 \u2014 All tests use `tempfile::tempdir()`, no ambient state, no network or real subprocess. The soak test correctly opt-ins behind an environment variable.\n\n**Standard 5** \u2713 \u2014 The soak test sweeps (`all(|line|...)`) rather than enumerating specific lines or functions.",
+  "ttft_ms": 19602,
+  "type": "result",
+  "duration_ms": 22945,
+  "uuid": "3d11f650-960c-4f3e-9603-fb21da1a11a9",
+  "ttft_stream_ms": 1111,
+  "time_to_request_ms": 475,
+  "first_content_frame_ms": 1112,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

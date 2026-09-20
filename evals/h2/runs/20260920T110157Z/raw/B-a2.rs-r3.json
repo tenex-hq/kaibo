@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 108970,
+  "stop_reason": "end_turn",
+  "session_id": "22049b11-ef85-463d-93ea-e08f2fd35458",
+  "total_cost_usd": 0.08337549999999999,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 13475,
+    "output_tokens": 14398,
+    "output_tokens_details": {
+      "thinking_tokens": 13109
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 14398,
+        "cache_read_input_tokens": 13475,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 9973,
+      "outputTokens": 14411,
+      "cacheReadInputTokens": 13475,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.08337549999999999,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 13109,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "I'll analyze this test artifact against all five standards.\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"All assertions compare against literal values; expected side is never computed from code under test.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_gap_whose_pages_were_all_withheld_as_drafts_is_readable_as_such\"\n      },\n      \"reason\": \"Would fail if draft-exclusion mechanism in outcome-setting broke.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census\"\n      },\n      \"reason\": \"Would fail if outcome-to-attribute mapping changed.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured\"\n      },\n      \"reason\": \"Would fail if any forbidden attribute were added by code.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix\",\n        \"line\": 78\n      },\n      \"excerpt\": \"for key in attrs.keys().filter(|key| key.starts_with(\\\"kaibo.\\\"))\",\n      \"reason\": \"Filter restricts to kaibo keys; test passes even if non-kaibo attributes violate rule.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_gap_whose_pages_were_all_withheld_as_drafts_is_readable_as_such\"\n      },\n      \"reason\": \"Name describes the situation (drafts withheld); survives function rename.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census\",\n        \"line\": 64\n      },\n      \"excerpt\": \"fn from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census()\",\n      \"reason\": \"Name identifies by callee `from_query`; would be wrong if function renamed.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured\"\n      },\n      \"reason\": \"Name describes semantic claim (absence), not implementation; survives rename.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix\"\n      },\n      \"reason\": \"Name describes a domain property (namespacing), not a function or method.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"<file>\",\n        \"line\": 16,\n        \"excerpt\": \"stdout_tty: std::io::stdout().is_terminal(),\"\n      },\n      \"reason\": \"Helper `caller()` reads real stdout TTY state instead of injecting a fixed value.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix\"\n      },\n      \"reason\": \"Discovers attribute population from attrs.keys() dynamically, not a hard-coded list.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 101292,
+  "type": "result",
+  "duration_ms": 108221,
+  "uuid": "e600a986-c37c-4af7-b8fd-3f4b5803ddd9",
+  "ttft_stream_ms": 1421,
+  "time_to_request_ms": 317,
+  "first_content_frame_ms": 1422,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 41156,
+  "stop_reason": "end_turn",
+  "session_id": "8bc01ed2-ae40-4de5-ac97-f0cbadd2cc90",
+  "total_cost_usd": 0.0338635,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 13325,
+    "output_tokens": 4478,
+    "output_tokens_details": {
+      "thinking_tokens": 3310
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 4478,
+        "cache_read_input_tokens": 13325,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 10056,
+      "outputTokens": 4495,
+      "cacheReadInputTokens": 13325,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0338635,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 3310,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "I'll examine each test in the artifact against the five standards.\n\n**t1 - Expected values from literals**\n\nThe first test has one violation at line 101-106:\n```rust\nlet names: Vec<_> = json[\"outcome\"][\"domains\"]\n    .as_array()\n    .unwrap()\n    .iter()\n    .map(|d| d[\"name\"].as_str().unwrap().to_string())\n    .collect();\nlet rendered: Vec<String> = match &report.outcome {\n    DomainsOutcome::Listed { domains } => domains.iter().map(|d| d.name.clone()).collect(),\n    ...\n};\nassert_eq!(names, rendered);\n```\n\nBoth `names` and `rendered` are computed by running the code under test through two different paths. The assertion checks self-consistency, not a committed expectation. It would pass through a behavior change if both codepaths moved together.\n\nAll other assertions use literals: `ExitCode::Success`, enum variants, string literals like `\"kaibo\"`, numeric literals like `2`, and the constant `KAIBO_SUMMARY`.\n\n**t2 - Test bodies match names**\n\nBoth tests have bodies that would fail for their stated reasons. The first would fail if parsing broke or fields weren't extracted. The second would fail if the code incorrectly parsed the no-headings fixture. Compliant.\n\n**t3 - Situational names, not function calls**\n\nBoth test names describe situations:\n- `lists_every_domain_with_owner_topics_and_summary` \u2014 describes the state, survives implementation renames\n- `a_moc_with_no_domain_headings_is_a_gap` \u2014 describes the situation\n\nNeither names a function or mechanical shape. Compliant.\n\n**t4 - Hermetic tests**\n\nThe file uses `FixedClock` and `FakeCommandRunner` (hand-written fakes, not mocking crates) and creates all filesystem writes inside `tempfile::tempdir()`. \n\nHowever, line 37 violates hermiticity:\n```rust\nlet last_commit = SystemTime::now()\n    .duration_since(UNIX_EPOCH)\n    .unwrap()\n    .as_secs()\n    - 60;\n```\n\nThe helper `healthy_fixture` reads the real wall clock instead of accepting an injected clock. This makes the test dependent on ambient state.\n\n**t5 - Guardrail sweep, not enumeration**\n\nThese are ordinary functional tests, not guardrails asserting properties over open-ended populations. Not applicable.\n\n```json\n[\n  {\n    \"rule_id\": \"t1\",\n    \"findings\": [\n      {\n        \"rule_id\": \"t1\",\n        \"verdict\": \"violation\",\n        \"span\": {\n          \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n          \"line\": 104,\n          \"excerpt\": \"assert_eq!(names, rendered);\"\n        },\n        \"reason\": \"Both sides computed from code under test via different render paths; checks self-consistency only.\",\n        \"confidence\": \"high\"\n      }\n    ]\n  },\n  {\n    \"rule_id\": \"t2\",\n    \"findings\": [\n      {\n        \"rule_id\": \"t2\",\n        \"verdict\": \"compliant\",\n        \"span\": {\n          \"function\": \"<file>\"\n        },\n        \"reason\": \"Test bodies would fail if the mechanisms their names claim are deleted or broken.\",\n        \"confidence\": \"high\"\n      }\n    ]\n  },\n  {\n    \"rule_id\": \"t3\",\n    \"findings\": [\n      {\n        \"rule_id\": \"t3\",\n        \"verdict\": \"compliant\",\n        \"span\": {\n          \"function\": \"<file>\"\n        },\n        \"reason\": \"Test names describe situations, not functions or return type shapes; survive renames.\",\n        \"confidence\": \"high\"\n      }\n    ]\n  },\n  {\n    \"rule_id\": \"t4\",\n    \"findings\": [\n      {\n        \"rule_id\": \"t4\",\n        \"verdict\": \"violation\",\n        \"span\": {\n          \"function\": \"healthy_fixture\",\n          \"line\": 37,\n          \"excerpt\": \"let last_commit = SystemTime::now()\"\n        },\n        \"reason\": \"Helper reads real wall clock instead of accepting injected clock parameter.\",\n        \"confidence\": \"high\"\n      }\n    ]\n  },\n  {\n    \"rule_id\": \"t5\",\n    \"findings\": [\n      {\n        \"rule_id\": \"t5\",\n        \"verdict\": \"not_applicable\",\n        \"span\": {\n          \"function\": \"<file>\"\n        },\n        \"reason\": \"Artifact contains ordinary functional tests, not guardrails asserting over open-ended populations.\",\n        \"confidence\": \"high\"\n      }\n    ]\n  }\n]\n```",
+  "ttft_ms": 32749,
+  "type": "result",
+  "duration_ms": 40406,
+  "uuid": "27ac3626-cd19-47fc-933b-93b1e10b7e14",
+  "ttft_stream_ms": 1043,
+  "time_to_request_ms": 402,
+  "first_content_frame_ms": 1044,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

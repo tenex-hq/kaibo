@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 103295,
+  "stop_reason": "end_turn",
+  "session_id": "0ca1f8a9-61c3-4250-90ba-66319482bacd",
+  "total_cost_usd": 0.09934300000000001,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 13475,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 12467,
+    "output_tokens_details": {
+      "thinking_tokens": 11748
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13475,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 12467,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 13475,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 13475
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 9973,
+      "outputTokens": 12484,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 13475,
+      "webSearchRequests": 0,
+      "costUSD": 0.09934300000000001,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 11748,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "I'll analyze this test artifact against all five standards.\n\nLooking at the file, I can see four test functions plus three helper functions (`caller()`, `hit()`, `query_report()`, `parse()`). Let me examine each standard:\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"All assertions compare to literals or test relations; expected values are not computed from the code under test.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix\",\n        \"line\": 66\n      },\n      \"reason\": \"Loop filters to kaibo-prefixed attributes, so if namespacing mechanism breaks, loop becomes empty and assertions pass vacuously.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census\",\n        \"line\": 48\n      },\n      \"reason\": \"Test name identifies it by the function `from_query` rather than the situation; would be wrong if function were renamed.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"caller\",\n        \"line\": 10\n      },\n      \"excerpt\": \"stdout_tty: std::io::stdout().is_terminal(),\",\n      \"reason\": \"Helper reads real terminal state; should inject a test value instead of accessing ambient stdout.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured\",\n        \"line\": 81\n      },\n      \"reason\": \"Test enumerates five hardcoded forbidden attributes; if a new forbidden attribute were added, test would not check it.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 98473,
+  "type": "result",
+  "duration_ms": 102443,
+  "uuid": "8859e34e-7411-498b-bc87-e7dc54781cc4",
+  "ttft_stream_ms": 1358,
+  "time_to_request_ms": 265,
+  "first_content_frame_ms": 1359,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

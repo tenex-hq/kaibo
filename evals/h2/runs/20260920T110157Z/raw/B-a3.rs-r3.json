@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 102306,
+  "stop_reason": "end_turn",
+  "session_id": "d872f0c8-227f-4d8e-8e3d-d0f5677043a2",
+  "total_cost_usd": 0.08425849999999999,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 13325,
+    "output_tokens": 14561,
+    "output_tokens_details": {
+      "thinking_tokens": 13551
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 14561,
+        "cache_read_input_tokens": 13325,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 10056,
+      "outputTokens": 14574,
+      "cacheReadInputTokens": 13325,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.08425849999999999,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 13551,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 111,\n        \"excerpt\": \"assert_eq!(names, rendered);\"\n      },\n      \"reason\": \"Both sides computed from code under test: names from render_json(), rendered from outcome.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 78,\n        \"excerpt\": \"assert_eq!(report.exit_code(), ExitCode::Success);\"\n      },\n      \"reason\": \"Expected value is a literal enum variant.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 81,\n        \"excerpt\": \"assert_eq!(domains.len(), 2);\"\n      },\n      \"reason\": \"Expected value is numeric literal.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_moc_with_no_domain_headings_is_a_gap\",\n        \"line\": 128,\n        \"excerpt\": \"assert_eq!(report.exit_code(), ExitCode::NoHits);\"\n      },\n      \"reason\": \"Expected value is a literal enum variant.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\"\n      },\n      \"reason\": \"Test name claims every domain verified with owner/topics/summary; body only checks these for first domain.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_moc_with_no_domain_headings_is_a_gap\"\n      },\n      \"reason\": \"Test would fail if gap-detection mechanism broke; specific outcome assertion discriminates.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"Both test names describe situations (listing domains, detecting gaps) not callee names or return types.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"All filesystem operations rooted in tempfile; clock injected via FixedClock; subprocess faked.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"not_applicable\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"Artifact contains only unit tests for specific scenarios, no guardrails asserting properties over open-ended populations.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 97172,
+  "type": "result",
+  "duration_ms": 101998,
+  "uuid": "f959675d-3967-42cc-aee9-8a8a706e556a",
+  "ttft_stream_ms": 1546,
+  "time_to_request_ms": 755,
+  "first_content_frame_ms": 1547,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

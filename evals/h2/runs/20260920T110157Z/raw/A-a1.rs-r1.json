@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 42656,
+  "stop_reason": "end_turn",
+  "session_id": "b508391f-e88d-40ac-be37-c00751571fbd",
+  "total_cost_usd": 0.039064,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 6212,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 4771,
+    "output_tokens_details": {
+      "thinking_tokens": 4436
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 6212,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 4771,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 6212,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6212
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2725,
+      "outputTokens": 4783,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 6212,
+      "webSearchRequests": 0,
+      "costUSD": 0.039064,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 4436,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Issues found\n\n**Standard 1 violation: `a_second_invocation_appends_and_leaves_the_first_line_intact`**\n\nExpected values are computed from the code under test:\n```rust\nassert_eq!(lines[0], event(\"first question\").to_jsonl());\nassert_eq!(lines[1], event(\"second question\").to_jsonl());\n```\n\nThis asserts self-consistency with `Event::to_jsonl()`, not that `append` writes correct content. If `to_jsonl()` is broken but internally consistent, the test stays green.\n\n**Fix**: Assert on specific JSON properties rather than comparing to `to_jsonl()` output:\n```rust\nlet first: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();\nassert_eq!(first[\"question\"], \"first question\");\n// ... assert other meaningful fields\n```\n\nAlternatively, if the exact serialization format is contractual, provide a test fixture with hardcoded expected JSON instead of computing it.\n\n---\n\n**Everything else passes:**\n- Hermetic: all tests use tempfile, no real I/O or ambient state\n- Names describe situations, not implementation details  \n- Soak test is opt-in behind `KAIBO_TRAIL_SOAK` variable\n- Other tests can fail for the reason their names give\n- Guardrail criterion doesn't apply (no enumeration-style tests)",
+  "ttft_ms": 39982,
+  "type": "result",
+  "duration_ms": 41994,
+  "uuid": "ed26e1d8-6024-4e39-b6aa-bc2b9de01ccb",
+  "ttft_stream_ms": 1220,
+  "time_to_request_ms": 448,
+  "first_content_frame_ms": 1222,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

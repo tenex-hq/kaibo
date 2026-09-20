@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 107481,
+  "stop_reason": "end_turn",
+  "session_id": "d4a00da0-a2a8-4413-ae82-f805594149e6",
+  "total_cost_usd": 0.110356,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 13325,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 14716,
+    "output_tokens_details": {
+      "thinking_tokens": 13309
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13325,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 14716,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 13325,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 13325
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 10056,
+      "outputTokens": 14730,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 13325,
+      "webSearchRequests": 0,
+      "costUSD": 0.110356,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 13309,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "I need to examine the artifact against the five standards. Let me read the test file first.\n\nThe artifact contains two test functions with helper functions and fixture code. I'll evaluate against each standard.\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 110,\n        \"excerpt\": \"assert_eq!(names, rendered);\"\n      },\n      \"reason\": \"Both operands computed from code under test; both change together through any consistent internal alteration.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 77,\n        \"excerpt\": \"assert_eq!(report.exit_code(), ExitCode::Success);\"\n      },\n      \"reason\": \"Expected value is literal enum variant from crate's vocabulary.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 81,\n        \"excerpt\": \"assert_eq!(domains[0].name, \\\"kaibo\\\");\"\n      },\n      \"reason\": \"Expected value is literal from fixture text written at test authorship.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_moc_with_no_domain_headings_is_a_gap\",\n        \"line\": 127,\n        \"excerpt\": \"assert_eq!(report.exit_code(), ExitCode::NoHits);\"\n      },\n      \"reason\": \"Expected value is literal enum variant from crate's vocabulary.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\"\n      },\n      \"reason\": \"Assertions at lines 80\u201388 check specific domain values; break if parsing logic fails.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_moc_with_no_domain_headings_is_a_gap\"\n      },\n      \"reason\": \"Assertions check NoHits and NoDomains; fail if no-headings detection breaks.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\"\n      },\n      \"reason\": \"Name describes situation (domains listed with properties), not the function called.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_moc_with_no_domain_headings_is_a_gap\"\n      },\n      \"reason\": \"Name describes situation (no headings yields gap), not the implementation.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"healthy_fixture\",\n        \"line\": 34,\n        \"excerpt\": \"let last_commit = SystemTime::now()\"\n      },\n      \"reason\": \"Helper reads real wall clock instead of accepting injected or fixed value.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 54,\n        \"excerpt\": \"let tmp = tempfile::tempdir().unwrap();\"\n      },\n      \"reason\": \"All filesystem operations rooted in temporary directory owned by the test.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"lists_every_domain_with_owner_topics_and_summary\",\n        \"line\": 73,\n        \"excerpt\": \"let clock = FixedClock(now());\"\n      },\n      \"reason\": \"Code under test receives injected fixed clock, not real wall clock.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"not_applicable\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"Artifact contains no guardrail tests asserting a property over open-ended populations.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 99056,
+  "type": "result",
+  "duration_ms": 104907,
+  "uuid": "9f56bfb3-0905-426d-aaae-2e7134c9227d",
+  "ttft_stream_ms": 1744,
+  "time_to_request_ms": 862,
+  "first_content_frame_ms": 1744,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

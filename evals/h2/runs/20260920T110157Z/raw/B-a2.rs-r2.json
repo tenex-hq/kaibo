@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 88908,
+  "stop_reason": "end_turn",
+  "session_id": "77e5bbd2-ca71-46d7-a0b7-8c6e634cd0c5",
+  "total_cost_usd": 0.0691255,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 13475,
+    "output_tokens": 11545,
+    "output_tokens_details": {
+      "thinking_tokens": 9572
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 11545,
+        "cache_read_input_tokens": 13475,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 9973,
+      "outputTokens": 11561,
+      "cacheReadInputTokens": 13475,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0691255,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 9572,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "I'll examine this test file against each of the five standards.\n\nReading the artifact to assess all test cases and helper functions.\n\n## t1 - An expected value never comes from the code under test\n\nAll assertions use literal expected values: string literals (`\"gap\"`), numeric literals (`3`, `0`), or boolean relations (`!attrs.contains_key()`, `!key.starts_with()`). The code under test is exercised to produce the actual values being compared, but every expectation is written as a literal or a relation defined in the test itself, not derived from running the code.\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"All assertions compare against hardcoded literals or written-down relations, never computed expectations.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t2 - Every test must be able to fail for the reason its name gives\n\nTest 4 (`every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix`) has an incomplete assertion. It filters to attributes starting with `\"kaibo.\"` then asserts each starts with `\"kaibo.\"` or `\"process.\"` \u2014 a tautology given the filter. More critically, the test name claims to check **every** custom attribute, but only examines `kaibo.` ones; if the code generated non-namespaced custom attributes with a different prefix, the test would still pass.\n\nTest 2 (`from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census`) names the function being tested (`from_query`), making it an implementation detail; if that function were renamed, the test name would be inaccurate\u2014but this is a t3 violation, not t2.\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_gap_whose_pages_were_all_withheld_as_drafts_is_readable_as_such\"\n      },\n      \"reason\": \"Test would fail if draft census handling was broken; withheld_draft assertion is discriminating.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census\"\n      },\n      \"reason\": \"Test would fail if NoHits outcome was not mapped to 'gap'; assertions discriminate the mechanism.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured\"\n      },\n      \"reason\": \"Test would fail if any forbidden attribute were present; forbidden-list check is discriminating.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix\",\n        \"line\": 85\n      },\n      \"excerpt\": \"for key in attrs.keys().filter(|key| key.starts_with(\\\"kaibo.\\\")) { ... assert!(key.starts_with(\\\"kaibo.\\\") || key.starts_with(\\\"process.\\\"), ...)\",\n      \"reason\": \"Test name claims all custom attributes are namespaced, but only checks kaibo.* ones; non-kaibo attributes escape.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t3 - A test describes a situation, not a function call\n\nTest 2 embeds the function name `from_query` in its name. If that function were renamed, the name would become inaccurate and misleading.\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"a_gap_whose_pages_were_all_withheld_as_drafts_is_readable_as_such\"\n      },\n      \"reason\": \"Names the situation (withheld drafts), not the implementation; survives refactoring.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census\",\n        \"line\": 43\n      },\n      \"excerpt\": \"fn from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census\",\n      \"reason\": \"Name identifies the test by callee (`from_query`); becomes inaccurate if function is renamed.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured\"\n      },\n      \"reason\": \"Names the situation (forbidden claims), not the implementation; mentions domain concept, not function.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix\"\n      },\n      \"reason\": \"Names the situation (attribute naming), not a function call; survives refactoring.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t4 - Tests are hermetic by default\n\nThe `caller()` helper reads `std::io::stdout().is_terminal()` (line 14), which accesses ambient state\u2014the real terminal. Every test that uses `caller()` touches this ambient state instead of injecting a mock or injecting a hand-written fake environment.\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"<file>\",\n        \"line\": 14\n      },\n      \"excerpt\": \"stdout_tty: std::io::stdout().is_terminal(),\",\n      \"reason\": \"Reads real terminal state instead of injecting a fake or Clock/Environment; all callers touch ambient state.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t5 - Guardrail tests sweep, they do not enumerate\n\nTest 4 iterates over `attrs.keys().filter(|key| key.starts_with(\"kaibo.\"))`, discovering the population dynamically rather than from a hardcoded list. New kaibo.* attributes would be checked automatically. Test 3 is not a guardrail\u2014it checks a fixed forbidden list, not a property over an open-ended population.\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix\",\n        \"line\": 81\n      },\n      \"excerpt\": \"for key in attrs.keys().filter(|key| key.starts_with(\\\"kaibo.\\\")) {\",\n      \"reason\": \"Guardrail discovers attributes dynamically, not from hardcoded list; new kaibo.* attributes caught automatically.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 75029,
+  "type": "result",
+  "duration_ms": 87963,
+  "uuid": "28a0e9b1-913b-48fd-8581-9836d104135b",
+  "ttft_stream_ms": 865,
+  "time_to_request_ms": 224,
+  "first_content_frame_ms": 866,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

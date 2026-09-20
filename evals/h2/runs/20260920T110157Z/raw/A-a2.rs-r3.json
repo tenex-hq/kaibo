@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 25454,
+  "stop_reason": "end_turn",
+  "session_id": "04432968-4906-426b-ac20-448da2ec2727",
+  "total_cost_usd": 0.017166400000000002,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 6244,
+    "output_tokens": 2748,
+    "output_tokens_details": {
+      "thinking_tokens": 2303
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 2748,
+        "cache_read_input_tokens": 6244,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2742,
+      "outputTokens": 2760,
+      "cacheReadInputTokens": 6244,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.017166400000000002,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 2303,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "# Review Against Standards\n\n## Violations\n\n**Standard 4 (Hermetic tests):** `caller()` calls `std::io::stdout().is_terminal()`, which reads real terminal state. Every test passes this to `Event::from_query()`, so test outcomes depend on whether stdout is a TTY in the environment running the tests. This is not hermetic. **Fix:** hardcode the value or inject it as a parameter.\n\n**Standard 5 (Guardrail tests sweep):** The test `no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured` enumerates five forbidden attributes in a hardcoded list. If a sixth forbidden attribute should exist, the test won't catch its absence. **Fix:** assert a property over the keyspace instead\u2014e.g., \"no attribute contains the words 'useful', 'helpful', 'activation', 'activated', or 'session_id' as a component\", or scan the code for all attributes that should be forbidden and assert against that set dynamically.\n\n**Standard 3 (describe situations, not function calls):** The test name `from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census` centers the implementation detail \"from_query_sets\" rather than the situation. Better: `outcome_is_gap_when_no_results_arrive_and_census_is_default` or similar.\n\n## Logic Error\n\nIn `every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix`, the filter narrows to only `kaibo.`-prefixed keys, then the second assertion `key.starts_with(\"kaibo.\") || key.starts_with(\"process.\")` always passes\u2014it's redundant. The intent was probably to check ALL custom attributes against this rule, not just the filtered set. The filter should be removed from the loop or moved to a separate check.",
+  "ttft_ms": 21018,
+  "type": "result",
+  "duration_ms": 24918,
+  "uuid": "2e42b36e-24f2-4db6-90e4-d91c18490807",
+  "ttft_stream_ms": 1053,
+  "time_to_request_ms": 418,
+  "first_content_frame_ms": 1054,
+  "queued_turn_count": 0,
+  "result_index": 0
+}
