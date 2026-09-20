@@ -262,6 +262,45 @@ precisely what both runs show.
 - **Artifacts are Rust test code judged against testing standards.** Another
   domain may behave differently.
 
+## Closure, measured on the same two runs (#75 baseline)
+
+H2 measured which defects an arm found. Closure is a different property of the
+same answers: which of the five standards an arm *addressed at all*, whether it
+found a problem or not. `closure.py` reads it out of the raw answers already on
+disk, so the unpressured baseline cost one extraction pass and no new arms.
+
+| model | arm | standards addressed | silently absent, of 60 |
+|---|---|---|---|
+| sonnet-5 | A prose | 0.95 | 3 |
+| sonnet-5 | B rubric | **1.00** | 0 |
+| haiku-4-5 | A prose | 0.70 | **18** |
+| haiku-4-5 | B rubric | **1.00** | 0 |
+
+**Closure is real, and it is large where it matters.** On the weaker model the
+prose arm silently skipped 30% of the standard set: 18 of 60 rule-slots got
+neither a violation nor a clearance, and nothing in the output distinguishes
+that from a clean bill. The rubric arm dropped nothing, on either model, across
+240 rule-slots.
+
+**And it did not convert into a better answer.** On haiku both arms scored
+exactly 0.59 recall. The rubric considered every rule and the prose arm
+considered 70% of them, and they found the same number of defects. The prose arm
+was not missing defects on the rules it skipped; it was skipping rules that had
+no defects to find, and spending its attention on the ones that did.
+
+That is the finding #75 exists to establish, and it cuts both ways:
+
+- The auditability claim in [#28](https://github.com/tenex-hq/kaibo/issues/28) is
+  **true**. "The server issued 12 items, 9 came back, 3 were dropped" is
+  detectable, and on a cheap model the drop rate is 30%.
+- The claim that detectability *improves the outcome* is **unsupported**. Perfect
+  closure bought zero additional defects at 3.3x the cost.
+
+So closure is worth paying for only if the dropped item itself is the product -
+an audit trail, a compliance record, a count someone acts on - and not if the
+goal is finding more problems. That is a governance argument, not a quality one,
+and it should be made as such.
+
 ### Recommendation
 
 Do not build the judgment half on the strength of H2. Specifically: drop

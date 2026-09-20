@@ -1,0 +1,242 @@
+[
+  {
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 1,
+    "t1": "flagged",
+    "t2": "flagged",
+    "t3": "cleared",
+    "t4": "cleared",
+    "t5": "cleared"
+  },
+  {
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 2,
+    "t1": "flagged",
+    "t2": "cleared",
+    "t3": "flagged",
+    "t4": "cleared",
+    "t5": "cleared"
+  },
+  {
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 3,
+    "t1": "flagged",
+    "t2": "absent",
+    "t3": "cleared",
+    "t4": "cleared",
+    "t5": "absent"
+  },
+  {
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "t1": "cleared",
+    "t2": "flagged",
+    "t3": "flagged",
+    "t4": "flagged",
+    "t5": "flagged"
+  },
+  {
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "t1": "cleared",
+    "t2": "flagged",
+    "t3": "flagged",
+    "t4": "flagged",
+    "t5": "flagged"
+  },
+  {
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "t1": "cleared",
+    "t2": "flagged",
+    "t3": "flagged",
+    "t4": "flagged",
+    "t5": "flagged"
+  },
+  {
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 1,
+    "t1": "flagged",
+    "t2": "cleared",
+    "t3": "cleared",
+    "t4": "flagged",
+    "t5": "cleared"
+  },
+  {
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 2,
+    "t1": "flagged",
+    "t2": "cleared",
+    "t3": "cleared",
+    "t4": "flagged",
+    "t5": "cleared"
+  },
+  {
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 3,
+    "t1": "flagged",
+    "t2": "flagged",
+    "t3": "flagged",
+    "t4": "flagged",
+    "t5": "absent"
+  },
+  {
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "t1": "cleared",
+    "t2": "flagged",
+    "t3": "cleared",
+    "t4": "flagged",
+    "t5": "flagged"
+  },
+  {
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "t1": "cleared",
+    "t2": "flagged",
+    "t3": "cleared",
+    "t4": "flagged",
+    "t5": "flagged"
+  },
+  {
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "t1": "cleared",
+    "t2": "flagged",
+    "t3": "cleared",
+    "t4": "flagged",
+    "t5": "flagged"
+  },
+  {
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 1,
+    "t1": "flagged",
+    "t2": "cleared",
+    "t3": "flagged",
+    "t4": "cleared",
+    "t5": "cleared"
+  },
+  {
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 2,
+    "t1": "flagged",
+    "t2": "cleared",
+    "t3": "flagged",
+    "t4": "cleared",
+    "t5": "cleared"
+  },
+  {
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 3,
+    "t1": "flagged",
+    "t2": "flagged",
+    "t3": "flagged",
+    "t4": "cleared",
+    "t5": "cleared"
+  },
+  {
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "t1": "cleared",
+    "t2": "flagged",
+    "t3": "flagged",
+    "t4": "flagged",
+    "t5": "cleared"
+  },
+  {
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "t1": "cleared",
+    "t2": "cleared",
+    "t3": "flagged",
+    "t4": "flagged",
+    "t5": "cleared"
+  },
+  {
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "t1": "cleared",
+    "t2": "cleared",
+    "t3": "flagged",
+    "t4": "flagged",
+    "t5": "cleared"
+  },
+  {
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 1,
+    "t1": "flagged",
+    "t2": "cleared",
+    "t3": "cleared",
+    "t4": "flagged",
+    "t5": "cleared"
+  },
+  {
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 2,
+    "t1": "flagged",
+    "t2": "cleared",
+    "t3": "cleared",
+    "t4": "flagged",
+    "t5": "cleared"
+  },
+  {
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 3,
+    "t1": "flagged",
+    "t2": "cleared",
+    "t3": "cleared",
+    "t4": "flagged",
+    "t5": "cleared"
+  },
+  {
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "t1": "cleared",
+    "t2": "flagged",
+    "t3": "cleared",
+    "t4": "flagged",
+    "t5": "flagged"
+  },
+  {
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "t1": "cleared",
+    "t2": "flagged",
+    "t3": "cleared",
+    "t4": "flagged",
+    "t5": "flagged"
+  },
+  {
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "t1": "cleared",
+    "t2": "flagged",
+    "t3": "cleared",
+    "t4": "flagged",
+    "t5": "flagged"
+  }
+]
