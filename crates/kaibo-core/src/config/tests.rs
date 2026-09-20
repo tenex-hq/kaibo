@@ -381,3 +381,95 @@ fn every_spelling_of_yes_turns_the_trail_off_and_every_spelling_of_no_leaves_it_
         );
     }
 }
+
+// --- the OTLP gate ----------------------------------------------------
+
+#[test]
+fn nothing_is_exported_until_kaibo_own_key_says_so() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()));
+
+    assert_eq!(Config::resolve_with(&env).unwrap().otlp(), None);
+}
+
+#[test]
+fn an_endpoint_in_the_ambient_environment_does_not_by_itself_start_exporting() {
+    // `OTEL_EXPORTER_OTLP_ENDPOINT` is commonly exported machine-wide, and
+    // the event carries the question someone asked. Honouring it as a
+    // trigger would send that off the box because a shell profile said so.
+    let tmp = tempfile::tempdir().unwrap();
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
+        .with_var(
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "http://collector.internal:4318",
+        )
+        .with_var(
+            "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
+            "http://collector.internal:4318/v1/logs",
+        )
+        .with_var("OTEL_SDK_DISABLED", "false");
+
+    assert_eq!(Config::resolve_with(&env).unwrap().otlp(), None);
+}
+
+#[test]
+fn the_kaibo_key_alone_is_enough_to_switch_export_on() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var(ENV_OTLP_EXPORT, "1");
+    let config = Config::resolve_with(&env).unwrap();
+
+    assert!(config.otlp().is_some());
+    assert_eq!(config.source(ConfigKey::OtlpExport), ConfigSource::Env);
+}
+
+#[test]
+fn the_config_file_can_switch_export_on_without_an_environment_variable() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_config_file(tmp.path(), "otlp_export = true\n");
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()));
+    let config = Config::resolve_with(&env).unwrap();
+
+    assert!(config.otlp().is_some());
+    assert_eq!(config.source(ConfigKey::OtlpExport), ConfigSource::File);
+}
+
+#[test]
+fn export_waits_two_seconds_by_default_rather_than_the_specification_ten() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var(ENV_OTLP_EXPORT, "1");
+
+    assert_eq!(
+        Config::resolve_with(&env).unwrap().otlp().unwrap().timeout,
+        Duration::from_millis(2_000),
+        "an agent waits on this command; ten seconds for a collector that \
+         has gone away is not a CLI default"
+    );
+}
+
+#[test]
+fn an_explicit_otel_timeout_still_wins_because_the_variable_is_the_standard_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
+        .with_var(ENV_OTLP_EXPORT, "1")
+        .with_var(ENV_OTEL_TIMEOUT, "350");
+
+    assert_eq!(
+        Config::resolve_with(&env).unwrap().otlp().unwrap().timeout,
+        Duration::from_millis(350)
+    );
+}
+
+#[test]
+fn a_timeout_that_is_not_a_positive_number_falls_back_instead_of_blocking_forever() {
+    let tmp = tempfile::tempdir().unwrap();
+    for nonsense in ["0", "-1", "soon", ""] {
+        let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
+            .with_var(ENV_OTLP_EXPORT, "1")
+            .with_var(ENV_OTEL_TIMEOUT, nonsense);
+        assert_eq!(
+            Config::resolve_with(&env).unwrap().otlp().unwrap().timeout,
+            Duration::from_millis(2_000),
+            "`OTEL_EXPORTER_OTLP_TIMEOUT={nonsense}` should not have been honoured"
+        );
+    }
+}

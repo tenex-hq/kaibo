@@ -21,8 +21,13 @@
 #![allow(dead_code)] // not every test binary in this directory uses every helper
 
 use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -601,3 +606,184 @@ pub const HOSTILE_QUERY_RESPONSE: &str = r#"[
   {"file": "qmd://knowledge/docs/reference/escaping-symlink.md?index=kaibo", "title": "Escaping Symlink Attempt", "snippet": "n/a", "score": 0.3},
   {"file": "qmd://knowledge/docs/reference/draft-malformed-frontmatter.md?index=kaibo", "title": "Malformed Draft Attempt", "snippet": "n/a", "score": 0.2}
 ]"#;
+
+/// A loopback listener standing in for an OTLP collector.
+///
+/// Nothing leaves the machine: the kernel picks a port on `127.0.0.1` and
+/// the child process is pointed at it. Absence of an export cannot be
+/// asserted any other way - a test that only checks the exit code would pass
+/// just as happily if the question had been shipped to a real collector.
+pub struct FakeCollector {
+    port: u16,
+    requests: Arc<Mutex<Vec<Request>>>,
+    stop: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+/// One received request, reduced to what a test has any business asserting.
+#[derive(Debug, Clone)]
+pub struct Request {
+    pub path: String,
+    pub content_type: String,
+    pub body: Vec<u8>,
+}
+
+impl FakeCollector {
+    pub fn start() -> FakeCollector {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback collector");
+        let port = listener.local_addr().expect("collector address").port();
+        listener
+            .set_nonblocking(true)
+            .expect("collector must not block its own shutdown");
+
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread = std::thread::spawn({
+            let requests = Arc::clone(&requests);
+            let stop = Arc::clone(&stop);
+            move || {
+                while !stop.load(Ordering::Relaxed) {
+                    match listener.accept() {
+                        Ok((stream, _)) => {
+                            if let Some(request) = serve(stream) {
+                                requests.lock().expect("collector lock").push(request);
+                            }
+                        }
+                        Err(ref err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+        });
+
+        FakeCollector {
+            port,
+            requests,
+            stop,
+            thread: Some(thread),
+        }
+    }
+
+    /// What the child process should be handed as
+    /// `OTEL_EXPORTER_OTLP_ENDPOINT`. The SDK appends the signal path.
+    pub fn endpoint(&self) -> String {
+        format!("http://127.0.0.1:{}", self.port)
+    }
+
+    /// Everything received so far. Reading this immediately after the child
+    /// exits is safe: the exporter is synchronous and the process does not
+    /// return from `main` until the collector has answered.
+    pub fn requests(&self) -> Vec<Request> {
+        self.requests.lock().expect("collector lock").clone()
+    }
+
+    /// Wait up to `grace` for a request that must never come. Proving an
+    /// absence needs a deadline, not an immediate look.
+    pub fn nothing_arrived_within(&self, grace: Duration) -> bool {
+        let deadline = Instant::now() + grace;
+        while Instant::now() < deadline {
+            if !self.requests().is_empty() {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        true
+    }
+}
+
+/// An endpoint nothing is listening on, for the collector-is-down case.
+///
+/// Port 1 rather than a neighbour of a real collector's port: tests run in
+/// parallel, the kernel hands out adjacent ephemeral ports, and an
+/// "unreachable" endpoint that is quietly another test's live collector
+/// makes both tests wrong at once. Nothing binds port 1.
+pub fn refused_endpoint() -> String {
+    String::from("http://127.0.0.1:1")
+}
+
+impl Drop for FakeCollector {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+/// Read one HTTP request and answer `200`. Deliberately minimal: the
+/// exporter sends one well-formed request with a `Content-Length`, and a
+/// collector that understood more would be modelling more than this proves.
+fn serve(mut stream: std::net::TcpStream) -> Option<Request> {
+    stream
+        .set_nonblocking(false)
+        .expect("an accepted stream must block; macOS inherits the listener flag");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("collector read timeout");
+
+    let mut buffer = Vec::new();
+    let mut chunk = [0u8; 4096];
+    let header_end = loop {
+        let read = stream.read(&mut chunk).ok()?;
+        if read == 0 {
+            return None;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+        if let Some(at) = find(&buffer, b"\r\n\r\n") {
+            break at + 4;
+        }
+    };
+
+    let head = String::from_utf8_lossy(&buffer[..header_end]).to_string();
+    let request_line = head.lines().next().unwrap_or_default();
+    let mut tokens = request_line.split_whitespace();
+    let method = tokens.next().unwrap_or_default().to_string();
+    let path = tokens.next().unwrap_or_default().to_string();
+
+    // Answer everything, record only exports. A loopback port that has just
+    // opened attracts unrelated local traffic - on this machine a port
+    // scanner `GET /`s every new listener - and counting that as an export
+    // makes "nothing was exported" fail at random. An OTLP export is a POST,
+    // so the path assertion in the test still has something to catch.
+    if !method.eq_ignore_ascii_case("POST") {
+        let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+        return None;
+    }
+    let content_type = header_value(&head, "content-type").unwrap_or_default();
+    let length: usize = header_value(&head, "content-length")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+
+    let mut body = buffer[header_end..].to_vec();
+    while body.len() < length {
+        let read = stream.read(&mut chunk).ok()?;
+        if read == 0 {
+            break;
+        }
+        body.extend_from_slice(&chunk[..read]);
+    }
+
+    let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+    let _ = stream.flush();
+
+    Some(Request {
+        path,
+        content_type,
+        body,
+    })
+}
+
+fn header_value(head: &str, name: &str) -> Option<String> {
+    head.lines()
+        .filter_map(|line| line.split_once(':'))
+        .find(|(key, _)| key.trim().eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.trim().to_string())
+}
+
+fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
