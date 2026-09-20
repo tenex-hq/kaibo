@@ -15,7 +15,11 @@ examine_globs = ["crates/kaibo-core/**"]
 # the kaibo binary crate's end-to-end suite for every mutant, and keeps the
 # tests run in sync with examine_globs above - mutating a file whose tests
 # live in a different package would produce a mutant nothing here catches.
-additional_cargo_test_args = ["--package", "kaibo-core"]
+#
+# `--features otlp` because a `#[cfg(feature = ...)]` module that is not
+# compiled is not mutated either: every mutant in `trail/otlp.rs` would be
+# reported as missed, on code the run never built.
+additional_cargo_test_args = ["--package", "kaibo-core", "--features", "otlp"]
 
 # A generous floor under cargo-mutants' own auto-detected timeout, so a
 # mutant that spins rather than fails fast does not stall the whole run.

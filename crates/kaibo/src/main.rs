@@ -258,10 +258,19 @@ fn record(config: &Config, cli: &Cli, event: &Event) {
     if cli.no_log {
         return;
     }
-    let Some(path) = config.trail_path() else {
-        return;
-    };
-    if let TrailWrite::Failed { detail } = trail::append(path, event) {
+    if let Some(path) = config.trail_path()
+        && let TrailWrite::Failed { detail } = trail::append(path, event)
+    {
+        eprintln!("warning: {detail}");
+    }
+
+    // The file is written either way, so a machine with no collector keeps a
+    // greppable trail (ADR 0002). Export is a second sink, never a
+    // replacement for the first.
+    #[cfg(feature = "otlp")]
+    if let Some(target) = config.otlp()
+        && let TrailWrite::Failed { detail } = trail::otlp::export(&target, event)
+    {
         eprintln!("warning: {detail}");
     }
 }

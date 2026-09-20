@@ -10,7 +10,16 @@ description = "Core library for kaibo: config resolution, frontmatter model, out
 name = "kaibo_core"
 path = "src/lib.rs"
 
+[features]
+# Off by default: the OTLP stack measures roughly double the package count of
+# the whole rest of kaibo, and someone who wants `kaibo query` should not pay
+# for a collector they do not run. The JSONL trail is unconditional.
+otlp = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp"]
+
 [dependencies]
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }

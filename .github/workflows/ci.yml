@@ -32,6 +32,28 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --locked
 
+      # ADR 0016 makes OTLP export opt-in so that someone who wants
+      # `kaibo query` does not pay for a collector they do not run. That only
+      # holds while the default build stays free of the async and HTTP stack,
+      # which nothing in the source can assert - only the resolved tree can.
+      # Kept in step with the `deps-stay-lean` recipe in the justfile, which
+      # is the local equivalent; `just` is not installed on the runner.
+      - name: the default build carries no collector
+        run: |
+          tree=$(cargo tree -p kaibo --edges normal --prefix none --locked | sed 's/ v[0-9].*//' | sort -u)
+          found=$(grep -E '^(opentelemetry|tokio|hyper|reqwest|prost)' <<<"$tree" || true)
+          if [ -n "$found" ]; then
+            echo "the default build pulls in the OTLP stack:" >&2
+            echo "$found" >&2
+            exit 1
+          fi
+
+      - name: cargo clippy --features otlp
+        run: cargo clippy --workspace --all-targets --features kaibo/otlp --locked -- -D warnings
+
+      - name: cargo test --features otlp
+        run: cargo test --workspace --features kaibo/otlp --locked
+
   mutants:
     name: mutation testing (PR diff)
     runs-on: ubuntu-latest

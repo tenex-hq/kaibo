@@ -12,6 +12,9 @@ use std::path::Path;
 
 use crate::event::Event;
 
+#[cfg(feature = "otlp")]
+pub mod otlp;
+
 /// What became of one append.
 ///
 /// Deliberately not a `Result`: `?` must not be able to lift a trail failure
