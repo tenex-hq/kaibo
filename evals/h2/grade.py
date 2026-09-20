@@ -128,6 +128,9 @@ def grade(run: pathlib.Path, model: str, seed: int) -> None:
                    for d in entry["defects"]]
         anon = [{"id": f["opaque"], "fn": f["fn"], "lines": f["lines"],
                  "claim": f["claim"]} for f in mine]
+        decoys = [{"id": x["id"], "resembles_rule": x["resembles_rule"],
+                   "span": x["span"], "why_it_is_compliant": x["why_it_is_compliant"]}
+                  for x in entry.get("decoys", [])]
         res = claude(
             f"""You are grading reviews of the Rust test file `{artifact}` against a \
 hand-built truth set. Several reviewers each reported problems; their reports have \
@@ -139,6 +142,14 @@ who wrote which. Judge every finding on its own terms.
 {json.dumps(defects, indent=2)}
 
 Rules this file was checked against and found clean: {json.dumps(entry.get("verified_clean", []))}
+
+# The decoys: spans that resemble a violation and are not one
+
+{json.dumps(decoys, indent=2)}
+
+These are compliant on the rule's own terms. A finding that flags one is a false
+positive, and a more interesting kind than a random one, so record which decoy it
+landed on in `matched_decoy`.
 
 # The findings to grade
 
@@ -156,6 +167,8 @@ set. That is a false positive, and it is the expensive column in this experiment
 do not be generous to avoid recording one.
 - A vague finding that could be stretched to cover a defect does not match. \
 Stretching inflates recall for whichever reviewer wrote most.
+- `matched_decoy` names the decoy a false positive landed on, or is null. A \
+finding can never match both a defect and a decoy.
 
 Answer with one entry per finding id, in the schema given.""",
             model,
@@ -169,9 +182,10 @@ Answer with one entry per finding id, in the schema given.""",
                             "properties": {
                                 "id": {"type": "string"},
                                 "matched_defect": {"type": ["string", "null"]},
+                                "matched_decoy": {"type": ["string", "null"]},
                                 "reason": {"type": "string"},
                             },
-                            "required": ["id", "matched_defect", "reason"],
+                            "required": ["id", "matched_defect", "matched_decoy", "reason"],
                         },
                     }
                 },
@@ -198,36 +212,40 @@ def report(run: pathlib.Path) -> None:
     for opaque, meta in key.items():
         f = findings[meta["src"]]
         at = attempts.setdefault((f["arm"], f["artifact"], f["repeat"]),
-                                 {"hits": set(), "fp": 0})
-        matched = gradings.get(opaque, {}).get("matched_defect")
-        if matched:
-            at["hits"].add(matched)
+                                 {"hits": set(), "fp": 0, "decoys": set()})
+        g = gradings.get(opaque, {})
+        if g.get("matched_defect"):
+            at["hits"].add(g["matched_defect"])
         else:
             at["fp"] += 1
+            if g.get("matched_decoy"):
+                at["decoys"].add(g["matched_decoy"])
 
     print(f"# H2 run {run.name}\n")
     print(f"model {manifest['model']}, k={manifest['k']}, "
           f"{len(all_defects)} defects in the truth set\n")
     print("| arm | recall mean | recall per repeat | false positives mean | "
-          "input tok | output tok | cost USD |")
-    print("|---|---|---|---|---|---|---|")
+          "decoy hits | input tok | output tok | cost USD |")
+    print("|---|---|---|---|---|---|---|---|")
     for arm in ("A", "B"):
         per_artifact_repeat = []
         fps = []
+        decoy_hits = 0
         for (a, art, rep), at in sorted(attempts.items()):
             if a != arm:
                 continue
             total = len(truth["artifacts"][art]["defects"])
             per_artifact_repeat.append(len(at["hits"]) / total if total else 0.0)
             fps.append(at["fp"])
+            decoy_hits += len(at["decoys"])
         recs = [r for r in manifest["records"] if r["arm"] == arm]
         if not per_artifact_repeat:
-            print(f"| {arm} | no data | | | | | |")
+            print(f"| {arm} | no data | | | | | | |")
             continue
         sd = statistics.stdev(per_artifact_repeat) if len(per_artifact_repeat) > 1 else 0.0
         print(f"| {arm} | {statistics.mean(per_artifact_repeat):.2f} "
               f"| sd {sd:.3f} over {len(per_artifact_repeat)} attempts "
-              f"| {statistics.mean(fps):.2f} "
+              f"| {statistics.mean(fps):.2f} | {decoy_hits} "
               f"| {sum(r['input_tokens'] for r in recs)} "
               f"| {sum(r['output_tokens'] for r in recs)} "
               f"| {sum(r['cost_usd'] for r in recs):.4f} |")

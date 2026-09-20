@@ -39,7 +39,9 @@ def prose_standards() -> str:
     # The ids exist for the truth set and the grader. A corpus page carries a
     # title, not an id, so the prose arm is handed the headings without them.
     return "\n".join(
-        line.split(" - ", 1)[1] if line.startswith("## t") and " - " in line else line
+        "## " + line.split(" - ", 1)[1]
+        if line.startswith("## t") and " - " in line
+        else line
         for line in body.splitlines()
     )
 

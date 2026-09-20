@@ -1,0 +1,488 @@
+{
+  "contract_version": "h2-1",
+  "standards": [
+    {
+      "id": "t1",
+      "title": "An expected value never comes from the code under test",
+      "severity": "must",
+      "rule": "Write the literal. A test that computes its expectation by calling the function\nit is testing asserts self-consistency and nothing else - it stays green through\nany change that is internally consistent, including a wrong one.\n\nIf writing the literal is painful, that pain is the test telling you the output\nhas no stable contract. Fix the contract rather than the test.",
+      "judgment": {
+        "criterion": "An instance is a violation when the expected side of an assertion is produced at test time by running the code under test, or a helper that runs it, instead of being written down as a literal the author committed to.",
+        "ask": "Examine every assertion in the artifact and decide, for each one, where its expected value came from. It is a violation when the value being compared against is computed by exercising the same code the test is exercising, directly or through a helper that does, so that the two sides of the comparison move together and the assertion would stay true through a behaviour change.\n\nWhat does NOT count. (a) Using the crate's own types, enum variants or constructors to spell a fixed expected value is not computing it: naming a value in the product's vocabulary is still writing the literal. (b) Building the input fixture with crate functions is irrelevant here; this rule constrains the expected side only. (c) Constructing an expectation with the standard library or a third-party crate is compliant, because those are not the code under test. (d) A round-trip assertion whose expectation is the literal input the test wrote down is compliant: the literal is the anchor, even though the code under test ran on the way there. (e) Asserting a relation rather than a value - an error variant, a boolean predicate, an ordering - is compliant when the relation itself is written into the test.\n\nNear-miss that must be returned as compliant: a test that calls a function from the crate under test to build its input, then asserts the result against a hand-written literal. A crate call is on screen and the expectation is still a literal, so the verdict is compliant.\n\nReport a violation only when you can point at the expression that produces the expectation and show that it resolves to the code under test. If it calls a helper whose body you cannot see, record the verdict with confidence \"low\" rather than guessing.\n\nClosure. This standard must receive exactly one response object and that object must contain at least one finding; never return an empty findings array and never omit this standard from the answer. Emit one entry per violation. If the locators surfaced spans and none of them violates the rule, emit a single entry with verdict \"compliant\" whose span names the file. If the locators surfaced nothing this rule can be judged on, emit a single entry with verdict \"not_applicable\" and say in the reason what was absent. You are encouraged to add extra \"compliant\" entries for spans that look like violations at a glance and are not, so the caller can see what was considered and cleared.",
+        "verdict_values": [
+          "violation",
+          "compliant",
+          "not_applicable"
+        ],
+        "locators": [
+          "Every assertion macro invocation: `assert_eq!`, `assert_ne!`, `assert_matches!`, `debug_assert_eq!`, and every `assert!` whose argument is a comparison. Look at both operands and decide which one is the expectation.",
+          "Every `let` binding whose name marks it as an expectation (`expected`, `want`, `wanted`, `golden`, `baseline`) and the expression that initialises it.",
+          "Every function or closure defined in the test file that returns a value later used as the expected side, followed into its body to see what it calls.",
+          "Every snapshot, golden-file or `insta`-style comparison, checking whether the stored value is committed by hand or regenerated from the code under test at run time.",
+          "Every assertion whose two operands are both call expressions, and every assertion where the same identifier from the crate under test appears on both sides.",
+          "Imports at the top of the file, to establish which paths belong to the crate under test and which belong to the standard library or third-party crates."
+        ]
+      },
+      "response_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule_id",
+          "findings"
+        ],
+        "properties": {
+          "rule_id": {
+            "const": "t1"
+          },
+          "findings": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "rule_id",
+                "verdict",
+                "span",
+                "reason",
+                "confidence"
+              ],
+              "properties": {
+                "rule_id": {
+                  "const": "t1"
+                },
+                "verdict": {
+                  "enum": [
+                    "violation",
+                    "compliant",
+                    "not_applicable"
+                  ]
+                },
+                "span": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "function"
+                  ],
+                  "properties": {
+                    "function": {
+                      "type": "string",
+                      "description": "Name of the #[test] function the finding is about, or the literal string \"<file>\" when the finding covers the file as a whole."
+                    },
+                    "line": {
+                      "type": "integer",
+                      "description": "1-based line number of the specific expression the verdict turns on. Omit only when the finding covers the file as a whole."
+                    },
+                    "excerpt": {
+                      "type": "string",
+                      "description": "The single line or expression the verdict turns on, quoted verbatim from the artifact. Omit for whole-file findings."
+                    }
+                  }
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "One sentence, at most about twenty-five words, naming the evidence rather than restating the rule."
+                },
+                "confidence": {
+                  "enum": [
+                    "high",
+                    "medium",
+                    "low"
+                  ],
+                  "description": "\"low\" when the verdict depends on code not visible in the artifact."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "t2",
+      "title": "Every test must be able to fail for the reason its name gives",
+      "severity": "must",
+      "rule": "If the name says \"draft pages are excluded\", breaking draft exclusion must turn\nit red, and nothing else about the fixture may satisfy it by accident. A fixture\npath containing the word \"draft\" is not a draft label, and a test that passes\nbecause of the path name will keep passing after the label logic is deleted.\n\nCheck this by breaking the code, not by reading the test.",
+      "judgment": {
+        "criterion": "An instance is a violation when a test would still pass if the specific mechanism named in its name were deleted or inverted, because something incidental in the fixture or a too-weak assertion satisfies it instead.",
+        "ask": "Read each test's name as a claim that a specific mechanism in the production code produces a specific outcome, then reason counterfactually: if that mechanism alone were deleted or inverted, would this body still pass? A violation is a test where the answer is yes.\n\nWhere that shows up mechanically: the fixture encodes the named property in two places, one where the mechanism reads it and one the assertion could be satisfied from instead; the assertion is weaker than the name, checking a count, a length, emptiness, an ok/some/no-panic outcome, or the presence of any element, where the name claims a particular discrimination; the name claims a cause but the body sets up no situation in which the outcome could differ, so it holds for every input; or the body asserts nothing at all.\n\nWhat does NOT count. (a) A clumsy or implementation-flavoured name is not a violation of this rule; how the reason is phrased belongs to t3. Judge here only whether the body can fail for the reason given. (b) Narrowness is not a violation: a test that checks one of several things its feature does is compliant as long as what it checks is real and discriminating. (c) Sharing vocabulary between fixture and name is not by itself accidental satisfaction. (d) Absence of a contrasting negative case is a violation only where the positive outcome would hold unconditionally.\n\nNear-miss that must be returned as compliant: a test whose fixture text and whose name share a word, where the assertion is made against the value the mechanism derives rather than against the raw fixture. The overlap is cosmetic and the test still discriminates.\n\nThe rule says to check this by breaking the code. You cannot run anything, so the bar is evidence visible in the artifact: report a violation only when the body itself shows the incidental satisfier or the insufficient assertion. Where the verdict would depend on production code you cannot see, record confidence \"low\".\n\nClosure. This standard must receive exactly one response object and that object must contain at least one finding; never return an empty findings array and never omit this standard from the answer. Emit one entry per violation. If the locators surfaced spans and none of them violates the rule, emit a single entry with verdict \"compliant\" whose span names the file. If the locators surfaced nothing this rule can be judged on, emit a single entry with verdict \"not_applicable\" and say in the reason what was absent. You are encouraged to add extra \"compliant\" entries for spans that look like violations at a glance and are not, so the caller can see what was considered and cleared.",
+        "verdict_values": [
+          "violation",
+          "compliant",
+          "not_applicable"
+        ],
+        "locators": [
+          "Every `#[test]`, `#[tokio::test]` or equivalently attributed function's name, paired with the assertions in its body. Name and body must be judged together; neither alone decides this rule.",
+          "Every assertion that checks only a count, a length, `is_empty`, `is_ok`, `is_err`, `is_some`, `is_none`, `contains`, or the mere absence of a panic, against a name that claims a specific behaviour.",
+          "Every literal in the fixture that repeats, in a second location, the property the name claims is being decided - for example the same word appearing both in a path or identifier and in the content being parsed.",
+          "For each test, the set of distinguishing inputs it sets up: does the body contain a case where the named behaviour could have produced a different outcome, or only the one case?",
+          "Every `#[test]` function body with no assertion macro and no `unwrap`/`expect` that could fail, and every test whose only assertion is on a value the body itself constructed.",
+          "Every `#[ignore]`, `#[should_panic]` without an expected message, or early `return` inside a test body, since each can make a body unable to fail for its stated reason."
+        ]
+      },
+      "response_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule_id",
+          "findings"
+        ],
+        "properties": {
+          "rule_id": {
+            "const": "t2"
+          },
+          "findings": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "rule_id",
+                "verdict",
+                "span",
+                "reason",
+                "confidence"
+              ],
+              "properties": {
+                "rule_id": {
+                  "const": "t2"
+                },
+                "verdict": {
+                  "enum": [
+                    "violation",
+                    "compliant",
+                    "not_applicable"
+                  ]
+                },
+                "span": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "function"
+                  ],
+                  "properties": {
+                    "function": {
+                      "type": "string",
+                      "description": "Name of the #[test] function the finding is about, or the literal string \"<file>\" when the finding covers the file as a whole."
+                    },
+                    "line": {
+                      "type": "integer",
+                      "description": "1-based line number of the specific expression the verdict turns on. Omit only when the finding covers the file as a whole."
+                    },
+                    "excerpt": {
+                      "type": "string",
+                      "description": "The single line or expression the verdict turns on, quoted verbatim from the artifact. Omit for whole-file findings."
+                    }
+                  }
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "One sentence, at most about twenty-five words, naming the evidence rather than restating the rule."
+                },
+                "confidence": {
+                  "enum": [
+                    "high",
+                    "medium",
+                    "low"
+                  ],
+                  "description": "\"low\" when the verdict depends on code not visible in the artifact."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "t3",
+      "title": "A test describes a situation, not a function call",
+      "severity": "should",
+      "rule": "\"Frontmatter with a malformed date field around a draft status\" is a situation:\nit survives the refactor that renames the function. \"`read_frontmatter_facts`\nreturns `None`\" is an implementation detail, and it has to be rewritten every\ntime the implementation moves, which is how a suite ends up describing code\nnobody has read in a year.",
+      "judgment": {
+        "criterion": "An instance is a violation when a test's name identifies it by the function, method or type it calls, or by the mechanical shape of that call's return value, rather than by the situation the test places the system in.",
+        "ask": "Read every test's name, together with the module path around it and any doc comment that restates it. A violation is a name that identifies the test by the code it invokes rather than by the situation it sets up: it names the callee, or describes the mechanical shape of the returned value, so the name would be wrong or empty once the implementation is renamed or restructured.\n\nThe operative check: imagine the function under test is renamed. Is this test's name still accurate and still informative about what is being verified? If yes, compliant. If it now points at an identifier that no longer exists, or says nothing beyond the fact that a call was made, it is a violation.\n\nWhat does NOT count. (a) Vocabulary shared with the implementation is fine when the word names a domain concept rather than a callee; a name may mention a product noun, a user-visible state or a command without naming a function. (b) Style and length are not the rule: a terse situational name is compliant, and a long name is not a violation for being long. (c) A name may mention an outcome as part of the situation; what is forbidden is making the callee and its return type the subject. (d) Whether the test actually holds what its name claims is t2's question, not this one - a perfectly situational name over a weak body is compliant here.\n\nNear-miss that must be returned as compliant: a name built from a word that also happens to be the name of a function or module in the crate, used in the name as a domain noun describing the situation. The overlap is incidental and the name survives the rename.\n\nClosure. This standard must receive exactly one response object and that object must contain at least one finding; never return an empty findings array and never omit this standard from the answer. Emit one entry per violation. If the locators surfaced spans and none of them violates the rule, emit a single entry with verdict \"compliant\" whose span names the file. If the locators surfaced nothing this rule can be judged on, emit a single entry with verdict \"not_applicable\" and say in the reason what was absent. You are encouraged to add extra \"compliant\" entries for spans that look like violations at a glance and are not, so the caller can see what was considered and cleared.",
+        "verdict_values": [
+          "violation",
+          "compliant",
+          "not_applicable"
+        ],
+        "locators": [
+          "Every `#[test]` function's name, read token by token after splitting on underscores.",
+          "The name of every `mod` block containing tests, since the full path is part of the name the reader sees.",
+          "Every test name that contains an identifier which also appears as a callee inside its own body, or as an imported item at the top of the file.",
+          "Every name matching the shapes `test_*`, `*_works`, `*_returns_*`, `*_ok`, `*_err`, `*_none`, `*_some`, `*_success`, `*_failure`, `*_case_1`, or a bare noun with no verb.",
+          "Every doc comment or `//` comment immediately above a test that restates what the test does, checked against the same criterion as the name.",
+          "Every `#[test]` name that is a type name, a method name, or a type-and-method pair, with no clause describing a condition or an outcome."
+        ]
+      },
+      "response_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule_id",
+          "findings"
+        ],
+        "properties": {
+          "rule_id": {
+            "const": "t3"
+          },
+          "findings": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "rule_id",
+                "verdict",
+                "span",
+                "reason",
+                "confidence"
+              ],
+              "properties": {
+                "rule_id": {
+                  "const": "t3"
+                },
+                "verdict": {
+                  "enum": [
+                    "violation",
+                    "compliant",
+                    "not_applicable"
+                  ]
+                },
+                "span": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "function"
+                  ],
+                  "properties": {
+                    "function": {
+                      "type": "string",
+                      "description": "Name of the #[test] function the finding is about, or the literal string \"<file>\" when the finding covers the file as a whole."
+                    },
+                    "line": {
+                      "type": "integer",
+                      "description": "1-based line number of the specific expression the verdict turns on. Omit only when the finding covers the file as a whole."
+                    },
+                    "excerpt": {
+                      "type": "string",
+                      "description": "The single line or expression the verdict turns on, quoted verbatim from the artifact. Omit for whole-file findings."
+                    }
+                  }
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "One sentence, at most about twenty-five words, naming the evidence rather than restating the rule."
+                },
+                "confidence": {
+                  "enum": [
+                    "high",
+                    "medium",
+                    "low"
+                  ],
+                  "description": "\"low\" when the verdict depends on code not visible in the artifact."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "t4",
+      "title": "Tests are hermetic by default",
+      "severity": "must",
+      "rule": "No network, no real subprocess, no filesystem mutation outside `tempfile`.\nHand-written fakes over mocking crates; `Clock` and `Environment` are injected\nso no test touches ambient state. A suite that reads the wall clock or the real\nenvironment fails on the machine that has a different one, and the failure is\nattributed to the change rather than to the suite.\n\nThe one exception is opt-in behind an environment variable that is inert unless\nset, so it never runs in CI.",
+      "judgment": {
+        "criterion": "An instance is a violation when a test, or a helper it calls, reaches outside its own process-and-temporary-directory sandbox - the network, a real subprocess, filesystem mutation outside `tempfile`, the real wall clock or the real process environment - or substitutes a mocking crate for a hand-written fake.",
+        "ask": "Scan the whole artifact, not only the bodies of tests: imports, attributes, helper functions and setup code all count, because a helper carries its effects into every test that calls it. A violation is a test that opens a network connection or issues a request; executes a real subprocess; creates, writes, renames or deletes anything at a path not rooted in a temporary directory the test owns; reads the real wall clock or the real process environment instead of an injected clock or environment; or reaches for a mocking crate where the rule asks for a hand-written fake.\n\nWhat does NOT count. (a) Reading is not mutating. The rule forbids filesystem mutation outside `tempfile`, so reading a committed fixture, or embedding one at compile time, is compliant. (b) Any create, write or delete whose path is rooted in a temporary directory the test created is compliant, however deep the path beneath it. (c) Building a command value and inspecting its program and arguments without ever running it is not a real subprocess; only execution is. (d) A URL, hostname, port or path appearing as inert test data that nothing dials or opens is not access. (e) A hand-written fake clock or fake environment returning fixed values is the compliant form the rule asks for, not a violation, even though it is named after ambient state. (f) The rule names one exception: a test gated behind an environment variable that is inert unless set is compliant - say so in the reason instead of reporting it.\n\nNear-miss that must be returned as compliant: a test that creates a directory tree, writes several files into it and reads them back, entirely beneath a temporary directory it created itself. Filesystem calls are numerous and none of them escapes the sandbox.\n\nWhere you report a violation, name the specific call and the resource or path it touches.\n\nClosure. This standard must receive exactly one response object and that object must contain at least one finding; never return an empty findings array and never omit this standard from the answer. Emit one entry per violation. If the locators surfaced spans and none of them violates the rule, emit a single entry with verdict \"compliant\" whose span names the file. If the locators surfaced nothing this rule can be judged on, emit a single entry with verdict \"not_applicable\" and say in the reason what was absent. You are encouraged to add extra \"compliant\" entries for spans that look like violations at a glance and are not, so the caller can see what was considered and cleared.",
+        "verdict_values": [
+          "violation",
+          "compliant",
+          "not_applicable"
+        ],
+        "locators": [
+          "Every process-spawning construct and whether it is executed: command builders together with `spawn`, `output`, `status`, or a `wait` on the result.",
+          "Every networking or HTTP import and call site, every socket bind, connect or listen, and every literal URL, hostname or port, distinguishing data from dialling.",
+          "Every filesystem call that mutates - write, create, create_dir, create_dir_all, remove_file, remove_dir, remove_dir_all, rename, copy, set_permissions, file creation via open options - and, for each, the root of the path it targets.",
+          "Every temporary-directory construction in the file, and the chain of path joins connecting it to each mutating call, to decide whether the mutation is rooted inside it.",
+          "Every read of ambient state: environment variable get, set or remove, the process environment as a whole, the system temp directory, the current directory, the current executable, home or user paths.",
+          "Every read of the wall clock or a monotonic clock, every sleep, and every timeout or elapsed-time assertion.",
+          "Every use of a mocking or HTTP-stubbing crate: its import, its derive or macro attributes, and its expectation-setting calls.",
+          "Every helper function, fixture builder or setup routine defined in the file, checked for the same effects, plus every `#[ctor]`, `static`, `lazy_static` or `OnceLock` initialiser that performs work at load time.",
+          "Every environment-variable gate at the top of a test that makes it inert unless the variable is set, since the rule names that as its one exception."
+        ]
+      },
+      "response_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule_id",
+          "findings"
+        ],
+        "properties": {
+          "rule_id": {
+            "const": "t4"
+          },
+          "findings": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "rule_id",
+                "verdict",
+                "span",
+                "reason",
+                "confidence"
+              ],
+              "properties": {
+                "rule_id": {
+                  "const": "t4"
+                },
+                "verdict": {
+                  "enum": [
+                    "violation",
+                    "compliant",
+                    "not_applicable"
+                  ]
+                },
+                "span": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "function"
+                  ],
+                  "properties": {
+                    "function": {
+                      "type": "string",
+                      "description": "Name of the #[test] function the finding is about, or the literal string \"<file>\" when the finding covers the file as a whole."
+                    },
+                    "line": {
+                      "type": "integer",
+                      "description": "1-based line number of the specific expression the verdict turns on. Omit only when the finding covers the file as a whole."
+                    },
+                    "excerpt": {
+                      "type": "string",
+                      "description": "The single line or expression the verdict turns on, quoted verbatim from the artifact. Omit for whole-file findings."
+                    }
+                  }
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "One sentence, at most about twenty-five words, naming the evidence rather than restating the rule."
+                },
+                "confidence": {
+                  "enum": [
+                    "high",
+                    "medium",
+                    "low"
+                  ],
+                  "description": "\"low\" when the verdict depends on code not visible in the artifact."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "t5",
+      "title": "Guardrail tests sweep, they do not enumerate",
+      "severity": "must",
+      "rule": "A test that lists three functions by name asserts a property of that list, not\nof the codebase. The fourth function added later escapes it silently, and the\nguardrail reports success while the hole it was written to close is open. Assert\nover the pipeline, or scan the source.",
+      "judgment": {
+        "criterion": "An instance is a violation when a test asserts a property over an open-ended population but obtains that population from a hard-coded list, so a member added later is never examined and the guardrail still reports success.",
+        "ask": "First decide whether this rule applies at all. It governs guardrail tests: tests asserting a property over an open-ended population - every function of a kind, every module, every command, every file in a tree - so that the property keeps holding as the codebase grows. An ordinary unit test is out of scope.\n\nFor each guardrail, ask how it obtained the population it checked. A violation is a guardrail whose population is a hard-coded list of names, paths or cases written into the test, so that a member added later is never examined while the guardrail keeps reporting success. The tell is that covering a new member requires someone to remember to edit the test, and nothing forces that edit.\n\nWhat does NOT count. (a) A table-driven test enumerating example inputs to one function is not a guardrail. Enumerating inputs is ordinary; this rule is about enumerating the population under guard. (b) A guardrail that discovers its population - walking the source, reading a directory, iterating a registry or a pipeline - and then subtracts a named list of carve-outs is compliant, because a new member is caught by default and only an explicit exception escapes. (c) A population the compiler keeps exhaustive, such as a match over every variant where a new variant fails to compile, is compliant, because it cannot grow silently. (d) Size is not the rule: a short sweep is compliant and a long list is still a list. What matters is how the set was obtained.\n\nNear-miss that must be returned as compliant: a sweep that discovers its members and then ends with a small explicit allowlist of exceptions. A literal list of names is present, but it is a subtraction from a discovered set rather than the set itself.\n\nIf the artifact contains no test asserting a property over an open-ended population, return not_applicable for the artifact rather than stretching the rule onto ordinary unit tests.\n\nClosure. This standard must receive exactly one response object and that object must contain at least one finding; never return an empty findings array and never omit this standard from the answer. Emit one entry per violation. If the locators surfaced spans and none of them violates the rule, emit a single entry with verdict \"compliant\" whose span names the file. If the locators surfaced nothing this rule can be judged on, emit a single entry with verdict \"not_applicable\" and say in the reason what was absent. You are encouraged to add extra \"compliant\" entries for spans that look like violations at a glance and are not, so the caller can see what was considered and cleared.",
+        "verdict_values": [
+          "violation",
+          "compliant",
+          "not_applicable"
+        ],
+        "locators": [
+          "Every test whose name or doc comment makes a universal claim - words like every, all, any, never, no, always, each - paired with how its body obtains the things it checks.",
+          "Every array, slice, `Vec` or `const` literal of names, paths, identifiers or cases that the test iterates over, and whether that literal is the population or merely the inputs.",
+          "Every source-discovery construct: reading a directory, walking a tree, globbing, embedding a directory, iterating a registry or a builder pipeline, or reflecting over a set of items.",
+          "Every allowlist or denylist and its relationship to the set being checked: is it subtracted from a discovered set, or is it the set?",
+          "Every `matches!` or `match` over a fixed list of string literals used to decide membership, and every `.contains(` called against a literal collection.",
+          "For each candidate guardrail, the answer to one question made explicit: if a new member of the guarded population were added to the codebase tomorrow, would this test examine it without anyone editing the test?"
+        ]
+      },
+      "response_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule_id",
+          "findings"
+        ],
+        "properties": {
+          "rule_id": {
+            "const": "t5"
+          },
+          "findings": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "rule_id",
+                "verdict",
+                "span",
+                "reason",
+                "confidence"
+              ],
+              "properties": {
+                "rule_id": {
+                  "const": "t5"
+                },
+                "verdict": {
+                  "enum": [
+                    "violation",
+                    "compliant",
+                    "not_applicable"
+                  ]
+                },
+                "span": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "function"
+                  ],
+                  "properties": {
+                    "function": {
+                      "type": "string",
+                      "description": "Name of the #[test] function the finding is about, or the literal string \"<file>\" when the finding covers the file as a whole."
+                    },
+                    "line": {
+                      "type": "integer",
+                      "description": "1-based line number of the specific expression the verdict turns on. Omit only when the finding covers the file as a whole."
+                    },
+                    "excerpt": {
+                      "type": "string",
+                      "description": "The single line or expression the verdict turns on, quoted verbatim from the artifact. Omit for whole-file findings."
+                    }
+                  }
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "One sentence, at most about twenty-five words, naming the evidence rather than restating the rule."
+                },
+                "confidence": {
+                  "enum": [
+                    "high",
+                    "medium",
+                    "low"
+                  ],
+                  "description": "\"low\" when the verdict depends on code not visible in the artifact."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
