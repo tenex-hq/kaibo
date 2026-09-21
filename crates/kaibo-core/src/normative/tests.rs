@@ -473,6 +473,68 @@ fn an_empty_checks_array_is_the_same_as_no_block() {
     assert!(parsed.unwrap().unwrap().checks.is_empty());
 }
 
+#[test]
+fn a_shorter_fence_does_not_close_a_wider_checks_block() {
+    // CommonMark: a closing fence is at least as long as the one that
+    // opened it. Without that, a page whose checks contain a fenced example
+    // would end at the example instead of at its own closing fence, and the
+    // half it kept would still be valid JSON often enough to pass silently.
+    let parsed = parse_page(
+        BINDING_KEYS,
+        "\
+````json kaibo-checks
+[{ \"id\": \"a\", \"kind\": \"forbid_regex\", \"pattern\": \"x\" }]
+```
+",
+    );
+
+    assert!(matches!(
+        parsed.unwrap_err(),
+        NormativeError::UnterminatedChecksBlock
+    ));
+}
+
+#[test]
+fn a_tilde_fence_does_not_close_a_backtick_checks_block() {
+    let parsed = parse_page(
+        BINDING_KEYS,
+        "\
+```json kaibo-checks
+[{ \"id\": \"a\", \"kind\": \"forbid_regex\", \"pattern\": \"x\" }]
+~~~
+",
+    );
+
+    assert!(matches!(
+        parsed.unwrap_err(),
+        NormativeError::UnterminatedChecksBlock
+    ));
+}
+
+#[test]
+fn a_run_of_three_ordinary_characters_is_not_a_fence() {
+    // Only backticks and tildes fence. A heading, a setext underline or a
+    // horizontal rule above the block must not open one, or the page's real
+    // fence lands inside a block that was never opened.
+    let parsed = parse_page(
+        BINDING_KEYS,
+        "\
+### How this is checked
+
+---
+
+```json kaibo-checks
+[{ \"id\": \"a\", \"kind\": \"forbid_regex\", \"pattern\": \"x\" }]
+```
+",
+    );
+
+    let checks = parsed.unwrap().unwrap().checks;
+
+    assert_eq!(checks.len(), 1);
+    assert_eq!(checks[0].id, "a");
+}
+
 // --- corpus content in an error message ---------------------------------
 
 #[test]
