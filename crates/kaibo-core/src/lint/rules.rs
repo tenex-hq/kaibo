@@ -1,5 +1,5 @@
-//! Rule registry: each rule declares an id, a severity policy, and a check
-//! against one already-parsed file. Adding a rule means adding a file
+//! Rule registry: each rule declares an id and a check against one
+//! already-parsed file. Adding a rule means adding a file
 //! under this module plus one line in [`registry`] - there is no match arm
 //! on rule id anywhere in this crate for a rule to fall out of.
 //!
@@ -19,7 +19,7 @@ use regex::Regex;
 
 use crate::config::LintConfig;
 use crate::frontmatter::Frontmatter;
-use crate::lint::{Severity, Violation};
+use crate::lint::Violation;
 
 mod frontmatter_contract;
 mod normative_schema;
@@ -38,16 +38,14 @@ pub(crate) struct LintedFile {
 
 pub(crate) trait Rule {
     fn id(&self) -> &'static str;
-    fn severity(&self) -> Severity;
     fn check(&self, file: &LintedFile) -> Vec<Violation>;
 }
 
-/// Build a [`Violation`] tagged with `rule`'s own id and severity, so a
-/// rule implementation never has to restate either.
+/// Build a [`Violation`] tagged with `rule`'s own id, so a rule
+/// implementation never has to restate it.
 pub(crate) fn violation(rule: &dyn Rule, path: &str, message: impl Into<String>) -> Violation {
     Violation {
         rule_id: rule.id().to_string(),
-        severity: rule.severity(),
         path: path.to_string(),
         message: message.into(),
     }

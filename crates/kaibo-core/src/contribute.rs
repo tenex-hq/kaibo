@@ -8,7 +8,7 @@
 //! open a PR, and watch CI - see [`ContributeApplyVerb`].
 //!
 //! **Stop and report, never discard**: a dirty clone, a branch-name
-//! collision, or a structural lint failure all stop `apply` before it
+//! collision, or a lint failure all stop `apply` before it
 //! mutates the clone's branch state further. Nothing here ever runs `git
 //! reset --hard`, `git checkout -f`, or deletes the clone.
 //!
@@ -613,7 +613,7 @@ impl ApplyStop {
                 None,
             ),
             ApplyStop::LintFailed { violations } => (
-                format!("`kaibo lint` found {} structural violation(s) on the written page", violations.len()),
+                format!("`kaibo lint` found {} violation(s) on the written page", violations.len()),
                 Some(format!(
                     "fix the reported violation(s) in {clone_display}, or revert the write with \
                      `git -C {clone_display} checkout -- <path>`, then re-run `kaibo contribute apply`"
@@ -974,10 +974,8 @@ fn apply(
 
     let lint_report = LintVerb::new(config, vec![path.clone()]).gather();
     if let LintOutcome::Finished { violations, .. } = &lint_report.outcome {
-        // Every violation `kaibo lint` can produce today is structural -
-        // `normative-atomicity`, the last rule whose findings only
-        // annotated, is gone - so there is no heuristic-only finding left
-        // to filter out before deciding whether to stop.
+        // Every violation `kaibo lint` can produce gates the run, so any
+        // violation at all is grounds to stop.
         if !violations.is_empty() {
             stop!(ApplyStop::LintFailed {
                 violations: violations.clone()

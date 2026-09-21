@@ -1,13 +1,11 @@
 //! `kaibo lint [path...]`: the structural gate on the corpus.
 //!
 //! A rule registry, not a hardcoded function: each rule in [`rules`]
-//! declares an id, a severity, and a check against one already-parsed
-//! file. **Structural rules gate** - any structural violation makes the
-//! run exit non-zero, the same "malformed corpus content is bad input, not
-//! a kaibo bug" mapping [`crate::frontmatter::FrontmatterError`] already
-//! uses ([`crate::error::ExitCode::Usage`]). Every compiled rule is
-//! structural today - see [`Severity`] for why the type still leaves room
-//! for a rule that only annotates.
+//! declares an id and a check against one already-parsed file. **Every
+//! violation gates** - any violation makes the run exit non-zero, the same
+//! "malformed corpus content is bad input, not a kaibo bug" mapping
+//! [`crate::frontmatter::FrontmatterError`] already uses
+//! ([`crate::error::ExitCode::Usage`]).
 //!
 //! `lint` never calls qmd and never self-heals: it reads whatever is
 //! already on disk under the configured clone, which is also what the
@@ -80,26 +78,15 @@ use crate::trust;
 
 mod rules;
 
-/// Whether a rule's violation blocks the run. `Structural` is the only
-/// variant today: `normative-atomicity`, the last rule whose violations only
-/// annotated, was deleted once nothing consumed a heuristic finding
-/// (`contribute apply` filtered to structural before ever reporting one).
-/// The type stays a `Rule`-declared property rather than collapsing into
-/// "every violation gates", because kaibo's other three rule modules still
-/// declare it through [`crate::lint::rules::violation`], and a rule that
-/// only nudges rather than gates remains a legitimate thing to add later -
-/// this is where its severity would go.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Severity {
-    /// Non-zero exit; this is the CI gate.
-    Structural,
-}
-
-/// One rule's finding against one file.
+/// One rule's finding against one file. Every violation gates the run -
+/// `normative-atomicity`, the last rule whose violations only annotated,
+/// was deleted once nothing consumed a heuristic finding (`contribute
+/// apply` filtered to structural before ever reporting one), which is why
+/// there is no severity field here to distinguish one violation from
+/// another.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Violation {
     pub rule_id: String,
-    pub severity: Severity,
     pub path: String,
     pub message: String,
 }
@@ -137,10 +124,10 @@ pub struct LintReport {
 
 impl LintReport {
     /// `Stale` when the clone itself is missing; `Usage` for a bad `path`
-    /// argument *or* at least one structural violation (both are "bad
-    /// input", per [`crate::frontmatter::FrontmatterError::exit_code`]);
-    /// `NoHits` when nothing was there to check; `Success` otherwise - a
-    /// run with no violations at all still exits 0.
+    /// argument *or* at least one violation (both are "bad input", per
+    /// [`crate::frontmatter::FrontmatterError::exit_code`]); `NoHits` when
+    /// nothing was there to check; `Success` otherwise - a run with no
+    /// violations at all still exits 0.
     pub fn exit_code(&self) -> ExitCode {
         match &self.outcome {
             LintOutcome::CloneMissing => ExitCode::Stale,
@@ -148,13 +135,10 @@ impl LintReport {
             LintOutcome::InvalidConfig { .. } => ExitCode::Usage,
             LintOutcome::NoFilesFound => ExitCode::NoHits,
             LintOutcome::Finished { violations, .. } => {
-                if violations
-                    .iter()
-                    .any(|v| v.severity == Severity::Structural)
-                {
-                    ExitCode::Usage
-                } else {
+                if violations.is_empty() {
                     ExitCode::Success
+                } else {
+                    ExitCode::Usage
                 }
             }
         }
@@ -340,16 +324,9 @@ fn collect_markdown_files(dir: &Path, clone_root: &Path, out: &mut Vec<PathBuf>)
     }
 }
 
-fn severity_label(severity: Severity) -> &'static str {
-    match severity {
-        Severity::Structural => "structural",
-    }
-}
-
 fn violation_json(violation: &Violation) -> Value {
     serde_json::json!({
         "rule_id": violation.rule_id,
-        "severity": severity_label(violation.severity),
         "path": violation.path,
         "message": violation.message,
     })
@@ -392,11 +369,8 @@ impl Render for LintReport {
                 ));
                 for violation in violations {
                     lines.push(format!(
-                        "- [{}] {} {}: {}",
-                        severity_label(violation.severity),
-                        violation.rule_id,
-                        violation.path,
-                        violation.message,
+                        "- {} {}: {}",
+                        violation.rule_id, violation.path, violation.message,
                     ));
                 }
             }

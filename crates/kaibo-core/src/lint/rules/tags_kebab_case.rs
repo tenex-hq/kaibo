@@ -1,5 +1,5 @@
-//! Structural: every frontmatter tag matches `lint.tags_kebab_case.pattern`
-//! in full. The compiled default pattern is lowercase ASCII letters and
+//! Every frontmatter tag matches `lint.tags_kebab_case.pattern` in full.
+//! The compiled default pattern is lowercase ASCII letters and
 //! digits, hyphen-separated, no leading, trailing or doubled hyphen - what
 //! this rule has always called "kebab-case".
 //!
@@ -10,7 +10,7 @@
 use regex::Regex;
 
 use super::{LintedFile, Rule, violation};
-use crate::lint::{Severity, Violation};
+use crate::lint::Violation;
 use crate::trust;
 
 pub(crate) struct TagsKebabCaseRule {
@@ -41,10 +41,6 @@ impl Default for TagsKebabCaseRule {
 impl Rule for TagsKebabCaseRule {
     fn id(&self) -> &'static str {
         "tags-kebab-case"
-    }
-
-    fn severity(&self) -> Severity {
-        Severity::Structural
     }
 
     fn check(&self, file: &LintedFile) -> Vec<Violation> {

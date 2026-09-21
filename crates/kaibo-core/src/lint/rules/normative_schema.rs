@@ -1,23 +1,20 @@
-//! Structural: a page that declares anything normative declares all of it,
-//! and every part of it parses.
+//! A page that declares anything normative declares all of it, and every
+//! part of it parses.
 //!
 //! The whole rule is [`crate::normative::parse`] - the schema lives there,
 //! this is the gate that runs it over the corpus. That is deliberate: a
 //! second, looser copy of the schema living in a lint rule is how a page
-//! comes to pass CI and then fail the thing that actually reads it.
-//!
-//! **Structural, not heuristic.** Every violation here is a shape a reader
-//! cannot resolve - a `severity` nobody binds, a pattern that does not
-//! compile, two blocks where the schema allows one. None of them is a
-//! judgment call about a contributor's writing, which is what the house
-//! policy reserves heuristic severity for.
+//! comes to pass CI and then fail the thing that actually reads it. Every
+//! violation here is a shape a reader cannot resolve - a `severity` nobody
+//! binds, a pattern that does not compile, two blocks where the schema
+//! allows one.
 //!
 //! What this rule deliberately does **not** check: whether a binding page
-//! states exactly one normative claim. That is atomicity, it is a heuristic
-//! over prose, and it is [#30](https://github.com/tenex-hq/kaibo/issues/30).
+//! states exactly one normative claim. That is atomicity, and it is
+//! [#30](https://github.com/tenex-hq/kaibo/issues/30).
 
 use super::{LintedFile, Rule, violation};
-use crate::lint::{Severity, Violation};
+use crate::lint::Violation;
 use crate::normative;
 
 pub(crate) struct NormativeSchemaRule;
@@ -25,10 +22,6 @@ pub(crate) struct NormativeSchemaRule;
 impl Rule for NormativeSchemaRule {
     fn id(&self) -> &'static str {
         "normative-schema"
-    }
-
-    fn severity(&self) -> Severity {
-        Severity::Structural
     }
 
     fn check(&self, file: &LintedFile) -> Vec<Violation> {
@@ -93,7 +86,6 @@ applies_to:
 
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].rule_id, "normative-schema");
-        assert_eq!(violations[0].severity, Severity::Structural);
         assert_eq!(violations[0].path, "kaibo/reference/a-standard.md");
         assert!(violations[0].message.contains("binding: true"));
     }

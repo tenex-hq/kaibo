@@ -631,7 +631,7 @@ fn lint_explain_runs_nothing_and_exits_success() {
 }
 
 #[test]
-fn lint_reports_success_exit_code_on_a_corpus_with_no_structural_violation() {
+fn lint_reports_success_exit_code_on_a_corpus_with_no_violation() {
     let harness = Harness::new();
     support::write_page(
         &harness.clone_dir(),
@@ -651,10 +651,10 @@ fn lint_reports_success_exit_code_on_a_corpus_with_no_structural_violation() {
 }
 
 /// A page missing `title`, `tags`, `status` and `updated` trips the
-/// structural half of the registry, and a structural violation is bad
-/// input: exit 2, the same code a malformed frontmatter block gets.
+/// frontmatter contract, and any violation is bad input: exit 2, the same
+/// code a malformed frontmatter block gets.
 #[test]
-fn lint_reports_usage_exit_code_for_a_structural_violation() {
+fn lint_reports_usage_exit_code_for_a_violation() {
     let harness = Harness::new();
     support::write_page(
         &harness.clone_dir(),
@@ -779,10 +779,10 @@ fn lint_hostile_corpus_never_reports_a_page_resolving_outside_the_clone() {
     assert!(!stdout.contains("OUTSIDE CONTENT"));
 }
 
-/// The hostile page's forged tag is not kebab-case, a structural violation
-/// that is what makes the whole run exit 2.
+/// The hostile page's forged tag is not kebab-case, a violation that is
+/// what makes the whole run exit 2.
 #[test]
-fn lint_hostile_corpus_reports_the_forged_tag_as_a_structural_finding() {
+fn lint_hostile_corpus_reports_the_forged_tag_as_a_finding() {
     let harness = Harness::new();
     support::write_hostile_corpus(&harness.clone_dir(), &harness.outside_dir());
 
@@ -794,10 +794,11 @@ fn lint_hostile_corpus_reports_the_forged_tag_as_a_structural_finding() {
         .expect("violations array");
 
     assert!(
-        violations.iter().any(|v| v["rule_id"] == "tags-kebab-case"
-            && v["path"] == support::HOSTILE_FORGED_TAG_PATH
-            && v["severity"] == "structural"),
-        "the same page's structural finding is what makes the run exit 2"
+        violations
+            .iter()
+            .any(|v| v["rule_id"] == "tags-kebab-case"
+                && v["path"] == support::HOSTILE_FORGED_TAG_PATH),
+        "the same page's finding is what makes the run exit 2"
     );
     assert_eq!(output.status.code(), Some(2));
 }
@@ -953,7 +954,7 @@ fn contribute_apply_stops_on_a_dirty_clone_without_branching_or_writing() {
 }
 
 #[test]
-fn contribute_apply_stops_on_a_structural_lint_failure_and_leaves_the_write_in_place() {
+fn contribute_apply_stops_on_a_lint_failure_and_leaves_the_write_in_place() {
     let harness = Harness::new();
     support::write_minimal_corpus(&harness.clone_dir());
 
@@ -1075,7 +1076,7 @@ fn contribute_apply_completes_a_direct_push_contribution_and_opens_a_pr() {
 #[test]
 fn contribute_apply_append_flag_appends_to_the_existing_page_instead_of_creating_one() {
     let harness = Harness::new();
-    // Structurally well-formed, since `apply` lint-gates the page it just
+    // Well-formed, since `apply` lint-gates the page it just
     // wrote: `write_minimal_corpus`'s `good.md` is missing `tags`/`updated`
     // and would fail that gate for reasons unrelated to `--append` itself.
     support::write_page(
