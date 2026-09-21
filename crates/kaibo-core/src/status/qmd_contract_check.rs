@@ -21,6 +21,13 @@
 //! (c) **Write isolation.** `qmd update --index <scratch>` must leave the
 //!     default index's sqlite database untouched - its mtime does not
 //!     change.
+//! (d) **`explain.rerankScore` presence.** `query::gather` sorts and floors
+//!     hits on qmd's `explain.rerankScore` (see `crate::query`); qmd's
+//!     blended `score` field cannot substitute for it (it is mostly a
+//!     restatement of rank position). If a `qmd` upgrade ever stopped
+//!     emitting this field under `--format json --explain`, that is a
+//!     contract break `status` must report, not something `query` should
+//!     discover query-by-query at runtime.
 //!
 //! Because it is not hermetic, it is gated behind an environment variable
 //! and skips cleanly - printing why - unless a developer opts in:
@@ -232,12 +239,55 @@ fn qmd_contract_check() {
     );
     run_ok(&runner, &QmdCommand::update(&config));
 
+    // Must run before `assert_mask_accepts_nested_and_rejects_root`, which
+    // replaces this scratch index's collection with an empty root-only
+    // fixture partway through - by the time it returns, `fixture.md` is no
+    // longer indexed and a query would find nothing to check `explain`
+    // against.
+    assert_explain_rerank_score_present(&runner, &config);
+
     assert_isolation_untouched(&runner, &default_before);
     assert_mask_accepts_nested_and_rejects_root(&runner, &paths, &config);
     assert_default_db_untouched(&paths, default_db_mtime_before);
 
     let version = run_ok(&runner, &QmdCommand::version());
     println!("qmd contract check: all green ({})", version.trim());
+}
+
+/// (d) `explain.rerankScore` presence: `qmd query --format json --explain`
+/// must return at least one hit, and every hit it returns must carry a
+/// numeric `explain.rerankScore`. `query::gather` has no way to tell "qmd
+/// stopped reranking" from "this hit is genuinely irrelevant" - both look
+/// like a missing/unparsable field and both degrade to withheld (see
+/// `crate::query::RELEVANCE_UNAVAILABLE`) - so a real regression here would
+/// silently turn into permanent gaps rather than a loud failure, which is
+/// exactly why `status` needs to be able to catch it directly.
+fn assert_explain_rerank_score_present(runner: &dyn CommandRunner, config: &crate::config::Config) {
+    let stdout = run_ok(runner, &QmdCommand::query(config, "fixture"));
+    let hits: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap_or_else(|err| {
+        panic!(
+            "qmd contract broken: `qmd query --format json --explain` did not return a JSON \
+             array: {err}\nraw output:\n{stdout}"
+        )
+    });
+    assert!(
+        !hits.is_empty(),
+        "qmd contract check: `qmd query` against the fixture collection returned no hits at \
+         all, so `explain.rerankScore` presence could not be checked - the fixture or the \
+         query text may need adjusting, this is not necessarily a qmd contract break"
+    );
+    for hit in &hits {
+        let rerank_score = hit
+            .get("explain")
+            .and_then(|explain| explain.get("rerankScore"));
+        assert!(
+            rerank_score.is_some_and(serde_json::Value::is_number),
+            "qmd contract broken: a hit from `qmd query --format json --explain` has no numeric \
+             `explain.rerankScore` - kaibo's `query` verb sorts and floors on this field and has \
+             no fallback for it being absent (see `crate::query::RELEVANCE_UNAVAILABLE`); a qmd \
+             upgrade likely renamed or removed it.\nhit:\n{hit}"
+        );
+    }
 }
 
 /// (a) Collection isolation: adding a collection to the scratch index must

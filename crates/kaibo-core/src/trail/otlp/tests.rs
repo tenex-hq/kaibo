@@ -13,7 +13,7 @@ fn event() -> Event {
             path: "docs/reference/good.md".to_string(),
             title: "Good Page".to_string(),
             status: Some(crate::frontmatter::Status::Current),
-            score: 0.91,
+            relevance: 0.91,
             snippet: "snippet".to_string(),
             facets: Facets::default(),
         }]),

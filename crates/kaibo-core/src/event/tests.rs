@@ -11,12 +11,12 @@ fn caller() -> Caller {
     }
 }
 
-fn hit(path: &str, score: f64) -> Hit {
+fn hit(path: &str, relevance: f64) -> Hit {
     Hit {
         path: path.to_string(),
         title: "A Title".to_string(),
         status: Some(Status::Current),
-        score,
+        relevance,
         snippet: "snippet".to_string(),
         facets: Facets::default(),
     }
@@ -45,6 +45,7 @@ fn a_gap_whose_pages_were_all_withheld_as_drafts_is_readable_as_such() {
         unaddressable: 0,
         withheld_unverified: 0,
         withheld_draft: 3,
+        withheld_low_relevance: 0,
         kept: 0,
     };
     let report = query_report(

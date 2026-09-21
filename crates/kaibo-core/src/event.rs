@@ -191,7 +191,7 @@ impl Event {
                 EventOutcome::Hit,
                 hits.len(),
                 hits.first().map(|hit| hit.path.clone()),
-                hits.first().map(|hit| hit.score),
+                hits.first().map(|hit| hit.relevance),
                 None,
             ),
             QueryOutcome::NoHits { moc } => (

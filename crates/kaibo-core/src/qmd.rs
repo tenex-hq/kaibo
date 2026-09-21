@@ -117,12 +117,22 @@ impl QmdCommand {
     }
 
     /// `qmd query <question> --index <configured> -c <configured collection>
-    /// --format json` - retrieval against the configured index and
+    /// --format json --explain` - retrieval against the configured index and
     /// collection only, asking for JSON so `query` can parse hits rather
     /// than scrape human-formatted text. `question` must already be
     /// sanitised (a leading `expand:`/`lex:`/`vec:`/`hyde:`/`intent:`
     /// prefix stripped) by the caller - this constructor does not sanitise
     /// it, so it stays a thin, honest builder like every other one here.
+    ///
+    /// `--explain` is qmd's own flag, unrelated to kaibo's `--explain` (see
+    /// [`crate::explain`]) - this one makes qmd emit each hit's
+    /// `explain.rerankScore`, the cross-encoder relevance probability
+    /// `query::gather` sorts and floors on. qmd's blended `score` field is
+    /// mostly a restatement of rank position and cannot separate a gap from
+    /// a hit (see `query.rs`); `explain.rerankScore` can. `--explain --format
+    /// json` keeps stdout pure JSON - qmd writes its human-readable expand/
+    /// search/rerank progress to stderr instead, verified against the real
+    /// binary before this constructor was written.
     pub fn query(config: &Config, question: &str) -> PlannedCommand {
         Self::index_command(
             config,
@@ -133,6 +143,7 @@ impl QmdCommand {
                 config.collection().to_string(),
                 "--format".to_string(),
                 "json".to_string(),
+                "--explain".to_string(),
             ],
         )
     }
@@ -414,6 +425,12 @@ mod tests {
             "from-config-collection"
         );
         assert!(command.args.windows(2).any(|w| w == ["--format", "json"]));
+        assert!(
+            command.args.iter().any(|arg| arg == "--explain"),
+            "query must carry qmd's own --explain so query::gather can read \
+             explain.rerankScore; got: {:?}",
+            command.args
+        );
     }
 
     /// A question is passed through as a single argv element - no shell is
