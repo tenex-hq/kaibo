@@ -181,20 +181,18 @@ fn states_a_claim(block: &str) -> bool {
 
 /// `contains`, but refusing a match inside a longer word, so "mustard" is
 /// not a claim and "must." is.
+///
+/// `match_indices` rather than a hand-rolled scan: the loop this replaces
+/// advanced by hand, and an advance that can be mutated into standing still
+/// hangs rather than failing. A test cannot hold a loop that never ends.
 fn contains_word(haystack: &str, needle: &str) -> bool {
     let bytes = haystack.as_bytes();
-    let mut from = 0;
-    while let Some(offset) = haystack[from..].find(needle) {
-        let start = from + offset;
-        let end = start + needle.len();
+    haystack.match_indices(needle).any(|(start, matched)| {
+        let end = start + matched.len();
         let opens = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
         let closes = end == bytes.len() || !bytes[end].is_ascii_alphanumeric();
-        if opens && closes {
-            return true;
-        }
-        from = start + 1;
-    }
-    false
+        opens && closes
+    })
 }
 
 #[cfg(test)]

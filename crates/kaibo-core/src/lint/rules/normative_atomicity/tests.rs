@@ -242,3 +242,14 @@ fn a_tilde_fence_hides_its_contents_the_same_as_a_backtick_fence() {
     );
     assert_eq!(rule().check(&file), Vec::new());
 }
+
+#[test]
+fn a_claim_word_is_found_past_an_earlier_match_that_sat_inside_a_word() {
+    // "mustard" comes first and is not a claim. A scanner that stopped at
+    // the first candidate, or that failed to get past it, would miss the
+    // real one behind it.
+    assert!(states_a_claim(
+        "The mustard jar is shallow, and library code must not print."
+    ));
+    assert!(!states_a_claim("The mustard jar is shallow."));
+}
