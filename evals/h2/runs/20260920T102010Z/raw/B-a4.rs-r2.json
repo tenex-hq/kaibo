@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 97105,
+  "stop_reason": "end_turn",
+  "session_id": "591d36c4-aaa6-4562-ad92-c5112f9931c4",
+  "total_cost_usd": 0.1281198,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 18394,
+    "output_tokens": 11385,
+    "output_tokens_details": {
+      "thinking_tokens": 9185
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 11385,
+        "cache_read_input_tokens": 18394,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 10512,
+      "outputTokens": 15,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.010587000000000001,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 11385,
+      "cacheReadInputTokens": 18394,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.11753279999999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 9185,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "# t1 \u2014 expected value never comes from code under test\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"<file>\" },\n      \"reason\": \"Every assertion's expected side is a literal enum variant (LintOutcome::*, ExitCode::*, Severity::*) or a predicate/boolean, never a value produced by re-running LintVerb.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read\", \"line\": 62, \"excerpt\": \"LintOutcome::InvalidPath { path: argument.to_string() }\" },\n      \"reason\": \"path field is the loop's own test-data string, not derived from calling the code under test; this is the crate-vocabulary literal the rule permits.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_structural_violation_makes_the_whole_run_exit_2_as_bad_input\", \"line\": 106, \"excerpt\": \"assert!(violations.iter().any(|v| v.severity == Severity::Structural));\" },\n      \"reason\": \"This is a relation/predicate assertion written into the test, which the rule explicitly exempts.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n# t2 \u2014 every test must be able to fail for the reason its name gives\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"violation\",\n      \"span\": { \"function\": \"a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap\", \"line\": 78, \"excerpt\": \"vec![\\\"../nowhere.md\\\".to_string()]\" },\n      \"reason\": \"Argument uses the same '..'-escape shape already proven to trigger InvalidPath in the prior test, so it can't isolate a non-existence check from the escape check.\",\n      \"confidence\": \"medium\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"violation\",\n      \"span\": { \"function\": \"every_rule_that_fires_names_the_file_it_fired_on\", \"line\": 143, \"excerpt\": \"assert!(!violation.path.is_empty(), ...)\" },\n      \"reason\": \"Name claims each rule names the file it fired on, but the assertion only checks non-emptiness, not that the path matches the actual written file.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_well_formed_page_with_only_a_prose_style_slip_still_exits_0\" },\n      \"reason\": \"Asserts exit code, file count, violation count, and the specific Heuristic severity, discriminating the named 'style slip only' outcome.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_missing_clone_exits_4_stale_not_a_gap\" },\n      \"reason\": \"Fixture constructs a genuinely absent clone path and asserts both the specific outcome and exit code, discriminating from the empty-corpus case.\",\n      \"confidence\": \"medium\"\n    }\n  ]\n}\n```\n\n# t3 \u2014 a test describes a situation, not a function call\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"<file>\" },\n      \"reason\": \"All seven test names describe fixture situations (missing clone, empty corpus, escaping path, structural violation) with no callee or return-shape names.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n# t4 \u2014 tests are hermetic by default\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"violation\",\n      \"span\": { \"function\": \"a_missing_clone_exits_4_stale_not_a_gap\", \"line\": 26, \"excerpt\": \"let home = std::env::var(\\\"HOME\\\").unwrap();\" },\n      \"reason\": \"Reads the real process environment and builds a path under the real home directory instead of an injected environment/temp root.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"an_empty_corpus_exits_3_the_gap_signal_not_a_violation\" },\n      \"reason\": \"All filesystem mutation is rooted under tempfile::tempdir().\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"write_page\", \"line\": 15, \"excerpt\": \"std::fs::create_dir_all(full.parent().unwrap()).unwrap();\" },\n      \"reason\": \"Helper only ever receives a clone path derived from a tempdir in every caller, so its mutations stay sandboxed.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n# t5 \u2014 guardrail tests sweep, they do not enumerate\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"violation\",\n      \"span\": { \"function\": \"every_rule_that_fires_names_the_file_it_fired_on\", \"line\": 137, \"excerpt\": \"for rule_id in [\\\"frontmatter-contract\\\", \\\"tags-kebab-case\\\"] {\" },\n      \"reason\": \"Name claims 'every rule' but the checked population is a hard-coded 2-item list, not discovered from the rule registry, so a new rule escapes silently.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read\", \"line\": 57, \"excerpt\": \"for argument in [\\\"../secret.md\\\", \\\"kaibo/../../secret.md\\\", \\\"./../secret.md\\\"] {\" },\n      \"reason\": \"This is table-driven example inputs to one path-validation behaviour, not a sweep over an open-ended population.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 80715,
+  "type": "result",
+  "duration_ms": 96493,
+  "uuid": "3e52da5e-d921-4f5d-b821-e0778d961891",
+  "ttft_stream_ms": 2394,
+  "time_to_request_ms": 554,
+  "first_content_frame_ms": 2394,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

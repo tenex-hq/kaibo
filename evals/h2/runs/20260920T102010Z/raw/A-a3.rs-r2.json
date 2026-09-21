@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 45301,
+  "stop_reason": "end_turn",
+  "session_id": "deba6c40-a9ca-4759-b0e5-797321260cad",
+  "total_cost_usd": 0.04441079999999999,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 8634,
+    "output_tokens": 3979,
+    "output_tokens_details": {
+      "thinking_tokens": 3151
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3979,
+        "cache_read_input_tokens": 8634,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2815,
+      "outputTokens": 15,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0028899999999999998,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 3979,
+      "cacheReadInputTokens": 8634,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0415208,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 3151,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Findings\n\n**Self-consistency violation in `lists_every_domain_with_owner_topics_and_summary`**\n\n```rust\nlet rendered: Vec<String> = match &report.outcome {\n    DomainsOutcome::Listed { domains } => domains.iter().map(|d| d.name.clone()).collect(),\n    ...\n};\nassert_eq!(names, rendered);\n```\n\n`rendered` is pulled from `report.outcome`, the very output of the function under test \u2014 it isn't a literal. This assertion checks that the JSON serialization agrees with the struct that produced it, which is self-consistency: a bug that renders both wrong the same way (e.g. swapping domain order in both the struct and its JSON encoder) stays green. Replace with a literal: `assert_eq!(names, vec![\"kaibo\", \"observability\"]);`.\n\n**Non-hermetic fixture: `healthy_fixture` reads the real clock**\n\n```rust\nlet last_commit = SystemTime::now()\n    .duration_since(UNIX_EPOCH)\n    .unwrap()\n    .as_secs()\n    - 60;\n```\n\nBoth tests inject a `FixedClock(now())` pinned to `NOW_EPOCH` (Nov 2023), but the fixture computes `last_commit` from the real wall clock instead of from that fixed clock. The two time sources are inconsistent by construction \u2014 \"last commit\" ends up years *after* the injected \"now.\" That's fine only because nothing in these two tests exercises staleness/freshness logic against the clock; the moment someone adds a check like `clock.now().duration_since(last_commit)`, it will panic or misbehave depending on machine/date, and the failure will be blamed on that change rather than on this pre-existing landmine. `last_commit` should be derived from `NOW_EPOCH` (e.g. `NOW_EPOCH - 60`), matching the standard's \"no test touches ambient state.\"\n\n**Everything else checks out**\n\n- Expected values in the primary assertions (`domains[0].name`, `owner`, `topics`, `summary`) are literals matching what was written into the fixture \u2014 not derived from the code under test.\n- Both test names describe situations (\"lists every domain...\", \"a moc with no domain headings is a gap\"), not function calls, and each plausibly fails if the described behavior breaks (heading parsing, empty-heading gap detection).\n- No guardrail/enumeration pattern present.\n- Filesystem use is confined to `tempfile::tempdir()`; no real subprocess or network.",
+  "ttft_ms": 36470,
+  "type": "result",
+  "duration_ms": 44764,
+  "uuid": "7124a2b0-b2a0-4eb3-8f8d-bde24f3e2559",
+  "ttft_stream_ms": 1725,
+  "time_to_request_ms": 517,
+  "first_content_frame_ms": 1725,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

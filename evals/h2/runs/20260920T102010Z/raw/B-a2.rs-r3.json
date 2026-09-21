@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 59367,
+  "stop_reason": "end_turn",
+  "session_id": "1ff3cbe4-38f9-4794-9a3c-eef14d85b818",
+  "total_cost_usd": 0.076281,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 17670,
+    "output_tokens": 6270,
+    "output_tokens_details": {
+      "thinking_tokens": 3914
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 6270,
+        "cache_read_input_tokens": 17670,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 9963,
+      "outputTokens": 16,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.010043,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 6270,
+      "cacheReadInputTokens": 17670,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.066238,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 3914,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## t1 \u2014 expected value never comes from code under test\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"<file>\" },\n      \"reason\": \"Every assertion compares a JSON attribute against a hand-written literal (\\\"gap\\\", 3, 0, forbidden-key strings, prefix literals), never against a value computed by calling the crate under test.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_gap_whose_pages_were_all_withheld_as_drafts_is_readable_as_such\", \"line\": 60, \"excerpt\": \"assert_eq!(attrs[\\\"kaibo.withheld_draft\\\"], 3);\" },\n      \"reason\": \"The 3 echoes the census literal the test itself wrote, not a value produced by re-running the crate; still an anchored literal.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix\", \"line\": 106, \"excerpt\": \"!key.starts_with(\\\"otel.\\\")\" },\n      \"reason\": \"Relation asserted against a written-in literal prefix, not a value derived by calling the code under test.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t2 \u2014 every test must be able to fail for its named reason\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_gap_whose_pages_were_all_withheld_as_drafts_is_readable_as_such\" },\n      \"reason\": \"Asserts the specific withheld_draft/kept counts propagate through, so it would fail if draft-withholding stopped being tallied.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census\" },\n      \"reason\": \"Directly asserts the outcome attribute equals \\\"gap\\\", which would fail if the gap-classification logic changed.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured\" },\n      \"reason\": \"Checks presence of each named forbidden key individually; adding any one back would flip the assertion red.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix\" },\n      \"reason\": \"Sweeps the produced keys and asserts a real prefix predicate, discriminating against any otel.-prefixed or unrecognized key.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t3 \u2014 test describes a situation, not a function call\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"violation\",\n      \"span\": { \"function\": \"from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census\", \"line\": 63 },\n      \"reason\": \"Name's subject is the callee \\\"from_query\\\" itself (\\\"from_query sets kaibo.outcome...\\\"), so it breaks if that function is renamed.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_gap_whose_pages_were_all_withheld_as_drafts_is_readable_as_such\" },\n      \"reason\": \"Names a situation (all pages withheld as drafts) and its user-visible reading, not any function or type.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured\" },\n      \"reason\": \"Names a forbidden claim in domain vocabulary, mentioning no callee or return-value shape.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix\" },\n      \"reason\": \"States a property of attribute naming, not a function call or its return shape.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t4 \u2014 tests are hermetic by default\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"violation\",\n      \"span\": { \"function\": \"caller\", \"line\": 13, \"excerpt\": \"stdout_tty: std::io::stdout().is_terminal(),\" },\n      \"reason\": \"Reads the real process's stdout terminal state instead of an injected value; this helper backs every test in the file.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"<file>\" },\n      \"reason\": \"No network, subprocess, filesystem mutation, or wall-clock read elsewhere; timestamp 1_700_000_000_000 is a passed-in literal, not the real clock.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t5 \u2014 guardrail tests sweep, they do not enumerate\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix\", \"line\": 105, \"excerpt\": \"for key in attrs.keys().filter(|key| key.starts_with(\\\"kaibo.\\\")) {\" },\n      \"reason\": \"Population is discovered from the event's own produced keys at test time, not a hard-coded list, so a new attribute is examined automatically.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured\", \"line\": 88, \"excerpt\": \"for forbidden in [\\\"kaibo.useful\\\", \\\"kaibo.helpful\\\", ...] {\" },\n      \"reason\": \"This checks a finite, deliberate blocklist of specific banned names, not a sweep over an open-ended population of attributes.\",\n      \"confidence\": \"medium\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 41659,
+  "type": "result",
+  "duration_ms": 58718,
+  "uuid": "81faeaa6-35cf-4041-bb85-0688541dff3c",
+  "ttft_stream_ms": 1715,
+  "time_to_request_ms": 553,
+  "first_content_frame_ms": 1715,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 115502,
+  "stop_reason": "end_turn",
+  "session_id": "d0e00039-a5d8-45b1-9f44-cd36aca11b50",
+  "total_cost_usd": 0.20449740000000002,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 14127,
+    "cache_read_input_tokens": 4267,
+    "output_tokens": 13655,
+    "output_tokens_details": {
+      "thinking_tokens": 9794
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14127,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 13655,
+        "cache_read_input_tokens": 4267,
+        "cache_creation_input_tokens": 14127,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 14127
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 10512,
+      "outputTokens": 14,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.010582000000000001,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 13655,
+      "cacheReadInputTokens": 4267,
+      "cacheCreationInputTokens": 14127,
+      "webSearchRequests": 0,
+      "costUSD": 0.19391540000000002,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 9794,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## t1 \u2014 expected value never from code under test\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\"rule_id\":\"t1\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_missing_clone_exits_4_stale_not_a_gap\",\"line\":32,\"excerpt\":\"assert_eq!(report.outcome, LintOutcome::CloneMissing);\"},\"reason\":\"Expected side is a hand-written enum literal, not a value computed by running the verb again.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t1\",\"verdict\":\"compliant\",\"span\":{\"function\":\"an_empty_corpus_exits_3_the_gap_signal_not_a_violation\",\"line\":45,\"excerpt\":\"assert_eq!(report.outcome, LintOutcome::NoFilesFound);\"},\"reason\":\"Literal enum variant written by the author, not derived from the code under test.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t1\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read\",\"line\":62,\"excerpt\":\"LintOutcome::InvalidPath { path: argument.to_string() }\"},\"reason\":\"Expectation is built from the test's own loop variable, a literal string the test wrote, not from calling the verb.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t1\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap\",\"line\":82,\"excerpt\":\"LintOutcome::InvalidPath { path: \\\"../nowhere.md\\\".to_string() }\"},\"reason\":\"Path expectation is the literal argument the test passed in, not a value computed by the verb.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t1\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_structural_violation_makes_the_whole_run_exit_2_as_bad_input\",\"line\":109,\"excerpt\":\"violations.iter().any(|v| v.severity == Severity::Structural)\"},\"reason\":\"Asserts a relation (any violation has this severity) rather than comparing to a value computed by the code under test.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t1\",\"verdict\":\"compliant\",\"span\":{\"function\":\"every_rule_that_fires_names_the_file_it_fired_on\",\"line\":142,\"excerpt\":\"!violation.path.is_empty()\"},\"reason\":\"Predicate check, not a comparison against a value the crate computed at test time.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t1\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_well_formed_page_with_only_a_prose_style_slip_still_exits_0\",\"line\":170,\"excerpt\":\"assert_eq!(violations[0].severity, Severity::Heuristic);\"},\"reason\":\"Literal enum variant written by hand, compared against the run's output.\",\"confidence\":\"high\"}\n  ]\n}\n```\n\n## t2 \u2014 every test must be able to fail for its named reason\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\"rule_id\":\"t2\",\"verdict\":\"violation\",\"span\":{\"function\":\"every_rule_that_fires_names_the_file_it_fired_on\",\"line\":142,\"excerpt\":\"assert!(!violation.path.is_empty(), ...)\"},\"reason\":\"Name claims each rule names the file it fired on, but the check only verifies non-emptiness, not that the path matches the file that actually triggered that rule.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t2\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_missing_clone_exits_4_stale_not_a_gap\"},\"reason\":\"Asserts the specific CloneMissing/Stale outcome, which would change if clone-detection were removed or inverted.\",\"confidence\":\"medium\"},\n    {\"rule_id\":\"t2\",\"verdict\":\"compliant\",\"span\":{\"function\":\"an_empty_corpus_exits_3_the_gap_signal_not_a_violation\"},\"reason\":\"Asserts NoFilesFound/NoHits specifically, discriminating from other outcomes.\",\"confidence\":\"medium\"},\n    {\"rule_id\":\"t2\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read\"},\"reason\":\"Checks the exact InvalidPath variant and path for three distinct traversal forms, discriminating from a read-through outcome.\",\"confidence\":\"medium\"},\n    {\"rule_id\":\"t2\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap\"},\"reason\":\"Asserts InvalidPath rather than NoFilesFound, discriminating the claim that missing-file is invalid not a gap.\",\"confidence\":\"medium\"},\n    {\"rule_id\":\"t2\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_structural_violation_makes_the_whole_run_exit_2_as_bad_input\"},\"reason\":\"Checks both the exit code and the presence of a Structural-severity violation from a fixture engineered to trigger it.\",\"confidence\":\"medium\"},\n    {\"rule_id\":\"t2\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_well_formed_page_with_only_a_prose_style_slip_still_exits_0\"},\"reason\":\"Checks exit code, violation count, and severity together, discriminating a heuristic-only slip from a real failure.\",\"confidence\":\"medium\"}\n  ]\n}\n```\n\n## t3 \u2014 situation, not function call\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\"rule_id\":\"t3\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_missing_clone_exits_4_stale_not_a_gap\"},\"reason\":\"Names a situation (missing clone, exit 4) and contrasts it with a gap, no callee named.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t3\",\"verdict\":\"compliant\",\"span\":{\"function\":\"an_empty_corpus_exits_3_the_gap_signal_not_a_violation\"},\"reason\":\"Describes the situation and its meaning, not any function or return shape.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t3\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read\"},\"reason\":\"Describes a class of situations (path escaping the clone) and the resulting classification, survives renames.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t3\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap\"},\"reason\":\"Situational contrast (invalid vs gap), no identifier named.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t3\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_structural_violation_makes_the_whole_run_exit_2_as_bad_input\"},\"reason\":\"Names the domain situation and outcome, not a function.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t3\",\"verdict\":\"compliant\",\"span\":{\"function\":\"every_rule_that_fires_names_the_file_it_fired_on\"},\"reason\":\"Describes a behavioural guarantee in domain terms, not a callee or return shape.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t3\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_well_formed_page_with_only_a_prose_style_slip_still_exits_0\"},\"reason\":\"Describes the input situation and outcome; no function or type is the subject.\",\"confidence\":\"high\"}\n  ]\n}\n```\n\n## t4 \u2014 hermetic by default\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\"rule_id\":\"t4\",\"verdict\":\"violation\",\"span\":{\"function\":\"a_missing_clone_exits_4_stale_not_a_gap\",\"line\":26,\"excerpt\":\"let home = std::env::var(\\\"HOME\\\").unwrap();\"},\"reason\":\"Reads the real process environment (HOME) instead of an injected environment, so the test depends on the host machine's home directory.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t4\",\"verdict\":\"compliant\",\"span\":{\"function\":\"an_empty_corpus_exits_3_the_gap_signal_not_a_violation\"},\"reason\":\"All filesystem mutation is rooted under tempfile::tempdir().\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t4\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read\"},\"reason\":\"Both the clone and the outside secret.md are written beneath the owned tempdir.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t4\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap\"},\"reason\":\"Filesystem mutation confined to the tempdir-rooted clone path.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t4\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_structural_violation_makes_the_whole_run_exit_2_as_bad_input\"},\"reason\":\"write_page mutates only beneath the tempdir-rooted clone.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t4\",\"verdict\":\"compliant\",\"span\":{\"function\":\"every_rule_that_fires_names_the_file_it_fired_on\"},\"reason\":\"Both write_page calls target paths beneath the owned tempdir.\",\"confidence\":\"high\"},\n    {\"rule_id\":\"t4\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_well_formed_page_with_only_a_prose_style_slip_still_exits_0\"},\"reason\":\"write_page mutation is rooted in the tempdir-owned clone.\",\"confidence\":\"high\"}\n  ]\n}\n```\n\n## t5 \u2014 guardrails sweep, not enumerate\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\"rule_id\":\"t5\",\"verdict\":\"violation\",\"span\":{\"function\":\"every_rule_that_fires_names_the_file_it_fired_on\",\"line\":136,\"excerpt\":\"for rule_id in [\\\"frontmatter-contract\\\", \\\"tags-kebab-case\\\"] {\"},\"reason\":\"Name claims a universal property of every firing rule but the test only examines two hard-coded rule ids instead of sweeping the discovered `violations` list.\",\"confidence\":\"medium\"},\n    {\"rule_id\":\"t5\",\"verdict\":\"compliant\",\"span\":{\"function\":\"a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read\"},\"reason\":\"The bracketed list is table-driven input to one behaviour, not a guardrail population, so it is out of scope.\",\"confidence\":\"high\"}\n  ]\n}\n```\n\n**Notable finding to flag:** `every_rule_that_fires_names_the_file_it_fired_on` (a4.rs:117-146) has three separate issues \u2014 t2 (weak `is_empty` check doesn't verify correct file attribution), t5 (hard-coded rule-id list instead of sweeping `violations`) \u2014 and `a_missing_clone_exits_4_stale_not_a_gap` reads the real `HOME` env var (t4 violation).",
+  "ttft_ms": 86691,
+  "type": "result",
+  "duration_ms": 114257,
+  "uuid": "2e920f05-5b86-48f2-86a7-a2753610029b",
+  "ttft_stream_ms": 1670,
+  "time_to_request_ms": 202,
+  "first_content_frame_ms": 1670,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

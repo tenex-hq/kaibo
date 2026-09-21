@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 18853,
+  "stop_reason": "end_turn",
+  "session_id": "093fd578-8254-4b2a-966c-76868ceb88ee",
+  "total_cost_usd": 0.0134494,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 6094,
+    "output_tokens": 1988,
+    "output_tokens_details": {
+      "thinking_tokens": 1505
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 1988,
+        "cache_read_input_tokens": 6094,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2825,
+      "outputTokens": 2003,
+      "cacheReadInputTokens": 6094,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0134494,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 1505,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Issues Found\n\n### Critical: Non-hermetic fixture\n\n`healthy_fixture()` reads the real wall clock with `SystemTime::now()`. This violates the hermetic principle\u2014the test's behavior depends on when it runs, and the `last_commit` value differs on each machine and run. The fixture should accept a clock parameter or use `FixedClock` consistently.\n\n```rust\nlet last_commit = SystemTime::now()  // \u2190 reads real system time\n    .duration_since(UNIX_EPOCH)\n    .unwrap()\n    .as_secs()\n    - 60;\n```\n\n### Standard 1: Self-consistent assertion masquerading as validation\n\nIn `lists_every_domain_with_owner_topics_and_summary`, this block:\n\n```rust\nlet json = report.render_json();\nlet names: Vec<_> = json[\"outcome\"][\"domains\"]\n    .as_array()\n    .unwrap()\n    .iter()\n    .map(|d| d[\"name\"].as_str().unwrap().to_string())\n    .collect();\nlet rendered: Vec<String> = match &report.outcome {\n    DomainsOutcome::Listed { domains } => domains.iter().map(|d| d.name.clone()).collect(),\n    other => panic!(\"expected Listed, got {other:?}\"),\n};\nassert_eq!(names, rendered);\n```\n\ncompares two outputs of the code under test. This stays green through any change that keeps both outputs in sync with each other\u2014including a broken implementation. Write the literal: `[\"kaibo\", \"observability\"]`.\n\n### Standard 2: Name promises more than the test delivers\n\nTest name: `lists_every_domain_with_owner_topics_and_summary`\n\nActual coverage:\n- `domains[0]`: all fields checked (owner, topics, summary) \u2713\n- `domains[1]`: only name checked \u2717\n\nBreaking the second domain's owner/topics/summary parsing keeps the test green. Either check both domains fully or rename to reflect what's actually tested.",
+  "ttft_ms": 13906,
+  "type": "result",
+  "duration_ms": 17922,
+  "uuid": "f4f92840-fe52-4c10-a0f1-9d52862a4ee4",
+  "ttft_stream_ms": 1066,
+  "time_to_request_ms": 331,
+  "first_content_frame_ms": 1067,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

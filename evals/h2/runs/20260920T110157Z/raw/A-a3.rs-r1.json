@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 23011,
+  "stop_reason": "end_turn",
+  "session_id": "fc5e8a56-c8de-459a-9743-46ee3c8ee81a",
+  "total_cost_usd": 0.027578,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 6094,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 2500,
+    "output_tokens_details": {
+      "thinking_tokens": 2232
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 6094,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 2500,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 6094,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 6094
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2825,
+      "outputTokens": 2513,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 6094,
+      "webSearchRequests": 0,
+      "costUSD": 0.027578,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 2232,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Findings\n\n**Standard 1 violation**: In `lists_every_domain_with_owner_topics_and_summary()`, this line violates the standard:\n\n```rust\nassert_eq!(names, rendered);\n```\n\nBoth `names` (extracted from JSON) and `rendered` (extracted from the outcome struct) come from the code under test. This is self-consistency checking\u2014the test passes if the JSON rendering matches the struct, regardless of whether either is correct. It should assert against a literal:\n\n```rust\nassert_eq!(names, vec![\"kaibo\".to_string(), \"observability\".to_string()]);\n```\n\n**Standard 2 concern**: The first test will fail for many reasons (domain name parsing broken, owner parsing broken, topics parsing broken, summary parsing broken, rendering broken, exit code logic broken). The test is too broad for its name. Either narrow the name to \"parses domains with all metadata from MOC\" or split into separate tests for each concern.\n\n**Otherwise sound**: Fixtures use hardcoded literals; tests are hermetic (tempfile, FixedClock, FakeCommandRunner); the second test cleanly validates one situation with minimal assertions.",
+  "ttft_ms": 20221,
+  "type": "result",
+  "duration_ms": 22665,
+  "uuid": "c1d95062-0bfa-41c1-927b-da0a3ba9c670",
+  "ttft_stream_ms": 1344,
+  "time_to_request_ms": 629,
+  "first_content_frame_ms": 1345,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

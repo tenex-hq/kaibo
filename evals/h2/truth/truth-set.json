@@ -1,0 +1,228 @@
+{
+  "standards_sha256": "378cabb5a55e89c31bdb4d47b20eeb37abd281aab5b2f4b1ffa56bba8daeb6a8",
+  "authored_by": "defect planter, isolated from the rubric author",
+  "artifacts": {
+    "a1.rs": {
+      "defects": [
+        {
+          "id": "a1-d1",
+          "rule": "t1",
+          "kind": "planted",
+          "difficulty": "moderate",
+          "span": {
+            "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+            "lines": [54, 55]
+          },
+          "what_changed": "the clean file asserted `lines[0].contains(\"first question\")` and `lines[1].contains(\"second question\")`; the under-test file asserts `lines[0] == event(\"first question\").to_jsonl()` and the same for line two",
+          "why_it_violates": "`append` writes exactly `event.to_jsonl()` plus a newline, so the expected value is produced by the code the test is exercising. The assertion is `to_jsonl() == to_jsonl()`: it holds for any serialisation the module emits, including one that drops the question, renames every attribute, or writes an empty object. It asserts self-consistency and nothing else, which is what t1 forbids; the literal the rule asks for is the substring the clean file wrote."
+        },
+        {
+          "id": "a1-d2",
+          "rule": "t3",
+          "kind": "planted",
+          "difficulty": "obvious",
+          "span": {
+            "fn": "append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file",
+            "lines": [73, 73]
+          },
+          "what_changed": "the clean file named this test `a_trail_path_that_cannot_be_created_reports_the_failure_instead_of_panicking`; the under-test file names it `append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file`",
+          "why_it_violates": "The name is now the function under test plus the enum variant it returns: `append` returns `TrailWrite::Failed`. It describes a call and its return value, not a situation, so it has to be rewritten the moment `append` is renamed or `TrailWrite` is restructured, and it no longer says what the reader needs to know - that an unwritable trail path must not take the process down with it. The body is unchanged; only the description of the situation was lost."
+        },
+        {
+          "id": "a1-d3",
+          "rule": "t2",
+          "kind": "planted",
+          "difficulty": "subtle",
+          "span": {
+            "fn": "a_failed_write_leaves_no_partial_file_behind_for_a_reader_to_trip_over",
+            "lines": [98, 104]
+          },
+          "what_changed": "the clean file asserted `fs::read_to_string(&blocker).unwrap() == \"not a directory\"`, checking the blocking file was not clobbered; the under-test file binds `let trail = blocker.join(\"trail.jsonl\")` and asserts `!trail.is_file()`",
+          "why_it_violates": "`blocker` is a regular file, so no path below it can ever exist as a file - the filesystem guarantees `!trail.is_file()` before `append` is called at all. The fixture satisfies the assertion by accident, exactly the failure mode t2 names. Delete every partial-write guard in `append` and this test stays green; break the no-partial behaviour and it cannot turn red. The clean assertion could fail, because a bad `append` really could truncate or overwrite the blocking file."
+        }
+      ],
+      "decoys": [
+        {
+          "id": "a1-x1",
+          "resembles_rule": "t4",
+          "span": {
+            "fn": "a_long_run_of_appends_leaves_one_line_per_invocation_and_no_torn_record",
+            "lines": [109, 128]
+          },
+          "why_it_is_compliant": "It reads `std::env::var_os(\"KAIBO_TRAIL_SOAK\")`, which looks like the ambient-state read t4 forbids, but t4 states the one exception in so many words: opt-in behind an environment variable that is inert unless set, so it never runs in CI. The variable is only consulted to decide whether to run, never to locate anything; the body writes solely inside a `tempfile::tempdir()`; no clock, no network, no subprocess. Reporting this is a false positive."
+        }
+      ],
+      "verified_clean": ["t4", "t5"]
+    },
+    "a2.rs": {
+      "defects": [
+        {
+          "id": "a2-d1",
+          "rule": "t5",
+          "kind": "pre-existing",
+          "difficulty": "subtle",
+          "span": {
+            "fn": "no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured",
+            "lines": [101, 107]
+          },
+          "what_changed": "nothing - this is present unchanged in the clean excerpt, and the under-test file preserves it verbatim",
+          "why_it_violates": "This is a guardrail: its job is to hold the line that the event never claims usefulness or activation. It holds that line by listing five attribute names it invented (`kaibo.useful`, `kaibo.helpful`, `kaibo.session_id`, `kaibo.activation`, `kaibo.activated`). A sixth - `kaibo.rating`, `kaibo.was_used` - added later escapes silently while the guardrail reports success, which is the exact failure t5 describes. The sweeping form is available and cheap: assert the attribute key set against a written expected set, so any new key fails loudly and has to be justified. Recorded as pre-existing so that an arm reporting it is not scored as a false positive."
+        },
+        {
+          "id": "a2-d2",
+          "rule": "t2",
+          "kind": "planted",
+          "difficulty": "subtle",
+          "span": {
+            "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+            "lines": [125, 135]
+          },
+          "what_changed": "the clean file iterated `json[\"attributes\"].as_object().unwrap().keys()`; the under-test file binds `attrs` first and iterates `attrs.keys().filter(|key| key.starts_with(\"kaibo.\"))`",
+          "why_it_violates": "The filter admits only keys that already start with `kaibo.`, so both assertions inside the loop are tautologies: a key starting with `kaibo.` cannot start with `otel.`, and it satisfies the `kaibo.` branch of the namespacing check by construction. The test can no longer fail for the reason its name gives - an attribute named `otel.status_code` is removed by the filter before it is ever checked, and so is any key in a third namespace. It is green forever, which is t2's definition of a test that is not a test."
+        },
+        {
+          "id": "a2-d3",
+          "rule": "t4",
+          "kind": "planted",
+          "difficulty": "subtle",
+          "span": {
+            "fn": "caller",
+            "lines": [10, 19]
+          },
+          "what_changed": "the clean helper returned `Caller { build_profile: \"release\", stdout_tty: false }`; the under-test helper returns `build_profile: if cfg!(debug_assertions) { \"debug\" } else { \"release\" }` and `stdout_tty: std::io::stdout().is_terminal()`",
+          "why_it_violates": "The fixture is now read from ambient state rather than written down. `is_terminal()` on the real stdout answers differently under `cargo test` in a terminal, under a captured harness, and in CI; `cfg!(debug_assertions)` answers differently under `--release`. Every test in the file builds its event through this helper, so the whole suite's input now depends on the machine and the profile it runs on - t4's stated failure mode, where the suite fails on the machine that has a different one and the failure is attributed to the change rather than to the suite. It reads as an improvement (\"make the caller reflect reality\"), which is why it is subtle."
+        },
+        {
+          "id": "a2-d4",
+          "rule": "t3",
+          "kind": "planted",
+          "difficulty": "moderate",
+          "span": {
+            "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+            "lines": [74, 74]
+          },
+          "what_changed": "the clean file named this test `a_gap_with_an_empty_corpus_is_readable_as_a_different_situation`; the under-test file names it `from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census`",
+          "why_it_violates": "The new name is the constructor being called (`from_query`), the attribute key it writes (`kaibo.outcome`) and the fixture type it is handed (`HitCensus::default()`). It survives no refactor: rename the constructor, rename the attribute, or give `HitCensus` a real constructor, and the name is wrong. Worse, it loses the distinction the test exists to hold - that a gap over an empty corpus is a different situation from a gap whose pages were all withheld, which is what the preceding test covers. Naming it after the call makes the pair unreadable."
+        }
+      ],
+      "decoys": [],
+      "verified_clean": ["t1"]
+    },
+    "a3.rs": {
+      "defects": [
+        {
+          "id": "a3-d1",
+          "rule": "t4",
+          "kind": "planted",
+          "difficulty": "subtle",
+          "span": {
+            "fn": "healthy_fixture",
+            "lines": [35, 39]
+          },
+          "what_changed": "the clean helper canned the last-commit output as `ok(format!(\"{}\\n\", NOW_EPOCH - 60))`; the under-test helper computes `let last_commit = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - 60` and cans that",
+          "why_it_violates": "The injected `FixedClock(now())` is untouched and still reads 1700000000, so the eye slides over this: the clock looks injected and the runner looks fake. But the fake's canned output is now the wall clock, so the fixture's commit sits years ahead of the clock kaibo is given, and both tests' inputs change every second the suite runs. t4 requires that `Clock` and `Environment` are injected precisely so no test touches ambient state; seeding a fake's response from `SystemTime::now()` touches it just as surely as calling the clock directly, and it makes the suite's behaviour a function of the machine's date."
+        },
+        {
+          "id": "a3-d2",
+          "rule": "t2",
+          "kind": "planted",
+          "difficulty": "moderate",
+          "span": {
+            "fn": "a_moc_with_no_domain_headings_is_a_gap",
+            "lines": [122, 122]
+          },
+          "what_changed": "the clean fixture wrote `\"---\\ntype: index\\n---\\n\\nJust prose, no headings.\\n\"`; the under-test fixture writes `\"Just prose, no headings.\\n\"`",
+          "why_it_violates": "The fixture now confounds two situations: a MOC with no domain headings, and a MOC with no frontmatter at all. Either could produce `NoDomains`, and the name claims only the first. Delete the heading scan entirely and the test can still pass on the malformed document; conversely the test no longer tells the reader whether the verb even gets as far as looking for headings. t2 requires that breaking the named behaviour turns it red and that nothing else about the fixture satisfies it by accident - the frontmatter the clean file wrote was there to remove the second explanation."
+        },
+        {
+          "id": "a3-d3",
+          "rule": "t1",
+          "kind": "planted",
+          "difficulty": "moderate",
+          "span": {
+            "fn": "lists_every_domain_with_owner_topics_and_summary",
+            "lines": [107, 111]
+          },
+          "what_changed": "the clean file asserted `names == vec![\"kaibo\".to_string(), \"observability\".to_string()]`; the under-test file builds `rendered` by matching on `report.outcome` and mapping `domains.iter().map(|d| d.name.clone())`, then asserts `names == rendered`",
+          "why_it_violates": "Both sides of the assertion come out of the same `gather()` call: the JSON rendering and the struct it was rendered from. If the MOC parser reads the wrong headings, or reads them in the wrong order, or reads one of two, both sides move together and the test stays green. t1's rule is that an expected value never comes from the code under test and that the literal gets written; the literal was written, and this replaced it with a restatement of the output. It reads as a tidy refactor that removes a duplicated fixture, which is what makes it worth planting."
+        },
+        {
+          "id": "a3-d4",
+          "rule": "t2",
+          "kind": "pre-existing",
+          "difficulty": "subtle",
+          "span": {
+            "fn": "lists_every_domain_with_owner_topics_and_summary",
+            "lines": [96, 96]
+          },
+          "what_changed": "nothing - `assert!(text.contains(\"@someone\"))` is present unchanged in the clean excerpt",
+          "why_it_violates": "The fixture gives the second domain the owner `@someone-else`, and `\"@someone\"` is a prefix of `\"@someone-else\"`. The rendered-text assertion therefore passes whenever either owner reaches the output, so the claim it makes about the first domain's owner can be satisfied by the second domain's. Drop `kaibo`'s owner from the text renderer and this assertion stays green. It is the fixture-satisfies-the-assertion-by-accident shape t2 names, in the same spirit as its own example about a path containing the word \"draft\". The struct assertion on line 83 is exact and does still hold the line, which is why this is recorded as subtle and scoped to the render check rather than to the whole test."
+        }
+      ],
+      "decoys": [
+        {
+          "id": "a3-x1",
+          "resembles_rule": "t1",
+          "span": {
+            "fn": null,
+            "lines": [14, 14]
+          },
+          "why_it_is_compliant": "`const KAIBO_SUMMARY: &str = \"Kaibo's own knowledge.\"` is used to build the MOC fixture (line 66) and again as the expected value (lines 88 and 98), so the expectation is no longer spelled out at the assertion and superficially looks derived rather than written. It is compliant: t1 forbids an expected value that comes from the code under test, and this constant is test-owned data that no kaibo code can reach. A named literal declared once is still the literal t1 asks for - nothing here calls `DomainsVerb` to work out what to expect. Reporting this is a false positive."
+        }
+      ],
+      "verified_clean": ["t3", "t5"]
+    },
+    "a4.rs": {
+      "defects": [
+        {
+          "id": "a4-d1",
+          "rule": "t2",
+          "kind": "planted",
+          "difficulty": "moderate",
+          "span": {
+            "fn": "a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap",
+            "lines": [78, 84]
+          },
+          "what_changed": "the clean file passed `\"nowhere.md\"` and expected `InvalidPath { path: \"nowhere.md\" }`; the under-test file passes `\"../nowhere.md\"` and expects `InvalidPath { path: \"../nowhere.md\" }`",
+          "why_it_violates": "`../nowhere.md` escapes the clone, so the containment check rejects it before anything asks whether the file exists. The test's name says the argument is invalid because it names a file that does not exist; the fixture now satisfies it for a different, already-tested reason - the test immediately above it covers exactly that route. Delete the existence check and this test stays green, so it cannot fail for the reason its name gives. The missing-file path is now covered by nothing."
+        },
+        {
+          "id": "a4-d2",
+          "rule": "t4",
+          "kind": "planted",
+          "difficulty": "obvious",
+          "span": {
+            "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+            "lines": [24, 28]
+          },
+          "what_changed": "the clean file built the absent clone as `tempfile::tempdir()` plus `join(\"clone\")`, never created; the under-test file reads `std::env::var(\"HOME\").unwrap()` and points the config at `$HOME/.kaibo-absent-clone`",
+          "why_it_violates": "Two ambient reads in three lines: the environment, and a real path outside `tempfile`. t4 requires no filesystem outside `tempfile` and injected `Environment` so no test touches ambient state. The test unwraps `HOME`, so it panics anywhere `HOME` is unset - a CI container, a launchd job - and it asserts the absence of a path in the developer's home directory that nothing in the suite owns, so anyone who happens to have that directory gets a red suite attributed to their change. The tempdir gave the same situation with a path the test controls."
+        },
+        {
+          "id": "a4-d3",
+          "rule": "t5",
+          "kind": "planted",
+          "difficulty": "moderate",
+          "span": {
+            "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+            "lines": [136, 145]
+          },
+          "what_changed": "the clean file had no such test; the under-test file adds one that loops over the written-out list `[\"frontmatter-contract\", \"tags-kebab-case\"]` and checks each named rule's violation carries a non-empty path",
+          "why_it_violates": "The name promises a property of every rule in the registry; the body asserts a property of two rule ids typed into the test. `prose-style` is already outside it, and the next rule added is outside it too - it escapes silently while the guardrail reports success, which is the hole t5 exists to close. t5 names the sweeping forms: assert over the pipeline (iterate the violations the run actually produced and require a path on each) or scan the registry. Either would have caught the third rule; the list cannot."
+        }
+      ],
+      "decoys": [
+        {
+          "id": "a4-x1",
+          "resembles_rule": "t5",
+          "span": {
+            "fn": "a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read",
+            "lines": [56, 68]
+          },
+          "why_it_is_compliant": "The clean file's single-case escape test was turned into a loop over the written-out list `[\"../secret.md\", \"kaibo/../../secret.md\", \"./../secret.md\"]`, and the name says \"by any route\", so it reads like the enumerating guardrail t5 forbids. It is not one. t5 is about a guardrail that lists members of a surface that grows - a fourth function, a fourth rule - and then reports success while the new member escapes. Here the list is test inputs, not a surface: this is a table-driven behaviour test over three spellings of one input, nothing is registered anywhere that a fourth entry would have to be added to, and the property being asserted is checked in full on each iteration. Reporting this is a false positive."
+        }
+      ],
+      "verified_clean": ["t1", "t3"]
+    }
+  }
+}

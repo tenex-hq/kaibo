@@ -1,0 +1,368 @@
+{
+  "f004": {
+    "id": "f004",
+    "matched_defect": null,
+    "matched_decoy": "a1-x1",
+    "reason": "Flags the KAIBO_TRAIL_SOAK gate on the soak test as a test that cannot fail. That is exactly the decoy: t4 carves out opt-in env-var gating that is inert unless set, and the body otherwise reads no ambient state. False positive on a1-x1."
+  },
+  "f012": {
+    "id": "f012",
+    "matched_defect": "a1-d1",
+    "matched_decoy": null,
+    "reason": "Names the right function and the right problem: expectations built from Event::to_jsonl(), so the assertion is self-consistent. Matches a1-d1."
+  },
+  "f020": {
+    "id": "f020",
+    "matched_defect": "a1-d1",
+    "matched_decoy": null,
+    "reason": "Same span, same defect: expected values computed by calling the code under test, verifying only self-consistency of serialisation."
+  },
+  "f024": {
+    "id": "f024",
+    "matched_defect": "a1-d1",
+    "matched_decoy": null,
+    "reason": "Identifies the to_jsonl()-on-both-sides assertion in the right test. The 'round-trip' framing is a slightly loose reading of the mechanism, but it points at the same problem in the same place."
+  },
+  "f025": {
+    "id": "f025",
+    "matched_defect": "a1-d2",
+    "matched_decoy": null,
+    "reason": "Correct function and correct problem: the name states the call and its mechanical return shape rather than the situation. Line 48 is off from the truth-set line 73, but the fn identifies the span unambiguously."
+  },
+  "f034": {
+    "id": "f034",
+    "matched_defect": "a1-d1",
+    "matched_decoy": null,
+    "reason": "Right test, right cause (expectations drawn from the code under test). The 'cannot distinguish broken append from broken serialization' gloss is a somewhat different reason than t1's, but it describes the same defective assertion."
+  },
+  "f040": {
+    "id": "f040",
+    "matched_defect": "a1-d2",
+    "matched_decoy": null,
+    "reason": "Terse but specific and correct: the name names the function call rather than the situation, at the named test. Matches a1-d2."
+  },
+  "f047": {
+    "id": "f047",
+    "matched_defect": "a1-d1",
+    "matched_decoy": null,
+    "reason": "Identifies the expected value computed by to_jsonl() on the code under test in the right function; cited line 44 is off from 54-55 but the fn pins the span."
+  },
+  "f051": {
+    "id": "f051",
+    "matched_defect": "a1-d1",
+    "matched_decoy": null,
+    "reason": "Duplicate of the same defect on the companion assertion line; same function, same self-consistent-expectation problem. Matches a1-d1."
+  },
+  "f052": {
+    "id": "f052",
+    "matched_defect": "a1-d2",
+    "matched_decoy": null,
+    "reason": "Points at the same test name and the same flaw (encodes function name plus return variant, breaks on rename). Matches a1-d2."
+  },
+  "f061": {
+    "id": "f061",
+    "matched_defect": "a1-d1",
+    "matched_decoy": null,
+    "reason": "Most precise statement of a1-d1: names both event(...).to_jsonl() expectations and the missing committed literal. Lines 53-54 are one off from 54-55, which does not obscure the span."
+  },
+  "f002": {
+    "id": "f002",
+    "matched_defect": "a2-d4",
+    "matched_decoy": null,
+    "reason": "Names the same test and the same problem: the name centers the constructor call rather than the situation. d4."
+  },
+  "f003": {
+    "id": "f003",
+    "matched_defect": "a2-d2",
+    "matched_decoy": null,
+    "reason": "Identifies the filter-induced tautology in the namespacing assertion and that the intent was to check all custom attributes. d2."
+  },
+  "f007": {
+    "id": "f007",
+    "matched_defect": "a2-d3",
+    "matched_decoy": null,
+    "reason": "Points at caller() reading real stdout TTY state instead of a written-down fixture. d3."
+  },
+  "f008": {
+    "id": "f008",
+    "matched_defect": "a2-d3",
+    "matched_decoy": null,
+    "reason": "Same ambient-state read in caller(); notes every test using the helper is affected. d3."
+  },
+  "f009": {
+    "id": "f009",
+    "matched_defect": "a2-d3",
+    "matched_decoy": null,
+    "reason": "Same is_terminal() ambient dependency, with the non-hermetic consequence spelled out. d3."
+  },
+  "f011": {
+    "id": "f011",
+    "matched_defect": "a2-d1",
+    "matched_decoy": null,
+    "reason": "Identifies the enumerating guardrail listing five forbidden names where a sweep is needed. d1."
+  },
+  "f013": {
+    "id": "f013",
+    "matched_defect": "a2-d3",
+    "matched_decoy": null,
+    "reason": "Names caller()'s is_terminal() call and the environment-dependent outcomes it produces. d3."
+  },
+  "f014": {
+    "id": "f014",
+    "matched_defect": "a2-d4",
+    "matched_decoy": null,
+    "reason": "Same test name flagged for naming the callee; captures the refactor-fragility half of d4 without the lost-distinction half, which still counts."
+  },
+  "f015": {
+    "id": "f015",
+    "matched_defect": "a2-d3",
+    "matched_decoy": null,
+    "reason": "caller()'s ambient is_terminal() read, non-hermetic across TTY/non-TTY. d3."
+  },
+  "f018": {
+    "id": "f018",
+    "matched_defect": "a2-d2",
+    "matched_decoy": null,
+    "reason": "Same filter, same test: keys outside the kaibo namespace escape the check. d2, framed as coverage loss rather than tautology."
+  },
+  "f021": {
+    "id": "f021",
+    "matched_defect": "a2-d1",
+    "matched_decoy": null,
+    "reason": "Enumerated five-name guardrail that stays green when a sixth is added. d1."
+  },
+  "f022": {
+    "id": "f022",
+    "matched_defect": "a2-d2",
+    "matched_decoy": null,
+    "reason": "States the tautology of the namespacing assertion under the filter. d2."
+  },
+  "f023": {
+    "id": "f023",
+    "matched_defect": "a2-d2",
+    "matched_decoy": null,
+    "reason": "Same tautology in the same test, called out explicitly. d2."
+  },
+  "f026": {
+    "id": "f026",
+    "matched_defect": "a2-d2",
+    "matched_decoy": null,
+    "reason": "Filter makes the second assertion always pass and leaves non-kaibo attributes unverified. d2."
+  },
+  "f036": {
+    "id": "f036",
+    "matched_defect": "a2-d4",
+    "matched_decoy": null,
+    "reason": "Same test name, flagged for naming the function under test. d4."
+  },
+  "f037": {
+    "id": "f037",
+    "matched_defect": "a2-d2",
+    "matched_decoy": null,
+    "reason": "Right place and right mechanism (the filter removes the keys that could fail); the stated consequence is vacuous emptiness rather than tautology, a partial misread of why, but it describes d2."
+  },
+  "f045": {
+    "id": "f045",
+    "matched_defect": "a2-d2",
+    "matched_decoy": null,
+    "reason": "Name-versus-scope gap caused by the kaibo. filter; a differently-prefixed custom attribute passes. d2."
+  },
+  "f048": {
+    "id": "f048",
+    "matched_defect": "a2-d4",
+    "matched_decoy": null,
+    "reason": "Test named after from_query rather than the situation, wrong on rename. d4."
+  },
+  "f050": {
+    "id": "f050",
+    "matched_defect": "a2-d2",
+    "matched_decoy": null,
+    "reason": "Terse but specific: names the test and the exact scope gap the filter creates. d2."
+  },
+  "f053": {
+    "id": "f053",
+    "matched_defect": "a2-d1",
+    "matched_decoy": null,
+    "reason": "Hardcoded five-attribute enumeration leaves new forbidden attributes unchecked. d1."
+  },
+  "f058": {
+    "id": "f058",
+    "matched_defect": "a2-d1",
+    "matched_decoy": null,
+    "reason": "Same enumerated guardrail at d1's location; the closing phrase 'catch its absence' is garbled (the guardrail checks presence), a misread of why that does not stop it matching."
+  },
+  "f059": {
+    "id": "f059",
+    "matched_defect": "a2-d3",
+    "matched_decoy": null,
+    "reason": "caller() reading ambient stdout instead of a fixed injected value. d3."
+  },
+  "f060": {
+    "id": "f060",
+    "matched_defect": "a2-d2",
+    "matched_decoy": null,
+    "reason": "Covers the otel. half of the same tautology in the same test. d2."
+  },
+  "f006": {
+    "id": "f006",
+    "matched_defect": null,
+    "matched_decoy": null,
+    "reason": "A breadth-of-test complaint about the name covering render assertions too. No truth-set defect concerns the test's scope; d3 is about the self-referential assert_eq, d4 about the '@someone' prefix. False positive."
+  },
+  "f017": {
+    "id": "f017",
+    "matched_defect": "a3-d3",
+    "matched_decoy": null,
+    "reason": "Names the assert_eq!(names, rendered) pair and correctly identifies both operands as coming from the same gather() call. Matches d3."
+  },
+  "f019": {
+    "id": "f019",
+    "matched_defect": "a3-d3",
+    "matched_decoy": null,
+    "reason": "Same assertion, line 110, within d3's 107-111 span; correct reason."
+  },
+  "f027": {
+    "id": "f027",
+    "matched_defect": null,
+    "matched_decoy": null,
+    "reason": "Claims the second domain's owner/topics/summary go unchecked. That is a coverage complaint about the name, not d4, which is the inverse: the first domain's owner claim being satisfied by the second's '@someone-else' via prefix. False positive."
+  },
+  "f028": {
+    "id": "f028",
+    "matched_defect": "a3-d1",
+    "matched_decoy": null,
+    "reason": "Identifies last_commit computed from SystemTime::now() in healthy_fixture. Reason is framed as flakiness from a varying delta rather than d1's point about ambient state defeating the injected clock, but it points at the same problem in the same place."
+  },
+  "f029": {
+    "id": "f029",
+    "matched_defect": "a3-d3",
+    "matched_decoy": null,
+    "reason": "Describes the names/rendered self-consistency assertion; line range 101-106 is slightly off from 107-111 but the assertion described is unambiguously d3."
+  },
+  "f032": {
+    "id": "f032",
+    "matched_defect": null,
+    "matched_decoy": null,
+    "reason": "Same coverage-versus-name complaint as f027; does not describe the '@someone' prefix overlap of d4. False positive."
+  },
+  "f039": {
+    "id": "f039",
+    "matched_defect": "a3-d1",
+    "matched_decoy": null,
+    "reason": "healthy_fixture reading the real wall clock, with the per-run/per-machine consequence d1 names. Matches d1."
+  },
+  "f041": {
+    "id": "f041",
+    "matched_defect": null,
+    "matched_decoy": null,
+    "reason": "Generic 'test fails for many reasons, too broad for its name' claim. Corresponds to no truth-set defect and is too vague to reach d3 or d4. False positive."
+  },
+  "f044": {
+    "id": "f044",
+    "matched_defect": "a3-d1",
+    "matched_decoy": null,
+    "reason": "Points at the SystemTime::now() call for last_commit in healthy_fixture (line 34, adjacent to d1's 35-39 span). Matches d1."
+  },
+  "f046": {
+    "id": "f046",
+    "matched_defect": "a3-d3",
+    "matched_decoy": null,
+    "reason": "Describes the assertion comparing the json rendering against report.outcome, staying green when both move together. Matches d3."
+  },
+  "f055": {
+    "id": "f055",
+    "matched_defect": "a3-d3",
+    "matched_decoy": null,
+    "reason": "Names assert_eq!(names, rendered) and the missing literal, which is exactly d3's rule-t1 framing."
+  },
+  "f056": {
+    "id": "f056",
+    "matched_defect": "a3-d3",
+    "matched_decoy": null,
+    "reason": "Line 111, both operands from the code under test. Matches d3."
+  },
+  "f057": {
+    "id": "f057",
+    "matched_defect": "a3-d1",
+    "matched_decoy": null,
+    "reason": "healthy_fixture reading SystemTime::now() instead of the injected clock, line 37 inside d1's span. Matches d1."
+  },
+  "f001": {
+    "id": "f001",
+    "matched_defect": "a4-d2",
+    "matched_decoy": null,
+    "reason": "Names the HOME read as ambient state outside the sandbox in the right function; that is d2's first half. Does not mention the $HOME/.kaibo-absent-clone path, but the ambient-read problem is identified in the right place."
+  },
+  "f005": {
+    "id": "f005",
+    "matched_defect": "a4-d3",
+    "matched_decoy": null,
+    "reason": "Universal name over a hard-coded two-element list, new rules escape - d3 exactly, including why it is a hole."
+  },
+  "f010": {
+    "id": "f010",
+    "matched_defect": "a4-d2",
+    "matched_decoy": null,
+    "reason": "Same as f001: reads real HOME rather than injected Environment, correct function."
+  },
+  "f016": {
+    "id": "f016",
+    "matched_defect": "a4-d2",
+    "matched_decoy": null,
+    "reason": "Identifies the HOME read and the misattributed-failure consequence in the right function. The 'opt-in envvar guard' framing is an invented remedy not in t4, but the problem and place are d2."
+  },
+  "f030": {
+    "id": "f030",
+    "matched_defect": "a4-d1",
+    "matched_decoy": null,
+    "reason": "States the test stays green with the existence check removed because the traversal escape rejects first - d1's core, in the right function."
+  },
+  "f031": {
+    "id": "f031",
+    "matched_defect": "a4-d3",
+    "matched_decoy": null,
+    "reason": "Names the two enumerated rule ids and the sweeping alternative, and the escape of a later rule; d3."
+  },
+  "f033": {
+    "id": "f033",
+    "matched_defect": null,
+    "matched_decoy": null,
+    "reason": "Lands on the d3 function but describes a different problem: assertion strength (non-empty vs correct path), not the enumerated population. The enumeration hole is never mentioned, so this is not d3 misread - it is a separate claim, and no truth-set defect covers assertion weakness here. False positive."
+  },
+  "f035": {
+    "id": "f035",
+    "matched_defect": "a4-d3",
+    "matched_decoy": null,
+    "reason": "Hard-coded rule ids, third rule escapes the guardrail - d3."
+  },
+  "f038": {
+    "id": "f038",
+    "matched_defect": "a4-d3",
+    "matched_decoy": null,
+    "reason": "Enumeration of two rules by name, new rule silently escapes - d3."
+  },
+  "f042": {
+    "id": "f042",
+    "matched_defect": "a4-d2",
+    "matched_decoy": null,
+    "reason": "Real HOME instead of hermetic tempfile setup, right function; d2."
+  },
+  "f043": {
+    "id": "f043",
+    "matched_defect": "a4-d2",
+    "matched_decoy": null,
+    "reason": "Covers both halves of d2: the HOME read and the constructed path under the real home directory outside the tempfile sandbox."
+  },
+  "f049": {
+    "id": "f049",
+    "matched_defect": "a4-d3",
+    "matched_decoy": null,
+    "reason": "Names the hard-coded population and the sweep-over-violations alternative; d3."
+  },
+  "f054": {
+    "id": "f054",
+    "matched_defect": "a4-d2",
+    "matched_decoy": null,
+    "reason": "Identifies the real-home path .kaibo-absent-clone and the failure if it ever exists - d2's second half, right function."
+  }
+}

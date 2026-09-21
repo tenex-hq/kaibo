@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 36207,
+  "stop_reason": "end_turn",
+  "session_id": "e475d759-3370-40e5-b469-8f30b57cbd01",
+  "total_cost_usd": 0.048490399999999996,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 4367,
+    "cache_read_input_tokens": 4267,
+    "output_tokens": 2726,
+    "output_tokens_details": {
+      "thinking_tokens": 1932
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 4367,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2726,
+        "cache_read_input_tokens": 4267,
+        "cache_creation_input_tokens": 4367,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4367
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2815,
+      "outputTokens": 18,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0029049999999999996,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 2726,
+      "cacheReadInputTokens": 4267,
+      "cacheCreationInputTokens": 4367,
+      "webSearchRequests": 0,
+      "costUSD": 0.0455854,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 1932,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Findings\n\n**`healthy_fixture` breaks hermeticity and is likely internally inconsistent**\n\n`last_commit` is computed from real `SystemTime::now() - 60`, not from the injected `FixedClock`. Two problems:\n- It reads the wall clock, so this violates \"no test touches ambient state\" \u2014 a run today produces a last-commit timestamp around 2026, while `NOW_EPOCH` (the clock the code under test actually uses) is fixed at Nov 2023. If `DomainsVerb` does any recency comparison between last-commit time and the injected clock, the fixture is feeding it a commit \"60 seconds in the future\" relative to the code's notion of now \u2014 a fixture bug, not just a style nit.\n- Both tests inherit this via `healthy_fixture`, so both are exposed to it.\n\nFix: derive `last_commit` from `NOW_EPOCH - 60` instead of `SystemTime::now()`.\n\n**Self-consistency check in `lists_every_domain_with_owner_topics_and_summary`**\n\n```rust\nlet rendered: Vec<String> = match &report.outcome { ... };\nassert_eq!(names, rendered);\n```\n\n`names` comes from `report.render_json()`, `rendered` comes from `report.outcome` \u2014 both are views of the same computed `report`. This only proves the JSON serializer agrees with the struct it serializes; it doesn't pin either one down against an expectation. If both paths shared a bug (e.g. both silently drop a domain, or both reorder), this assertion stays green. Replace with a literal:\n\n```rust\nassert_eq!(names, vec![\"kaibo\".to_string(), \"observability\".to_string()]);\n```\n\nand drop the `rendered` derivation entirely.\n\n**Everything else holds up**\n\n- `domains[0].owner`, `.topics`, `.summary`, exit codes, and the `NoDomains`/`NoHits` outcome are all literals, not values computed from the code under test.\n- Both test names describe a situation (\"lists every domain with owner/topics/summary\", \"a MOC with no domain headings is a gap\") rather than a function call, and each assertion block plausibly maps to a distinct way the named behavior could break.\n- No enumeration/guardrail pattern present in this excerpt to critique.\n- Filesystem use is confined to `tempfile::tempdir()`; no other ambient state is touched aside from the clock issue above.",
+  "ttft_ms": 27821,
+  "type": "result",
+  "duration_ms": 35721,
+  "uuid": "6dba0655-77fa-4539-bb44-d41d5278b52f",
+  "ttft_stream_ms": 4051,
+  "time_to_request_ms": 611,
+  "first_content_frame_ms": 4053,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 51032,
+  "stop_reason": "end_turn",
+  "session_id": "67f94f0b-526a-4b64-9357-a74d591e602f",
+  "total_cost_usd": 0.06551339999999999,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 4196,
+    "cache_read_input_tokens": 4267,
+    "output_tokens": 4508,
+    "output_tokens_details": {
+      "thinking_tokens": 3484
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 4196,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 4508,
+        "cache_read_input_tokens": 4267,
+        "cache_creation_input_tokens": 4196,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 4196
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2732,
+      "outputTokens": 12,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.002792,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 4508,
+      "cacheReadInputTokens": 4267,
+      "cacheCreationInputTokens": 4196,
+      "webSearchRequests": 0,
+      "costUSD": 0.06272139999999998,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 3484,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "Reviewed against all five standards. Three issues, one clean pass worth noting as the right pattern.\n\n**1. `caller()` breaks hermeticity (both tests depend on it)**\n\n```rust\nstdout_tty: std::io::stdout().is_terminal(),\n```\n\nreads real ambient state \u2014 the same test run behaves differently depending on whether it's invoked in a terminal or piped (e.g., in CI vs. interactively). `build_profile: if cfg!(debug_assertions) {...}` has the same flavor \u2014 the fixture value flips depending on how the binary was compiled. Neither is gated behind an opt-in env var. This is a shared helper used by every test in the file, so the exposure is systemic, not isolated to one test. Should be a plain injected/hardcoded `Caller` literal.\n\n**2. Guardrail test enumerates instead of sweeping**\n\n```rust\nfor forbidden in [\n    \"kaibo.useful\", \"kaibo.helpful\", \"kaibo.session_id\",\n    \"kaibo.activation\", \"kaibo.activated\",\n] { ... }\n```\n\n`no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured` is exactly the enumeration antipattern: it asserts a property of this five-item list, not of the event schema. A sixth forbidden field (e.g. `kaibo.engagement_score`) added later escapes silently, and the test keeps passing while the hole it exists to close is open.\n\nContrast with `every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix` in the same file, which correctly sweeps `attrs.keys()` generically \u2014 that's the right shape to fix the first test into (e.g., assert no key contains substrings like \"useful\"/\"activat\"/\"session\", or check against an explicit allowlist of the *only* permitted keys rather than a denylist of forbidden ones).\n\n**3. `from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census` names a function call, not a situation**\n\nThe name is built around the function under test (`from_query sets X`), not a scenario \u2014 it will need rewriting the moment `from_query` is renamed or the mapping logic moves. It also adds little: with a fully-default census (all zeros), it re-asserts the same \"gap\" mapping as the first test but with a degenerate, non-narrative fixture. Since `outcome` is set directly by the test via the `QueryOutcome::NoHits` variant rather than derived from the census, this test doesn't actually exercise any census-dependent behavior \u2014 it's redundant with the first test and should probably be deleted or merged into a real situation (e.g., \"a query producing zero hits with no drafts and no unverified pages still reports a gap\").\n\n**What's fine:** every assertion elsewhere is a literal (`\"gap\"`, `3`, `0`), not derived from the code under test, and `a_gap_whose_pages_were_all_withheld_as_drafts_is_readable_as_such` correctly ties its name to the census fields it actually checks (`withheld_draft`, `raw_hit_count`, `hit_count`).",
+  "ttft_ms": 38945,
+  "type": "result",
+  "duration_ms": 50187,
+  "uuid": "44faa7aa-1f0d-46fb-ab24-c44c726da36c",
+  "ttft_stream_ms": 1414,
+  "time_to_request_ms": 277,
+  "first_content_frame_ms": 1415,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

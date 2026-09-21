@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 100767,
+  "stop_reason": "end_turn",
+  "session_id": "d626d303-b384-44da-8e55-31391b428370",
+  "total_cost_usd": 0.11993480000000001,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 18394,
+    "output_tokens": 10567,
+    "output_tokens_details": {
+      "thinking_tokens": 7859
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 10567,
+        "cache_read_input_tokens": 18394,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 10512,
+      "outputTokens": 14,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.010582000000000001,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 10567,
+      "cacheReadInputTokens": 18394,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.1093528,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 7859,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "# t1 \u2014 expected value never from code under test\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"<file>\" },\n      \"reason\": \"Every assert_eq! expected side is a literal enum variant (LintOutcome::CloneMissing, ExitCode::Stale, Severity::Structural, etc.) or a hardcoded string/number, none computed by running LintVerb.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read\", \"line\": 47, \"excerpt\": \"LintOutcome::InvalidPath { path: argument.to_string() }\" },\n      \"reason\": \"`argument` comes from the hardcoded loop array, not from the code under test, so the expectation is still a literal.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n# t2 \u2014 every test can fail for the reason its name gives\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"violation\",\n      \"span\": { \"function\": \"every_rule_that_fires_names_the_file_it_fired_on\", \"line\": 121, \"excerpt\": \"!violation.path.is_empty()\" },\n      \"reason\": \"Name claims each rule names *the file it fired on*, but the body only checks non-emptiness, not that the path matches the file that actually triggered it.\",\n      \"confidence\": \"medium\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"violation\",\n      \"span\": { \"function\": \"a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap\", \"line\": 88, \"excerpt\": \"LintVerb::new(&config, vec![\\\"../nowhere.md\\\".to_string()]).gather()\" },\n      \"reason\": \"`../nowhere.md` also escapes the clone the same way the three arguments in the adjacent traversal test do, so this could pass via the escape check alone, never exercising a distinct 'nonexistent file' mechanism.\",\n      \"confidence\": \"low\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_missing_clone_exits_4_stale_not_a_gap\" },\n      \"reason\": \"Fixture withholds any clone directory at all, so the assertion can only pass via clone-missing detection.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"an_empty_corpus_exits_3_the_gap_signal_not_a_violation\" },\n      \"reason\": \"Empty-but-present clone specifically discriminates the no-files-found path from both missing-clone and violation paths.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read\" },\n      \"reason\": \"Three distinct traversal shapes each assert the exact InvalidPath{path} variant with the real argument, discriminating the escape check.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_structural_violation_makes_the_whole_run_exit_2_as_bad_input\" },\n      \"reason\": \"Asserts the specific Severity::Structural variant is present, discriminating structural from other violation kinds.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_well_formed_page_with_only_a_prose_style_slip_still_exits_0\" },\n      \"reason\": \"Asserts exit success, exactly one violation, and that violation being Severity::Heuristic, discriminating heuristic-only findings from success.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n# t3 \u2014 test describes a situation, not a function call\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"<file>\" },\n      \"reason\": \"All seven test names describe outcomes and fixture situations (missing clone, empty corpus, path escaping, structural violation, style slip) with no callee or return-shape naming a function/method.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"every_rule_that_fires_names_the_file_it_fired_on\" },\n      \"reason\": \"'rule' and 'fires' are domain nouns describing lint behavior, not the name of a callee in the file; survives a rename of any function.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n# t4 \u2014 tests are hermetic by default\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"violation\",\n      \"span\": { \"function\": \"a_missing_clone_exits_4_stale_not_a_gap\", \"line\": 34, \"excerpt\": \"let home = std::env::var(\\\"HOME\\\").unwrap();\" },\n      \"reason\": \"Reads the real process environment variable HOME instead of an injected Environment, so the test's behavior depends on the machine it runs on.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"an_empty_corpus_exits_3_the_gap_signal_not_a_violation\" },\n      \"reason\": \"All filesystem creation is rooted under tempfile::tempdir().\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read\" },\n      \"reason\": \"The write outside the clone still targets a path under the same tempdir, not the real filesystem.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"<file>\", \"excerpt\": \"write_page / config_for helpers\" },\n      \"reason\": \"The shared write_page and config_for helpers only create_dir_all/write beneath the tempdir path passed in by each test.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n# t5 \u2014 guardrail tests sweep, they do not enumerate\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"violation\",\n      \"span\": { \"function\": \"every_rule_that_fires_names_the_file_it_fired_on\", \"line\": 120, \"excerpt\": \"for rule_id in [\\\"frontmatter-contract\\\", \\\"tags-kebab-case\\\"] {\" },\n      \"reason\": \"Claims 'every rule that fires' but obtains that set from a hardcoded id list instead of iterating the produced `violations`, so a third rule that fires in this fixture is never checked.\",\n      \"confidence\": \"medium\"\n    },\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"compliant\",\n      \"span\": { \"function\": \"a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read\", \"line\": 46, \"excerpt\": \"for argument in [\\\"../secret.md\\\", \\\"kaibo/../../secret.md\\\", \\\"./../secret.md\\\"] {\" },\n      \"reason\": \"This enumerates example inputs to one function (path validation), not an open-ended population under guard, so it is out of this rule's scope.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 80372,
+  "type": "result",
+  "duration_ms": 100083,
+  "uuid": "db22368a-5ec2-44a9-9af4-fd348c277d85",
+  "ttft_stream_ms": 1726,
+  "time_to_request_ms": 357,
+  "first_content_frame_ms": 1727,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

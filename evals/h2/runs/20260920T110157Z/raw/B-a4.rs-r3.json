@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 58809,
+  "stop_reason": "end_turn",
+  "session_id": "29887152-3da4-4d9b-bb3e-b227290c5581",
+  "total_cost_usd": 0.0465644,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 14024,
+    "output_tokens": 6916,
+    "output_tokens_details": {
+      "thinking_tokens": 6109
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 6916,
+        "cache_read_input_tokens": 14024,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 10522,
+      "outputTokens": 6928,
+      "cacheReadInputTokens": 14024,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0465644,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 6109,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"Every assertion compares against literal enum variants or numbers, not computed results.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap\",\n        \"line\": 59,\n        \"excerpt\": \"let clone = tmp.path().join(\\\"clone\\\");\"\n      },\n      \"reason\": \"Test would still pass if nonexistence check removed; path traversal escape causes failure instead.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"Other six tests can fail if their named mechanism (missing clone, empty corpus, path escape, structural violation, file naming, prose slip detection) is removed.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"All test names describe situations (missing clone, empty corpus, path escape, structural violation, rule file naming, prose style slip) and outcomes, not functions or return types.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"a_missing_clone_exits_4_stale_not_a_gap\",\n        \"line\": 26,\n        \"excerpt\": \"let home = std::env::var(\\\"HOME\\\").unwrap();\"\n      },\n      \"reason\": \"Test reads the real process environment variable HOME, reading ambient state outside test sandbox.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"Other six tests use tempfile and all filesystem mutations stay rooted in the temp directory.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"not_applicable\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"No guardrail tests asserting properties over open-ended populations; all tests verify specific scenarios.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 53663,
+  "type": "result",
+  "duration_ms": 58224,
+  "uuid": "97c76f54-0dd2-4642-8f4e-f81de023778e",
+  "ttft_stream_ms": 1283,
+  "time_to_request_ms": 498,
+  "first_content_frame_ms": 1284,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

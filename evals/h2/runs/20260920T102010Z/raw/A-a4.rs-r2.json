@@ -1,0 +1,111 @@
+{
+  "duration_api_ms": 41107,
+  "stop_reason": "end_turn",
+  "session_id": "40c246ba-5746-40c8-9bf9-84cc8a016cad",
+  "total_cost_usd": 0.0405874,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 9187,
+    "output_tokens": 3540,
+    "output_tokens_details": {
+      "thinking_tokens": 2751
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3540,
+        "cache_read_input_tokens": 9187,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3281,
+      "outputTokens": 13,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.003346,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 2,
+      "outputTokens": 3540,
+      "cacheReadInputTokens": 9187,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0372414,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 2751,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "Findings, three issues:\n\n**1. `a_missing_clone_exits_4_stale_not_a_gap` reads ambient environment \u2014 violates hermeticity.**\n\n```rust\nlet home = std::env::var(\"HOME\").unwrap();\nlet clone = Path::new(&home).join(\".kaibo-absent-clone\");\n```\n\nThis reads the real `HOME` env var and builds a path under the actual home directory. It panics on any machine/container where `HOME` is unset, and depends on `~/.kaibo-absent-clone` never existing on the machine running the test \u2014 an assumption about ambient state, not something the test controls. Use a `tempdir()` path that is simply never created (e.g. `tmp.path().join(\"clone\")` without the `create_dir_all` the other tests do) instead of touching `$HOME`.\n\n**2. `a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap` can't fail for the reason it names.**\n\n```rust\nlet report = LintVerb::new(&config, vec![\"../nowhere.md\".to_string()]).gather();\n```\n\n`../nowhere.md` also leaves the clone, which is exactly the condition the previous test (`a_path_argument_that_leaves_the_clone_by_any_route...`) already covers. If the code rejects it purely because it's outside the clone (checked before existence), this test stays green even if \"nonexistent-but-in-bounds\" handling were deleted entirely. To isolate the claimed reason, the argument needs to stay inside the clone, e.g. `\"kaibo/reference/nowhere.md\"`.\n\n**3. `every_rule_that_fires_names_the_file_it_fired_on` enumerates instead of sweeping.**\n\n```rust\nfor rule_id in [\"frontmatter-contract\", \"tags-kebab-case\"] {\n```\n\nThis is the guardrail pattern the standards specifically warn against: it lists two rule IDs by name and checks only those. A third rule added later that fires without naming its file escapes this test silently, even though the test's name claims to cover \"every rule.\" It should sweep over whatever violations were actually produced, e.g. `assert!(violations.iter().all(|v| !v.path.is_empty()))`, and let the two fixtures just be the mechanism for producing violations to sweep over.\n\nEverything else \u2014 literal expected values, tempfile-only fixtures elsewhere, situational naming \u2014 holds up.",
+  "ttft_ms": 32733,
+  "type": "result",
+  "duration_ms": 40257,
+  "uuid": "464be182-3967-4549-bcdc-8cfcb911c286",
+  "ttft_stream_ms": 1623,
+  "time_to_request_ms": 329,
+  "first_content_frame_ms": 1623,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

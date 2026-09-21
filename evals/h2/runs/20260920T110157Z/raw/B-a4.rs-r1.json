@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 104902,
+  "stop_reason": "end_turn",
+  "session_id": "d7e5f056-4e39-48d2-ad13-da29823826f2",
+  "total_cost_usd": 0.10286999999999999,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 14024,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 12846,
+    "output_tokens_details": {
+      "thinking_tokens": 10931
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 14024,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 12846,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 14024,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 14024
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 10522,
+      "outputTokens": 12860,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 14024,
+      "webSearchRequests": 0,
+      "costUSD": 0.10286999999999999,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 10931,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "I'll analyze this test artifact against each of the 5 conformance standards.\n\n## t1 - An expected value never comes from the code under test\n\nExamining every assertion in the file:\n- `assert_eq!(report.outcome, LintOutcome::CloneMissing);` \u2014 Expected value is a literal enum variant\n- `assert_eq!(report.exit_code(), ExitCode::Stale);` \u2014 Literal enum variant\n- `assert_eq!(report.exit_code(), ExitCode::NoHits);` \u2014 Literal enum variant\n- `assert_eq!(files_checked, 1);` \u2014 Literal integer `1`\n- `assert_eq!(violations.len(), 1);` \u2014 Literal integer `1`\n- `assert_eq!(violations[0].severity, Severity::Heuristic);` \u2014 Literal enum variant\n- `assert!(!violation.path.is_empty(), ...);` \u2014 Boolean predicate with literal\n\nAll expected values are literals written into the test, not computed by running the code under test.\n\n```json\n{\n  \"rule_id\": \"t1\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t1\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"All assertions compare against literal enum variants or integer literals, never against computed values.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t2 - Every test must be able to fail for the reason its name gives\n\nChecking each test:\n- `a_missing_clone_exits_4_stale_not_a_gap`: Would fail if code stops detecting missing clones or stops returning `Stale` exit code.\n- `an_empty_corpus_exits_3_the_gap_signal_not_a_violation`: Would fail if code stops detecting empty corpora or returns wrong exit code.\n- `a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read`: Would fail if path-escape validation is removed.\n- `a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap`: Would fail if missing-file validation is removed.\n- `a_structural_violation_makes_the_whole_run_exit_2_as_bad_input`: Would fail if structural violation detection is removed or exit code changes.\n- `every_rule_that_fires_names_the_file_it_fired_on`: Would fail if any rule fires without populating the path field.\n- `a_well_formed_page_with_only_a_prose_style_slip_still_exits_0`: Would fail if heuristic violations cause non-zero exit or aren't detected.\n\nAll tests have assertions that would fail if the named mechanism were broken.\n\n```json\n{\n  \"rule_id\": \"t2\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t2\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"Each test asserts outcomes specific to the mechanism its name describes; breaking that mechanism would cause failure.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t3 - A test describes a situation, not a function call\n\nExamining test names:\n- `a_missing_clone_exits_4_stale_not_a_gap` \u2014 Names a domain situation (missing clone) and outcome (exit code, not gap signal).\n- `an_empty_corpus_exits_3_the_gap_signal_not_a_violation` \u2014 Domain situation (empty corpus) and outcome.\n- `a_path_argument_that_leaves_the_clone_by_any_route_is_rejected_as_invalid_not_read` \u2014 Situation and outcome; would survive a refactor that renames the validation function.\n- `a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap` \u2014 Situation and outcome.\n- `a_structural_violation_makes_the_whole_run_exit_2_as_bad_input` \u2014 Domain concept and outcome.\n- `every_rule_that_fires_names_the_file_it_fired_on` \u2014 Property of the system (rules name files), not an implementation detail.\n- `a_well_formed_page_with_only_a_prose_style_slip_still_exits_0` \u2014 Situation and outcome.\n\nNo test names identify functions, return types, or mechanical call shapes. All would survive refactoring that renamed implementation details.\n\n```json\n{\n  \"rule_id\": \"t3\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t3\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"Test names describe domain situations and observable outcomes, not function names or return value shapes.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t4 - Tests are hermetic by default\n\nScanning for ambient state reads, network calls, subprocesses, and filesystem mutations outside tempfile:\n\nIn `a_missing_clone_exits_4_stale_not_a_gap`:\n- Line 21: `let home = std::env::var(\"HOME\").unwrap();` \u2014 **Reads real process environment variable**\n- Line 22: Constructs path under real HOME directory, not in tempfile sandbox\n\nThis test depends on the real environment and uses the real home directory, violating hermicity. The other six tests all use `tempfile::tempdir()` and operate within their sandbox.\n\n```json\n{\n  \"rule_id\": \"t4\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"a_missing_clone_exits_4_stale_not_a_gap\",\n        \"line\": 21,\n        \"excerpt\": \"let home = std::env::var(\\\"HOME\\\").unwrap();\"\n      },\n      \"reason\": \"Test reads real HOME environment variable instead of using injected or fixed path in tempfile.\",\n      \"confidence\": \"high\"\n    },\n    {\n      \"rule_id\": \"t4\",\n      \"verdict\": \"compliant\",\n      \"span\": {\n        \"function\": \"<file>\"\n      },\n      \"reason\": \"Six tests use tempfile::tempdir() and remain fully hermetic; all file mutations stay within sandbox.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```\n\n## t5 - Guardrail tests sweep, they do not enumerate\n\nIdentifying guardrails: `every_rule_that_fires_names_the_file_it_fired_on` asserts a property over an open-ended population (every rule that fires as the linter grows).\n\nThe test obtains its population using a hard-coded list at line 86:\n\n```rust\nfor rule_id in [\"frontmatter-contract\", \"tags-kebab-case\"] {\n```\n\nIt explicitly enumerates only two rules instead of checking all members of `violations`. If a new rule is added and fires on the same fixture, the test would not examine it. The compliant approach would iterate over all violations without the hard-coded list.\n\n```json\n{\n  \"rule_id\": \"t5\",\n  \"findings\": [\n    {\n      \"rule_id\": \"t5\",\n      \"verdict\": \"violation\",\n      \"span\": {\n        \"function\": \"every_rule_that_fires_names_the_file_it_fired_on\",\n        \"line\": 86,\n        \"excerpt\": \"for rule_id in [\\\"frontmatter-contract\\\", \\\"tags-kebab-case\\\"] {\"\n      },\n      \"reason\": \"Hard-coded list of rules; new rules added later escape the guardrail without being examined.\",\n      \"confidence\": \"high\"\n    }\n  ]\n}\n```",
+  "ttft_ms": 90037,
+  "type": "result",
+  "duration_ms": 104097,
+  "uuid": "8dc7d108-3d61-4677-a5a7-385d7c77eea1",
+  "ttft_stream_ms": 1305,
+  "time_to_request_ms": 427,
+  "first_content_frame_ms": 1306,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

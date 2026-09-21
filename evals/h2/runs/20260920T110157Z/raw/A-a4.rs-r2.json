@@ -1,0 +1,97 @@
+{
+  "duration_api_ms": 41403,
+  "stop_reason": "end_turn",
+  "session_id": "1c5bdf68-9b76-41f7-9ec4-4045810d5834",
+  "total_cost_usd": 0.026775300000000002,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 6793,
+    "output_tokens": 4546,
+    "output_tokens_details": {
+      "thinking_tokens": 4203
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 10,
+        "output_tokens": 4546,
+        "cache_read_input_tokens": 6793,
+        "cache_creation_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3291,
+      "outputTokens": 4561,
+      "cacheReadInputTokens": 6793,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.026775300000000002,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 4203,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "is_error": false,
+  "num_turns": 1,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "## Review Results\n\n**Standard 4 violation** (`a_missing_clone_exits_4_stale_not_a_gap`): The test reads `HOME` from the real environment instead of using a hermetic tempfile setup. You could test the \"absent clone\" case without reading ambient state:\n\n```rust\nlet clone = tmp.path().join(\"clone\");\n// Don't create it, so it's absent\nlet config = config_for(&clone);\n```\n\nThis would remove the environment dependency and be more hermetic.\n\n---\n\n**Standard 5 violation** (`every_rule_that_fires_names_the_file_it_fired_on`): The test enumerates two specific rule IDs (`frontmatter-contract`, `tags-kebab-case`) rather than sweeping over all rules that fire. If you add a new rule later that forgets to populate the file path, this test stays green and misses the gap. \n\nFix by asserting the property over the pipeline instead:\n\n```rust\nfor violation in violations.iter() {\n    assert!(\n        !violation.path.is_empty(),\n        \"`{}` fired without naming the file it fired on\",\n        violation.rule_id\n    );\n}\n```\n\nThis way, any rule that fires must name a file, and new rules are covered automatically.\n\n---\n\n**All other standards**: Pass. Tests use literals, would fail for the right reasons, describe situations not implementation, are mostly hermetic, and avoid self-consistency checks.",
+  "ttft_ms": 37643,
+  "type": "result",
+  "duration_ms": 40713,
+  "uuid": "ebf99907-993d-4a33-9ddd-0a5b1b1810a4",
+  "ttft_stream_ms": 938,
+  "time_to_request_ms": 359,
+  "first_content_frame_ms": 939,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

@@ -1,0 +1,669 @@
+[
+  {
+    "claim": "The test asserts self-consistency with Event::to_jsonl() rather than that append writes correct content, so if to_jsonl() is broken but internally consistent, the test stays green.",
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": null,
+    "cited_rule": "Standard 1",
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 1,
+    "src": "A-a1.rs-r1#0"
+  },
+  {
+    "claim": "The expected values in the test call .to_jsonl() on the Event returned by the helper, which tests self-consistency: if to_jsonl() has a bug and append() uses the same buggy serialization, both sides fail in the same way and the test passes, so the test verifies the round-trip works rather than that the serialization is correct.",
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": null,
+    "cited_rule": "Standard 1",
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 2,
+    "src": "A-a1.rs-r2#0"
+  },
+  {
+    "claim": "The assertions compute expected values by calling the code under test (event(...).to_jsonl()), so if to_jsonl() is broken these assertions will still pass, meaning the test only verifies self-consistency of serialization rather than that append behavior is correct.",
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": null,
+    "cited_rule": "Standard 1: Expected values must be literals",
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 3,
+    "src": "A-a1.rs-r3#0"
+  },
+  {
+    "claim": "Because expected values come from the code under test, the test conflates append behavior with serialization correctness, so it cannot distinguish between a broken append and a broken serialization, meaning it does not fail for its stated reason.",
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": null,
+    "cited_rule": "Standard 2: Every test must fail for its stated reason",
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 3,
+    "src": "A-a1.rs-r3#1"
+  },
+  {
+    "claim": "The test name names the function call rather than the situation.",
+    "fn": "append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file",
+    "lines": null,
+    "cited_rule": "Standard 3: Minor",
+    "arm": "A",
+    "artifact": "a1.rs",
+    "repeat": 3,
+    "src": "A-a1.rs-r3#2"
+  },
+  {
+    "fn": null,
+    "lines": null,
+    "claim": "The caller() function calls std::io::stdout().is_terminal(), which depends on whether tests run in a TTY, causing tests using caller() to pass or fail differently in CI, an IDE, or a terminal.",
+    "cited_rule": "Non-hermetic",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "A-a2.rs-r1#0"
+  },
+  {
+    "fn": "no_attribute_claims_...()",
+    "lines": null,
+    "claim": "The test lists five forbidden attributes by name, so if someone adds a sixth forbidden attribute (e.g., kaibo.useful_score), the test stays green.",
+    "cited_rule": "Enumeration guardrail",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "A-a2.rs-r1#1"
+  },
+  {
+    "fn": "every_custom_attribute_is_namespaced_...()",
+    "lines": null,
+    "claim": "The loop filters for keys starting with \"kaibo.\", then asserts they start with \"kaibo.\" or \"process.\", so since the filter ensures they already start with \"kaibo.\", the second assertion always passes and doesn't verify non-kaibo attributes are valid.",
+    "cited_rule": "Logic error",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "A-a2.rs-r1#2"
+  },
+  {
+    "claim": "The caller() function calls std::io::stdout().is_terminal(), which reads ambient state, making every test using this helper non-hermetic and producing different results depending on whether it's run in a TTY.",
+    "fn": "caller",
+    "lines": null,
+    "cited_rule": "Hermeticity",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#0"
+  },
+  {
+    "claim": "The filter key.starts_with(\"kaibo.\") narrows the iteration, then the second assertion checks key.starts_with(\"kaibo.\") || key.starts_with(\"process.\"), which always passes because keys already match the filter.",
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#1"
+  },
+  {
+    "claim": "A kaibo-prefixed key cannot start with otel., so the first assertion is vacuous too.",
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#2"
+  },
+  {
+    "claim": "The test name says \"every custom attribute\" but only checks kaibo-prefixed ones.",
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#3"
+  },
+  {
+    "claim": "The test lists five specific forbidden attribute names, so if someone adds a sixth forbidden attribute type (e.g., kaibo.annotated), the test stays green; this is a guardrail that enumerates rather than sweeps, and is incomplete if the contract is that this category of claims is forbidden.",
+    "fn": "no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "A-a2.rs-r2#4"
+  },
+  {
+    "claim": "caller() calls std::io::stdout().is_terminal(), which reads real terminal state, and every test passes this to Event::from_query(), so test outcomes depend on whether stdout is a TTY in the environment running the tests, making it not hermetic.",
+    "fn": "caller",
+    "lines": null,
+    "cited_rule": "Standard 4 (Hermetic tests)",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "A-a2.rs-r3#0"
+  },
+  {
+    "claim": "The test no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured enumerates five forbidden attributes in a hardcoded list, so if a sixth forbidden attribute should exist, the test won't catch its absence.",
+    "fn": "no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured",
+    "lines": null,
+    "cited_rule": "Standard 5 (Guardrail tests sweep)",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "A-a2.rs-r3#1"
+  },
+  {
+    "claim": "The test name from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census centers the implementation detail \"from_query_sets\" rather than the situation.",
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": null,
+    "cited_rule": "Standard 3 (describe situations, not function calls)",
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "A-a2.rs-r3#2"
+  },
+  {
+    "claim": "In every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix, the filter narrows to only kaibo.-prefixed keys, then the second assertion key.starts_with(\"kaibo.\") || key.starts_with(\"process.\") always passes, making it redundant, and the intent was probably to check ALL custom attributes against this rule, not just the filtered set.",
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": null,
+    "cited_rule": null,
+    "arm": "A",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "A-a2.rs-r3#3"
+  },
+  {
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": null,
+    "claim": "The assertion assert_eq!(names, rendered) compares two values that both come from the code under test, making it self-consistency checking that passes if the JSON rendering matches the struct regardless of whether either is correct, rather than asserting against a literal.",
+    "cited_rule": "Standard 1",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 1,
+    "src": "A-a3.rs-r1#0"
+  },
+  {
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": null,
+    "claim": "The test will fail for many unrelated reasons (domain name parsing broken, owner parsing broken, topics parsing broken, summary parsing broken, rendering broken, exit code logic broken), making it too broad for its name.",
+    "cited_rule": "Standard 2",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 1,
+    "src": "A-a3.rs-r1#1"
+  },
+  {
+    "claim": "healthy_fixture() reads the real wall clock with SystemTime::now(), which violates the hermetic principle because the test's behavior depends on when it runs and the last_commit value differs on each machine and run.",
+    "fn": "healthy_fixture",
+    "lines": null,
+    "cited_rule": "hermetic principle",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 2,
+    "src": "A-a3.rs-r2#0"
+  },
+  {
+    "claim": "In lists_every_domain_with_owner_topics_and_summary, the assertion compares two outputs of the code under test (json rendering vs report.outcome), which stays green through any change that keeps both outputs in sync with each other, including a broken implementation.",
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": null,
+    "cited_rule": "Standard 1",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 2,
+    "src": "A-a3.rs-r2#1"
+  },
+  {
+    "claim": "The test name lists_every_domain_with_owner_topics_and_summary promises more coverage than delivered: domains[1] only has its name checked, not owner/topics/summary, so breaking the second domain's owner/topics/summary parsing keeps the test green.",
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": null,
+    "cited_rule": "Standard 2",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 2,
+    "src": "A-a3.rs-r2#2"
+  },
+  {
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": null,
+    "claim": "The assertion `assert_eq!(names, rendered)` compares two values both derived from the code under test (one from JSON serialization, one from the outcome struct), so it only asserts self-consistency and would stay green even if both the JSON renderer and the outcome serializer were broken in identical ways.",
+    "cited_rule": "Standard 1: Expected value from code under test",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 3,
+    "src": "A-a3.rs-r3#0"
+  },
+  {
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": null,
+    "claim": "The test is named for listing domains with properties but also includes assertions on text and JSON rendering, so it can fail for reasons not stated in its name (e.g., breaking the text or JSON renderer while preserving listing logic).",
+    "cited_rule": "Standard 2: Test can fail for unstated reasons",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 3,
+    "src": "A-a3.rs-r3#1"
+  },
+  {
+    "fn": "healthy_fixture",
+    "lines": null,
+    "claim": "The `last_commit` value is computed using the real wall clock (`SystemTime::now()`) rather than the injected `FixedClock`, so the difference between real time and the fixture's `FixedClock(now())` varies per test run, making the test flaky if the code under test makes decisions based on this time delta.",
+    "cited_rule": "Standard 4: Test is not hermetic",
+    "arm": "A",
+    "artifact": "a3.rs",
+    "repeat": 3,
+    "src": "A-a3.rs-r3#2"
+  },
+  {
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": null,
+    "claim": "This test reads the real HOME environment variable, making the test depend on ambient state, which can cause failures attributed to code changes rather than environment differences; the test has neither the temp directory nor the opt-in envvar guard the standard requires for non-hermetic tests.",
+    "cited_rule": "Standard 4 (Hermeticity)",
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "src": "A-a4.rs-r1#0"
+  },
+  {
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": null,
+    "claim": "This test enumerates two specific rules by name ([\"frontmatter-contract\", \"tags-kebab-case\"]), so if a new rule is added later it silently escapes this guardrail.",
+    "cited_rule": "Standard 5 (Guardrails sweep)",
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "src": "A-a4.rs-r1#1"
+  },
+  {
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": null,
+    "claim": "This test checks !violation.path.is_empty() but doesn't verify the path is correct, only that it's not empty, so a rule could fire with a wrong file path and still pass.",
+    "cited_rule": "Standard 2",
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "src": "A-a4.rs-r1#2"
+  },
+  {
+    "claim": "The test reads HOME from the real environment instead of using a hermetic tempfile setup.",
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": null,
+    "cited_rule": "Standard 4",
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "src": "A-a4.rs-r2#0"
+  },
+  {
+    "claim": "The test enumerates two specific rule IDs (frontmatter-contract, tags-kebab-case) rather than sweeping over all rules that fire, so if a new rule is added later that forgets to populate the file path, this test stays green and misses the gap.",
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": null,
+    "cited_rule": "Standard 5",
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "src": "A-a4.rs-r2#1"
+  },
+  {
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": null,
+    "claim": "The test reads the real HOME directory and tests against a path in it (.kaibo-absent-clone), breaking the hermetic default because the test depends on that path not existing and will fail differently if .kaibo-absent-clone ever does exist.",
+    "cited_rule": "Hermeticity",
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "A-a4.rs-r3#0"
+  },
+  {
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": null,
+    "claim": "The test hardcodes two rule IDs (\"frontmatter-contract\", \"tags-kebab-case\") and checks only those, so if a third rule is added later that doesn't name its file, this test won't catch it, leaving a gap in the guardrail.",
+    "cited_rule": "Guardrail enumeration",
+    "arm": "A",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "A-a4.rs-r3#1"
+  },
+  {
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": [
+      44
+    ],
+    "claim": "The expected value is computed by calling to_jsonl() on the code under test, so both sides of the assertion move together.",
+    "cited_rule": "t1",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 1,
+    "src": "B-a1.rs-r1#0"
+  },
+  {
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": [
+      45
+    ],
+    "claim": "The expected value is computed by calling to_jsonl() on the code under test, so both sides of the assertion move together.",
+    "cited_rule": "t1",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 1,
+    "src": "B-a1.rs-r1#1"
+  },
+  {
+    "fn": "append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file",
+    "lines": null,
+    "claim": "The test name identifies the function name ('append') and return type ('failed'), which would be wrong if the function were renamed.",
+    "cited_rule": "t3",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 1,
+    "src": "B-a1.rs-r1#2"
+  },
+  {
+    "fn": "append_returns_trail_write_failed_when_the_parent_path_is_a_regular_file",
+    "lines": [
+      48
+    ],
+    "claim": "The test name centers on the function call and its mechanical return shape rather than describing the situation, and would require renaming if append is refactored.",
+    "cited_rule": "t3",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 2,
+    "src": "B-a1.rs-r2#0"
+  },
+  {
+    "claim": "Lines 53\u201354 compute expectations by calling event(\"first question\").to_jsonl() and event(\"second question\").to_jsonl(), which run the code under test, and since both the input and the expectation go through the same code paths, they are self-consistent even if both are wrong together, violating the rule that expectations should be a committed literal string rather than recomputed at test time.",
+    "fn": "a_second_invocation_appends_and_leaves_the_first_line_intact",
+    "lines": [
+      53,
+      54
+    ],
+    "cited_rule": "t1 - Expected values",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 3,
+    "src": "B-a1.rs-r3#0"
+  },
+  {
+    "claim": "The final test has an early return that skips its body unless KAIBO_TRAIL_SOAK is set, so if the mechanism \"one_line_per_invocation_and_no_torn_record\" breaks, the test still passes when the variable is absent, meaning it cannot fail for the stated reason under normal conditions.",
+    "fn": "a_long_run_of_appends_leaves_one_line_per_invocation_and_no_torn_record",
+    "lines": [
+      101
+    ],
+    "cited_rule": "t2 - Reason for failure",
+    "arm": "B",
+    "artifact": "a1.rs",
+    "repeat": 3,
+    "src": "B-a1.rs-r3#1"
+  },
+  {
+    "claim": "The loop in this test filters to kaibo-prefixed attributes, so if the namespacing mechanism breaks, the loop becomes empty and the assertions pass vacuously.",
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": [
+      66
+    ],
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "B-a2.rs-r1#0"
+  },
+  {
+    "claim": "The test name identifies it by the function `from_query` rather than the situation, and would be wrong if the function were renamed.",
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": [
+      48
+    ],
+    "cited_rule": "t3",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "B-a2.rs-r1#1"
+  },
+  {
+    "claim": "The helper reads real terminal state via std::io::stdout().is_terminal() and should instead inject a test value rather than accessing ambient stdout.",
+    "fn": "caller",
+    "lines": [
+      10
+    ],
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "B-a2.rs-r1#2"
+  },
+  {
+    "claim": "The test enumerates five hardcoded forbidden attributes, so if a new forbidden attribute were added, the test would not check it.",
+    "fn": "no_attribute_claims_the_answer_was_useful_or_that_activation_was_measured",
+    "lines": [
+      81
+    ],
+    "cited_rule": "t5",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 1,
+    "src": "B-a2.rs-r1#3"
+  },
+  {
+    "claim": "Test 4 (every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix) has an incomplete assertion: it filters attributes to those starting with \"kaibo.\" and then asserts each one starts with \"kaibo.\" or \"process.\", which is a tautology given the filter.",
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": [
+      85
+    ],
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "B-a2.rs-r2#0"
+  },
+  {
+    "claim": "The test name claims to check that every custom attribute is namespaced, but the test only examines attributes starting with \"kaibo.\"; if the code generated non-namespaced custom attributes with a different prefix, the test would still pass.",
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": [
+      85
+    ],
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "B-a2.rs-r2#1"
+  },
+  {
+    "claim": "Test 2 (from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census) names the function being tested (from_query) in its test name, making it an implementation detail that would become inaccurate if that function were renamed.",
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": [
+      43
+    ],
+    "cited_rule": "t3",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "B-a2.rs-r2#2"
+  },
+  {
+    "claim": "The caller() helper reads std::io::stdout().is_terminal(), which accesses ambient state (the real terminal), and every test that uses caller() touches this ambient state instead of injecting a mock or hand-written fake environment.",
+    "fn": null,
+    "lines": [
+      14
+    ],
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 2,
+    "src": "B-a2.rs-r2#3"
+  },
+  {
+    "fn": "every_custom_attribute_is_namespaced_and_never_uses_the_reserved_otel_prefix",
+    "lines": [
+      78
+    ],
+    "claim": "The test filters attributes to only those with keys starting with \"kaibo.\", so the test passes even if non-kaibo attributes violate the namespacing rule.",
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "B-a2.rs-r3#0"
+  },
+  {
+    "fn": "from_query_sets_kaibo_outcome_to_gap_for_a_default_hit_census",
+    "lines": [
+      64
+    ],
+    "claim": "The test name identifies the function under test by the callee name `from_query`, which would become incorrect if that function were renamed.",
+    "cited_rule": "t3",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "B-a2.rs-r3#1"
+  },
+  {
+    "fn": "caller",
+    "lines": [
+      16
+    ],
+    "claim": "The helper `caller()` reads the real stdout TTY state via std::io::stdout().is_terminal() instead of injecting a fixed value.",
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a2.rs",
+    "repeat": 3,
+    "src": "B-a2.rs-r3#2"
+  },
+  {
+    "claim": "The assertion `assert_eq!(names, rendered);` at line 110 in `lists_every_domain_with_owner_topics_and_summary` is a violation because both operands are computed from code under test and both change together through any consistent internal alteration.",
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": [
+      110
+    ],
+    "cited_rule": "t1",
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 1,
+    "src": "B-a3.rs-r1#0"
+  },
+  {
+    "claim": "The helper `healthy_fixture` reads the real wall clock (`let last_commit = SystemTime::now()` at line 34) instead of accepting an injected or fixed value.",
+    "fn": "healthy_fixture",
+    "lines": [
+      34
+    ],
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 1,
+    "src": "B-a3.rs-r1#1"
+  },
+  {
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": [
+      101,
+      106
+    ],
+    "claim": "The assertion at lines 101-106 checks self-consistency rather than a committed expectation, because both `names` and `rendered` are computed by running the code under test through two different codepaths, and it would pass through a behavior change if both codepaths moved together.",
+    "cited_rule": "t1 - Expected values from literals",
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 2,
+    "src": "B-a3.rs-r2#0"
+  },
+  {
+    "fn": "healthy_fixture",
+    "lines": [
+      37
+    ],
+    "claim": "The helper `healthy_fixture` reads the real wall clock (via `SystemTime::now()`) instead of accepting an injected clock, making the test dependent on ambient state and violating hermiticity.",
+    "cited_rule": "t4 - Hermetic tests",
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 2,
+    "src": "B-a3.rs-r2#1"
+  },
+  {
+    "claim": "Both sides of the assertion assert_eq!(names, rendered); are computed from the code under test (names from render_json(), rendered from outcome).",
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": [
+      111
+    ],
+    "cited_rule": "t1",
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 3,
+    "src": "B-a3.rs-r3#0"
+  },
+  {
+    "claim": "The test name claims every domain is verified with owner/topics/summary, but the body only checks these for the first domain.",
+    "fn": "lists_every_domain_with_owner_topics_and_summary",
+    "lines": null,
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a3.rs",
+    "repeat": 3,
+    "src": "B-a3.rs-r3#1"
+  },
+  {
+    "claim": "The test reads the real HOME environment variable and constructs a path under the real home directory instead of using an injected or fixed path within the tempfile sandbox, violating hermeticity.",
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": [
+      21,
+      22
+    ],
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "src": "B-a4.rs-r1#0"
+  },
+  {
+    "claim": "The test obtains its population via a hard-coded list of only two rules instead of iterating over all violations, so a new rule added later that fires on the same fixture would not be examined by the guardrail.",
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": [
+      86
+    ],
+    "cited_rule": "t5",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 1,
+    "src": "B-a4.rs-r1#1"
+  },
+  {
+    "claim": "The test reads the real process environment variable HOME instead of using injected environment state.",
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": [
+      23
+    ],
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "src": "B-a4.rs-r2#0"
+  },
+  {
+    "claim": "The test makes a universal claim ('every rule') but checks a hard-coded list of only two rules, so new rules added later would not be examined.",
+    "fn": "every_rule_that_fires_names_the_file_it_fired_on",
+    "lines": [
+      77
+    ],
+    "cited_rule": "t5",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 2,
+    "src": "B-a4.rs-r2#1"
+  },
+  {
+    "claim": "The test would still pass even if the nonexistence check were removed, because the path traversal escape causes failure instead.",
+    "fn": "a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap",
+    "lines": [
+      59
+    ],
+    "cited_rule": "t2",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "B-a4.rs-r3#0"
+  },
+  {
+    "claim": "The test reads the real process environment variable HOME, reading ambient state outside the test sandbox.",
+    "fn": "a_missing_clone_exits_4_stale_not_a_gap",
+    "lines": [
+      26
+    ],
+    "cited_rule": "t4",
+    "arm": "B",
+    "artifact": "a4.rs",
+    "repeat": 3,
+    "src": "B-a4.rs-r3#1"
+  }
+]
