@@ -473,3 +473,30 @@ fn a_timeout_that_is_not_a_positive_number_falls_back_instead_of_blocking_foreve
         );
     }
 }
+
+#[test]
+fn the_normative_claim_ceiling_is_one_until_a_config_file_says_otherwise() {
+    // One is the number that makes a verdict readable: a contract returns
+    // one verdict per standard. A corpus mid-atomicity-refactor raises it.
+    let tmp = tempfile::tempdir().unwrap();
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()));
+    let config = Config::resolve_with(&env).unwrap();
+    assert_eq!(config.lint().max_normative_claims, 1);
+    assert_eq!(
+        config.source(ConfigKey::LintMaxNormativeClaims),
+        ConfigSource::Default
+    );
+}
+
+#[test]
+fn a_config_file_raises_the_normative_claim_ceiling() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_config_file(tmp.path(), "[lint.normative_atomicity]\nmax_claims = 3\n");
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()));
+    let config = Config::resolve_with(&env).unwrap();
+    assert_eq!(config.lint().max_normative_claims, 3);
+    assert_eq!(
+        config.source(ConfigKey::LintMaxNormativeClaims),
+        ConfigSource::File
+    );
+}
