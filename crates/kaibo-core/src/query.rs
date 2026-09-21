@@ -85,22 +85,33 @@ pub struct Finding {
     pub fix: Option<String>,
 }
 
-/// Optional frontmatter facets beyond `status`: `severity` and `binding`,
-/// each `None` when unset or not a plain string. Only `render_json`
-/// surfaces these today; `render_text` does not.
+/// Optional frontmatter facets beyond `status`: the two keys the normative
+/// schema adds (see [`crate::normative`]). Only `render_json` surfaces
+/// these today; `render_text` does not.
+///
+/// Each is `None` when the key is unset or is not of the type the schema
+/// gives it. That matters most for `binding`, which the schema makes a
+/// boolean: a page writing a word there binds nothing, and the facet says
+/// so rather than passing the word along as if it did. Nothing here
+/// validates the schema - `kaibo lint`'s `normative-schema` rule is what
+/// tells an author their page is malformed, and it is not `query`'s place
+/// to withhold a hit over it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Facets {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub severity: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub binding: Option<String>,
+    pub binding: Option<bool>,
 }
 
 impl Facets {
     fn from_frontmatter(frontmatter: &frontmatter::Frontmatter) -> Facets {
         Facets {
             severity: extra_string_facet(frontmatter, "severity"),
-            binding: extra_string_facet(frontmatter, "binding"),
+            binding: frontmatter
+                .extra
+                .get("binding")
+                .and_then(serde_yaml_ng::Value::as_bool),
         }
     }
 }

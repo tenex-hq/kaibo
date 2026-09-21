@@ -1586,7 +1586,7 @@ fn a_populated_facet_reaches_the_json_output() {
     write_page(
         &clone,
         "kaibo/reference/facet-page.md",
-        "status: current\nseverity: high\nbinding: required",
+        "status: current\nseverity: must\nbinding: true",
         "Body.",
     );
 
@@ -1608,8 +1608,47 @@ fn a_populated_facet_reaches_the_json_output() {
 
     let json = report.render_json();
     let facets = &json["outcome"]["hits"][0]["facets"];
-    assert_eq!(facets["severity"], "high");
-    assert_eq!(facets["binding"], "required");
+    assert_eq!(facets["severity"], "must");
+    assert_eq!(facets["binding"], true);
+}
+
+/// `binding` is a boolean in the schema, and the whole schema keys off it
+/// being one. A page that writes a word there looks binding to a human and
+/// binds nothing, so the facet says what it is - unset - rather than
+/// carrying the word through as if it meant something.
+#[test]
+fn a_binding_facet_that_is_not_a_boolean_does_not_bind() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_page(
+        &clone,
+        "kaibo/reference/word-binding.md",
+        "status: current\nbinding: required",
+        "Body.",
+    );
+
+    let hits = vec![qmd_hit(
+        "qmd://knowledge/kaibo/reference/word-binding.md?index=kaibo",
+        "Word Binding",
+        0.9,
+        "some snippet",
+    )];
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        ok(qmd_query_json(&hits)),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert_eq!(
+        report.render_json()["outcome"]["hits"][0]["facets"],
+        json!({})
+    );
 }
 
 #[test]
