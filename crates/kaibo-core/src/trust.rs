@@ -1,6 +1,6 @@
-//! Primitives for treating corpus content as untrusted, shared so `query`
-//! today, and `doctrine`/`contribute` once they exist, reuse one
-//! implementation instead of each getting it slightly wrong.
+//! Primitives for treating corpus content as untrusted, shared so `query`,
+//! `doctrine` and `contribute` reuse one implementation instead of each
+//! getting it slightly wrong.
 //!
 //! The fence is escape-resistant, not unescapable: see
 //! `a_snippet_containing_the_literal_fence_marker_cannot_forge_a_fence_boundary`
