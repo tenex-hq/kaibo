@@ -192,6 +192,26 @@ page's body and says so above the ceiling. It is heuristic, so it annotates
 and never fails a run: counting claims in prose is a judgment call, and a
 judgment call that blocks a contributor is worse than one that nudges.
 
+### What a standard page holds
+
+The claim, its exceptions, and its checks. The reasoning stays on the page
+the claim came from, which cites the standard and is cited back. One
+argument, one place: a standard that restates the argument beside the rule
+creates a second copy, and the second copy is the one nobody edits when the
+first one changes.
+
+A compiled contract carries the lead claim, the severity, the checks and the
+citation, not the page. That is what keeps page length free. Write as much
+context behind the citation as a human reader needs, and the caller about to
+act still receives one sentence and a verdict.
+
+A standard also does not describe what its own checks cannot decide. Writing
+"this pattern cannot see X" does not make it see X, and it puts a weaker
+second statement of the rule beside the real one. State the rule in full and
+let the checks be a partial witness to it. Which checks a contract issued and
+which came back with a verdict is the contract's report, not the page's
+prose.
+
 ### No judgment checks
 
 The schema has one check species, the decidable one. A second was specified -
