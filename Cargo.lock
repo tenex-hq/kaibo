@@ -563,7 +563,7 @@ dependencies = [
 
 [[package]]
 name = "kaibo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "kaibo-core",
@@ -573,7 +573,7 @@ dependencies = [
 
 [[package]]
 name = "kaibo-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
