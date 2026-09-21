@@ -21,6 +21,7 @@ pub mod frontmatter;
 pub mod install;
 pub mod lint;
 pub mod moc;
+pub mod normative;
 pub mod output;
 pub mod process;
 pub mod qmd;

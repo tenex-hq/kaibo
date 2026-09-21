@@ -22,6 +22,7 @@ use crate::frontmatter::Frontmatter;
 use crate::lint::{Severity, Violation};
 
 mod frontmatter_contract;
+mod normative_schema;
 mod prose_style;
 mod tags_kebab_case;
 
@@ -72,6 +73,7 @@ pub(crate) fn registry(config: &LintConfig) -> Result<Vec<Box<dyn Rule>>, String
             config.type_folder_overrides.clone(),
         )),
         Box::new(tags_kebab_case::TagsKebabCaseRule::new(tag_pattern)),
+        Box::new(normative_schema::NormativeSchemaRule),
         Box::new(prose_style::ProseStyleRule),
     ];
 
@@ -85,12 +87,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_default_config_builds_all_three_compiled_rules() {
+    fn the_default_config_builds_every_compiled_rule() {
         let rules = registry(&LintConfig::default()).unwrap();
         let ids: Vec<&str> = rules.iter().map(|r| r.id()).collect();
         assert_eq!(
             ids,
-            vec!["frontmatter-contract", "tags-kebab-case", "prose-style"]
+            vec![
+                "frontmatter-contract",
+                "tags-kebab-case",
+                "normative-schema",
+                "prose-style"
+            ]
         );
     }
 
@@ -102,7 +109,7 @@ mod tests {
         };
         let rules = registry(&config).unwrap();
         assert!(!rules.iter().any(|r| r.id() == "prose-style"));
-        assert_eq!(rules.len(), 2);
+        assert_eq!(rules.len(), 3);
     }
 
     #[test]
@@ -111,6 +118,7 @@ mod tests {
             disabled_rules: vec![
                 "frontmatter-contract".to_string(),
                 "tags-kebab-case".to_string(),
+                "normative-schema".to_string(),
                 "prose-style".to_string(),
             ],
             ..LintConfig::default()
@@ -129,7 +137,7 @@ mod tests {
             ..LintConfig::default()
         };
         let rules = registry(&config).unwrap();
-        assert_eq!(rules.len(), 3);
+        assert_eq!(rules.len(), 4);
     }
 
     #[test]

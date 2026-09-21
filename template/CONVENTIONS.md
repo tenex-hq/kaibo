@@ -98,6 +98,99 @@ pages don't. This matters doubly now that `query` may combine primitives into
 composed, and contradicted cleanly. If a reference page grows an unrelated
 second topic, split it.
 
+## Binding standards
+
+Normativity is an axis, not a content type. Diátaxis splits on documentation
+*purpose*, and "this is binding" is not on that grid, so a standard stays
+`type: reference` and grows four optional keys. **Every existing page is
+non-binding by omission** - nothing needs migrating, and a corpus that never
+uses these keys never notices they exist.
+
+```yaml
+---
+type: reference
+title: Library code logs, it does not print
+tags: [python, logging]
+status: current
+updated: 2026-09-21
+binding: true            # a boolean, and the key everything else hangs off
+severity: must           # must | should
+applies_to:
+  actions: [file-edit]   # the closed vocabulary below, at least one
+  tags: [workload-repo]  # free, optional: these narrow, they do not address
+---
+```
+
+`severity` is the budget knob, and has two values: `must` is always in scope,
+`should` is included on request. It is not a scale to argue about.
+
+`applies_to` keys on **the action the caller is about to take**, which the
+caller always knows. Not a filename glob: a glob is a proxy for the action and
+a poor one, firing a commit-message rule on every README and unable to say "a
+compose file *in a workload repo*". The action vocabulary is closed and
+extended deliberately, never per standard:
+
+| action | the caller is about to… |
+|--------|--------------------------|
+| `file-edit` | write or change a file |
+| `commit-message` | write a commit message |
+| `shell-command` | run a command |
+| `chat` | answer in prose |
+| `deploy` | ship something |
+| `adr` | record a decision |
+
+**All or nothing.** A page carrying any one of these keys carries all of them.
+Half a standard - a `severity` nobody binds, a checks block on a page that is
+not `binding: true` - is a page that looks binding and is not, so `kaibo lint`
+refuses it rather than loading the half that parsed.
+
+### Checks
+
+A binding page may carry one `kaibo-checks` block in its body: the checks a
+client runs locally, against the artifact, before it acts. They produce
+**facts** - which rule, where, what matched - and need no model at all.
+
+```json kaibo-checks
+[
+  { "id": "no-print", "kind": "forbid_regex", "pattern": "^\\s*print\\(" },
+  { "id": "has-spdx", "kind": "require_regex", "pattern": "SPDX-License-Identifier" },
+  { "id": "test-asserts", "kind": "require_if_present", "if_present": "def test_", "require": "assert " },
+  { "id": "not-vendored", "kind": "forbid_path", "pattern": "^vendor/" }
+]
+```
+
+| kind | fields | holds when |
+|------|--------|------------|
+| `forbid_regex` | `pattern` | the artifact's text does **not** match |
+| `require_regex` | `pattern` | the artifact's text matches at least once |
+| `require_if_present` | `if_present`, `require` | wherever `if_present` matches, `require` matches too |
+| `forbid_path` | `pattern` | the artifact's **path** does not match |
+
+- **Checks are JSON in the body, not YAML in the frontmatter.** A regex inside
+  YAML is a quoting minefield - `\s*`, `\\s*` and a double-quoted scalar all
+  mean different things - and this corpus has to stay hand-editable. JSON
+  escaping is unambiguous.
+- The fence is marked `json kaibo-checks`: `json` so GitHub highlights it,
+  `kaibo-checks` because that token is what kaibo looks for. **One block per
+  page.** A block quoted inside a wider fence is an example, not a block, so a
+  page may document the schema without becoming a broken standard.
+- Every `pattern` is a [Rust `regex`](https://docs.rs/regex) expression, and
+  `kaibo lint` compiles it. A pattern that does not compile fails in the
+  corpus's CI rather than on the machine of whoever took the action.
+- `id` is what a verdict is keyed on: non-empty, unique within the page.
+- **Checks are optional.** A standard no regex can express is still binding,
+  still carries a severity, and still reaches the caller as prose. Requiring
+  checks would quietly exclude most real standards.
+
+### No judgment checks
+
+The schema has one check species, the decidable one. A second was specified -
+a rubric item a model answers rather than a check anything runs - and
+[`evals/h2`](../evals/h2/README.md) measured it against the same standards
+written as prose, on two model tiers: it bought no recall, at 2.6x to 3.3x the
+cost. A page writing `kind: judgment` gets a schema error, not a silent
+drop. See [ADR 0017](../docs/adr/0017-the-conformance-schema-is-decidable-only.md).
+
 ## `_index.md` - the root MOC
 
 One section per domain folder, in this fixed format:
