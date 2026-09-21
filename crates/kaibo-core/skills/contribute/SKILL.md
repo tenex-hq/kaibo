@@ -72,7 +72,7 @@ kaibo contribute apply --type reference --domain <domain> \
   --binding --severity must --action file-edit
 ```
 
-Before you file one, read the dedup candidates `plan` returned for anything already binding on the same actions. **kaibo prohibits conflicting binding standards**: one instance is one organization, and a contradiction is a corpus defect rather than a nuance to surface later. If your standard contradicts an existing one, do not file it. Report the conflicting page and its path, and let the contributor either supersede that page or drop the new claim. Deviation is legitimate only when argued in an ADR.
+Before you file one, read the dedup candidates `plan` returned. Each carries a `binding` field: `null` for an ordinary page, or the severity and actions it binds. Those are the only pages yours can conflict with, so compare against them and nothing else. **kaibo prohibits conflicting binding standards**: one instance is one organization, and a contradiction is a corpus defect rather than a nuance to surface later. If your standard contradicts an existing one, do not file it. Report the conflicting page and its path, and let the contributor either supersede that page or drop the new claim. Deviation is legitimate only when argued in an ADR.
 
 ### 5. Report what actually happened
 
