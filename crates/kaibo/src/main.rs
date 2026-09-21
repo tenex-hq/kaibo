@@ -33,7 +33,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use clap::{Args, Parser, Subcommand};
 use kaibo_core::clock::{Clock, SystemClock};
 use kaibo_core::config::Config;
-use kaibo_core::contribute::{ApplyInput, ContributeApplyVerb, ContributePlanVerb, Placement};
+use kaibo_core::contribute::{
+    ApplyInput, BindingInput, ContributeApplyVerb, ContributePlanVerb, Placement,
+};
 use kaibo_core::doctrine::DoctrineVerb;
 use kaibo_core::domains::DomainsVerb;
 use kaibo_core::error::ExitCoded;
@@ -160,6 +162,28 @@ struct ContributeApplyArgs {
     /// collection.
     #[arg(long)]
     append: Option<String>,
+
+    /// File this page as a binding standard. Requires `--severity` and at
+    /// least one `--action`: the schema is all or nothing, so half a
+    /// standard is refused here rather than written and then failed by
+    /// `kaibo lint`.
+    #[arg(long)]
+    binding: bool,
+
+    /// `must` or `should`. Only with `--binding`.
+    #[arg(long)]
+    severity: Option<String>,
+
+    /// An action the standard applies to. Repeatable. Only with
+    /// `--binding`.
+    #[arg(long = "action")]
+    actions: Vec<String>,
+
+    /// A tag that narrows where the standard applies. Repeatable,
+    /// optional, and only with `--binding`. These narrow; they do not
+    /// address.
+    #[arg(long = "applies-to-tag")]
+    applies_to_tags: Vec<String>,
 }
 
 #[derive(Args, Debug)]
@@ -455,7 +479,77 @@ fn run_contribute_plan(config: &Config, cli: &Cli, args: &ContributePlanArgs) ->
     to_process_exit_code(report.exit_code())
 }
 
+/// Turn the four binding flags into one `BindingInput`, or report why they
+/// do not make a standard. Mirrors the schema's all-or-nothing rule at the
+/// argument surface: every refusal here is a page `kaibo lint` would have
+/// refused anyway, caught before anything is written.
+fn binding_from_args(args: &ContributeApplyArgs) -> Result<Option<BindingInput>, String> {
+    use kaibo_core::normative::{ActionKind, Severity};
+
+    if !args.binding {
+        if let Some(flag) = [
+            (!args.severity.is_none()).then_some("--severity"),
+            (!args.actions.is_empty()).then_some("--action"),
+            (!args.applies_to_tags.is_empty()).then_some("--applies-to-tag"),
+        ]
+        .into_iter()
+        .flatten()
+        .next()
+        {
+            return Err(format!(
+                "{flag} means nothing without --binding; pass --binding or drop it"
+            ));
+        }
+        return Ok(None);
+    }
+
+    let Some(severity) = &args.severity else {
+        return Err("--binding requires --severity must|should".to_string());
+    };
+    let Some(severity) = Severity::parse(severity) else {
+        return Err(format!(
+            "--severity {severity:?} is not a severity; use one of: {}",
+            Severity::ALL
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    };
+    if args.actions.is_empty() {
+        return Err(format!(
+            "--binding requires at least one --action; use one of: {}",
+            ActionKind::vocabulary()
+        ));
+    }
+    let mut actions = Vec::with_capacity(args.actions.len());
+    for action in &args.actions {
+        match ActionKind::parse(action) {
+            Some(kind) => actions.push(kind),
+            None => {
+                return Err(format!(
+                    "--action {action:?} is not an action kind; use one of: {}",
+                    ActionKind::vocabulary()
+                ));
+            }
+        }
+    }
+
+    Ok(Some(BindingInput {
+        severity,
+        actions,
+        tags: args.applies_to_tags.clone(),
+    }))
+}
+
 fn run_contribute_apply(config: &Config, cli: &Cli, args: &ContributeApplyArgs) -> ExitCode {
+    let binding = match binding_from_args(args) {
+        Ok(binding) => binding,
+        Err(message) => {
+            eprintln!("kaibo contribute apply: {message}");
+            return to_process_exit_code(kaibo_core::error::ExitCode::Usage);
+        }
+    };
     let placement = match &args.append {
         Some(path) => Placement::Append { path: path.clone() },
         None => Placement::Create,
@@ -467,6 +561,7 @@ fn run_contribute_apply(config: &Config, cli: &Cli, args: &ContributeApplyArgs) 
         body: args.body.clone(),
         tags: args.tags.clone(),
         placement,
+        binding,
     };
     let verb = ContributeApplyVerb::new(config, input);
 

@@ -1839,3 +1839,105 @@ mod otlp {
         assert_eq!(exported.status.code(), unreachable.status.code());
     }
 }
+
+/// The binding flags, at the argument surface. The schema is all or
+/// nothing, so each of these is a page `kaibo lint` would have refused,
+/// caught before the binary writes, branches or opens a PR.
+fn apply_args<'a>(extra: &[&'a str]) -> Vec<&'a str> {
+    let mut args = vec![
+        "contribute",
+        "apply",
+        "--type",
+        "how-to",
+        "--domain",
+        "docs",
+        "--title",
+        "A new page",
+        "--body",
+        "Body text.",
+    ];
+    args.extend_from_slice(extra);
+    args
+}
+
+#[test]
+fn contribute_apply_refuses_a_binding_page_with_no_severity() {
+    let harness = Harness::new();
+    let output = harness.run(
+        &apply_args(&["--binding", "--action", "file-edit"]),
+        &[REPO_ENV],
+    );
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        harness.calls().is_empty(),
+        "nothing may run on a usage error"
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("--severity"), "stderr was: {stderr}");
+}
+
+#[test]
+fn contribute_apply_refuses_a_binding_page_with_no_action() {
+    let harness = Harness::new();
+    let output = harness.run(
+        &apply_args(&["--binding", "--severity", "must"]),
+        &[REPO_ENV],
+    );
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("--action"), "stderr was: {stderr}");
+}
+
+#[test]
+fn contribute_apply_names_the_vocabulary_when_an_action_is_not_one() {
+    let harness = Harness::new();
+    let output = harness.run(
+        &apply_args(&[
+            "--binding",
+            "--severity",
+            "must",
+            "--action",
+            "pull-request",
+        ]),
+        &[REPO_ENV],
+    );
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("file-edit"), "stderr was: {stderr}");
+    assert!(stderr.contains("commit-message"), "stderr was: {stderr}");
+}
+
+#[test]
+fn contribute_apply_names_the_vocabulary_when_a_severity_is_not_one() {
+    let harness = Harness::new();
+    let output = harness.run(
+        &apply_args(&[
+            "--binding",
+            "--severity",
+            "critical",
+            "--action",
+            "file-edit",
+        ]),
+        &[REPO_ENV],
+    );
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("must"), "stderr was: {stderr}");
+    assert!(stderr.contains("should"), "stderr was: {stderr}");
+}
+
+#[test]
+fn contribute_apply_refuses_a_severity_that_binds_nothing() {
+    // Half a standard is the failure mode the all-or-nothing rule exists
+    // for: a page that looks binding and is not.
+    let harness = Harness::new();
+    let output = harness.run(&apply_args(&["--severity", "must"]), &[REPO_ENV]);
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("--binding"), "stderr was: {stderr}");
+}

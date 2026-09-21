@@ -26,6 +26,19 @@ fn valid_input() -> ApplyInput {
         body: "Some body text.".to_string(),
         tags: vec!["good-tag".to_string()],
         placement: Placement::Create,
+        binding: None,
+    }
+}
+
+/// The same contribution, filed as a binding standard.
+fn binding_input() -> ApplyInput {
+    ApplyInput {
+        binding: Some(BindingInput {
+            severity: normative::Severity::Must,
+            actions: vec![normative::ActionKind::FileEdit],
+            tags: vec!["workload-repo".to_string()],
+        }),
+        ..valid_input()
     }
 }
 
@@ -1048,4 +1061,136 @@ fn apply_render_json_carries_the_pr_url_and_push_route_on_completion() {
         "https://github.com/org/knowledge/pull/1"
     );
     assert_eq!(json["outcome"]["ci"]["passed"], true);
+}
+
+// --- binding standards ---------------------------------------------------
+
+/// Serialize the frontmatter `apply` would write for `input`, the same way
+/// the Create path does, so these tests read the real bytes rather than the
+/// struct that produced them.
+fn written_frontmatter(input: &ApplyInput) -> String {
+    let doc = Document {
+        frontmatter: Frontmatter {
+            doc_type: Some(input.content_type.clone()),
+            title: Some(input.title.clone()),
+            tags: Some(input.tags.clone()),
+            status: Some(Status::Draft),
+            updated: Some(Date::parse("2023-11-14").unwrap()),
+            extra: binding_frontmatter(input.binding.as_ref()),
+        },
+        body: input.body.clone(),
+    };
+    frontmatter::serialize(&doc).unwrap()
+}
+
+#[test]
+fn the_page_a_binding_contribution_writes_is_one_the_schema_accepts() {
+    // The point of typing the input: what `contribute` writes and what
+    // `normative` reads cannot drift apart, because this fails if they do.
+    let contents = written_frontmatter(&binding_input());
+    let doc = frontmatter::parse(&contents).unwrap();
+
+    let standard = normative::parse(&doc.frontmatter, &doc.body)
+        .unwrap()
+        .expect("the written page is a binding standard");
+
+    assert_eq!(standard.severity, normative::Severity::Must);
+    assert_eq!(
+        standard.applies_to.actions,
+        vec![normative::ActionKind::FileEdit]
+    );
+    assert_eq!(standard.applies_to.tags, vec!["workload-repo".to_string()]);
+    assert_eq!(standard.checks, Vec::new());
+}
+
+#[test]
+fn a_contribution_that_is_not_binding_writes_none_of_the_normative_keys() {
+    let contents = written_frontmatter(&valid_input());
+    let doc = frontmatter::parse(&contents).unwrap();
+
+    assert_eq!(normative::parse(&doc.frontmatter, &doc.body).unwrap(), None);
+    assert!(!contents.contains("binding"));
+    assert!(!contents.contains("severity"));
+    assert!(!contents.contains("applies_to"));
+}
+
+#[test]
+fn no_narrowing_tags_writes_no_tags_key_rather_than_an_empty_one() {
+    // `tags: []` reads as a deliberate empty filter. "No tags given" is a
+    // different statement, and the frontmatter has to say the second one.
+    let input = ApplyInput {
+        binding: Some(BindingInput {
+            severity: normative::Severity::Should,
+            actions: vec![normative::ActionKind::CommitMessage],
+            tags: Vec::new(),
+        }),
+        ..valid_input()
+    };
+    let contents = written_frontmatter(&input);
+
+    assert!(contents.contains("severity: should"));
+    assert!(contents.contains("commit-message"));
+    assert!(
+        !contents.contains("tags: []"),
+        "wrote an empty narrowing filter: {contents}"
+    );
+
+    let doc = frontmatter::parse(&contents).unwrap();
+    let standard = normative::parse(&doc.frontmatter, &doc.body)
+        .unwrap()
+        .expect("still a binding standard");
+    assert_eq!(standard.applies_to.tags, Vec::<String>::new());
+}
+
+#[test]
+fn every_action_kind_the_schema_knows_survives_the_round_trip() {
+    // A vocabulary sweep, not an enumeration: an action added to the schema
+    // and not serializable here fails without anyone remembering to look.
+    for action in normative::ActionKind::ALL {
+        let input = ApplyInput {
+            binding: Some(BindingInput {
+                severity: normative::Severity::Must,
+                actions: vec![action],
+                tags: Vec::new(),
+            }),
+            ..valid_input()
+        };
+        let contents = written_frontmatter(&input);
+        let doc = frontmatter::parse(&contents).unwrap();
+        let standard = normative::parse(&doc.frontmatter, &doc.body)
+            .unwrap()
+            .unwrap_or_else(|| panic!("{} did not round trip", action.as_str()));
+        assert_eq!(standard.applies_to.actions, vec![action]);
+    }
+}
+
+#[test]
+fn a_binding_standard_is_not_appended_to_a_page_that_already_states_one() {
+    // One page, one normative claim, one verdict. Appending a second claim
+    // to a page that already binds is the atomicity failure itself, so it
+    // stops before anything is written rather than being linted afterwards.
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    std::fs::create_dir_all(clone.join("kaibo/how-to")).unwrap();
+    let config = config_with_repo(&clone);
+
+    let input = ApplyInput {
+        placement: Placement::Append {
+            path: "kaibo/how-to/existing.md".to_string(),
+        },
+        ..binding_input()
+    };
+    let runner = FakeCommandRunner::new();
+    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &FixedClock(now()));
+
+    match &report.outcome {
+        ApplyOutcome::Stopped(stop) => assert_eq!(
+            stop,
+            &ApplyStop::BindingOnAppend {
+                path: "kaibo/how-to/existing.md".to_string()
+            }
+        ),
+        other => panic!("expected Stopped, got {other:?}"),
+    }
+    assert_eq!(report.exit_code(), ExitCode::Usage);
 }

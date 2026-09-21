@@ -63,7 +63,10 @@ impl Severity {
         }
     }
 
-    fn parse(value: &str) -> Option<Severity> {
+    /// Public because `contribute` accepts a severity on the command line
+    /// and must reject an unknown one with the same vocabulary the schema
+    /// uses, rather than writing a page the lint rule then refuses.
+    pub fn parse(value: &str) -> Option<Severity> {
         Severity::ALL.into_iter().find(|s| s.as_str() == value)
     }
 }
@@ -107,11 +110,11 @@ impl ActionKind {
         }
     }
 
-    fn parse(value: &str) -> Option<ActionKind> {
+    pub fn parse(value: &str) -> Option<ActionKind> {
         ActionKind::ALL.into_iter().find(|a| a.as_str() == value)
     }
 
-    fn vocabulary() -> String {
+    pub fn vocabulary() -> String {
         ActionKind::ALL
             .iter()
             .map(|a| a.as_str())
