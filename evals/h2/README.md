@@ -3,6 +3,22 @@
 Issue [#33](https://github.com/tenex-hq/kaibo/issues/33), part of the
 conformance-contracts epic [#28](https://github.com/tenex-hq/kaibo/issues/28).
 
+> **Closed. This is a record, not a harness.**
+>
+> The experiment ran on 2026-09-20, on two model tiers, and the kill condition
+> below fired: the rubric bought no recall at 2.6x to 3.3x. The verdict is
+> [ADR 0017](../../docs/adr/0017-the-conformance-schema-is-decidable-only.md),
+> and `kind: judgment` is not in the schema.
+>
+> `run.py` is here so the arms can be read, not re-run. It costs real money and
+> the question it asks already has an answer - and `runs/` cannot be
+> regenerated anyway, since `claude -p` pins no temperature. Reopening this
+> takes a *new* experiment measured against these numbers, not this one again.
+>
+> What is still live: the isolation protocol and the truth-set discipline, which
+> any future H-test should reuse. See [The trap this design exists to
+> avoid](#the-trap-this-design-exists-to-avoid) and [The design](#the-design).
+
 The judgment half of a conformance contract - criterion, `verdict_values`,
 locators, `response_schema` - is the component harvested from the `the-arbiter`
 prototype and the one no competitor ships. It has never been tested. The
