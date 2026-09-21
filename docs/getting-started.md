@@ -24,13 +24,11 @@ normative claims a binding page may state before `normative-atomicity` says
 so - plus `lint.disabled_rules` to turn a rule off entirely. None of this can come
 from the knowledge repo itself: see the module docs on
 [`crates/kaibo-core/src/lint.rs`](../crates/kaibo-core/src/lint.rs) for why,
-and for the full shape of the table. `prose-style` (no em dash, no en dash,
-no `--`) is the rule most teams turn off - it's a house writing convention,
-not a fact about what the corpus needs to stay queryable:
+and for the full shape of the table:
 
 ```toml
 [lint]
-disabled_rules = ["prose-style"]
+disabled_rules = []
 
 [lint.frontmatter_contract]
 required_keys = ["title", "tags", "status", "updated"]

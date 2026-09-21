@@ -163,7 +163,7 @@ struct ConfigFile {
 /// no shelled-out linter.
 #[derive(Debug, Default, Deserialize)]
 struct LintConfigFile {
-    /// Rule ids to skip entirely, e.g. `["prose-style"]`. A rule id, not a
+    /// Rule ids to skip entirely, e.g. `["normative-atomicity"]`. A rule id, not a
     /// path or a command - this can only ever remove a rule from the fixed
     /// set the registry already knows how to build, never name new code to
     /// run.

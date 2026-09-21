@@ -779,12 +779,10 @@ fn lint_hostile_corpus_never_reports_a_page_resolving_outside_the_clone() {
     assert!(!stdout.contains("OUTSIDE CONTENT"));
 }
 
-/// The same page carries both a structural violation (its tag is not
-/// kebab-case) and a heuristic one (an em dash in its body). The prose
-/// finding must stay heuristic regardless of what else is wrong with the
-/// file it was found in: severity is the rule's, never the file's.
+/// The hostile page's forged tag is not kebab-case, a structural violation
+/// that is what makes the whole run exit 2.
 #[test]
-fn lint_hostile_corpus_reports_the_em_dash_as_a_heuristic_finding() {
+fn lint_hostile_corpus_reports_the_forged_tag_as_a_structural_finding() {
     let harness = Harness::new();
     support::write_hostile_corpus(&harness.clone_dir(), &harness.outside_dir());
 
@@ -794,20 +792,6 @@ fn lint_hostile_corpus_reports_the_em_dash_as_a_heuristic_finding() {
     let violations = json["outcome"]["violations"]
         .as_array()
         .expect("violations array");
-
-    let prose_hits: Vec<&serde_json::Value> = violations
-        .iter()
-        .filter(|v| v["rule_id"] == "prose-style")
-        .collect();
-    assert!(
-        prose_hits
-            .iter()
-            .any(|v| v["path"] == support::HOSTILE_FORGED_TAG_PATH
-                && v["message"].as_str().is_some_and(|m| m.contains("em dash"))),
-        "no em-dash prose finding on {}: {violations:#?}",
-        support::HOSTILE_FORGED_TAG_PATH
-    );
-    assert!(prose_hits.iter().all(|v| v["severity"] == "heuristic"));
 
     assert!(
         violations.iter().any(|v| v["rule_id"] == "tags-kebab-case"

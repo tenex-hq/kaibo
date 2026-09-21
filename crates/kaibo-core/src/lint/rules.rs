@@ -24,7 +24,6 @@ use crate::lint::{Severity, Violation};
 mod frontmatter_contract;
 mod normative_atomicity;
 mod normative_schema;
-mod prose_style;
 mod tags_kebab_case;
 
 /// One markdown file, already read and parsed, handed to every rule.
@@ -78,7 +77,6 @@ pub(crate) fn registry(config: &LintConfig) -> Result<Vec<Box<dyn Rule>>, String
         Box::new(normative_atomicity::NormativeAtomicityRule::new(
             config.max_normative_claims,
         )),
-        Box::new(prose_style::ProseStyleRule),
     ];
 
     rules.retain(|rule| !config.disabled_rules.iter().any(|id| id == rule.id()));
@@ -101,7 +99,6 @@ mod tests {
                 "tags-kebab-case",
                 "normative-schema",
                 "normative-atomicity",
-                "prose-style"
             ]
         );
     }
@@ -109,12 +106,12 @@ mod tests {
     #[test]
     fn a_disabled_rule_id_is_absent_from_the_registry() {
         let config = LintConfig {
-            disabled_rules: vec!["prose-style".to_string()],
+            disabled_rules: vec!["normative-atomicity".to_string()],
             ..LintConfig::default()
         };
         let rules = registry(&config).unwrap();
-        assert!(!rules.iter().any(|r| r.id() == "prose-style"));
-        assert_eq!(rules.len(), 4);
+        assert!(!rules.iter().any(|r| r.id() == "normative-atomicity"));
+        assert_eq!(rules.len(), 3);
     }
 
     #[test]
@@ -125,7 +122,6 @@ mod tests {
                 "tags-kebab-case".to_string(),
                 "normative-schema".to_string(),
                 "normative-atomicity".to_string(),
-                "prose-style".to_string(),
             ],
             ..LintConfig::default()
         };
@@ -143,7 +139,7 @@ mod tests {
             ..LintConfig::default()
         };
         let rules = registry(&config).unwrap();
-        assert_eq!(rules.len(), 5);
+        assert_eq!(rules.len(), 4);
     }
 
     #[test]
