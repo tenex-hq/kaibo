@@ -114,6 +114,16 @@ pub struct Attributes {
         skip_serializing_if = "Option::is_none"
     )]
     pub withheld_unverified: Option<usize>,
+    /// Hits qmd returned that did not clear the relevance floor. Without this,
+    /// a gap the floor produced is indistinguishable from a gap where qmd
+    /// returned nothing at all, and those two say different things about the
+    /// corpus: the first means the pages exist but none answers the question,
+    /// the second means nothing matched even on keywords.
+    #[serde(
+        rename = "kaibo.withheld_low_relevance",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub withheld_low_relevance: Option<usize>,
     #[serde(
         rename = "kaibo.unaddressable",
         skip_serializing_if = "Option::is_none"
@@ -122,6 +132,10 @@ pub struct Attributes {
 
     #[serde(rename = "kaibo.top_hit_path", skip_serializing_if = "Option::is_none")]
     pub top_hit_path: Option<String>,
+    /// The rerank relevance of the top hit, not qmd's blended score. The
+    /// attribute name is deliberately unchanged: it is the same field
+    /// answering the same question, and it only ever became useful once it
+    /// stopped carrying a number that was mostly rank position.
     #[serde(
         rename = "kaibo.top_hit_score",
         skip_serializing_if = "Option::is_none"
@@ -219,6 +233,7 @@ impl Event {
                 raw_hit_count: Some(census.raw),
                 withheld_draft: Some(census.withheld_draft),
                 withheld_unverified: Some(census.withheld_unverified),
+                withheld_low_relevance: Some(census.withheld_low_relevance),
                 unaddressable: Some(census.unaddressable),
                 top_hit_path,
                 top_hit_score,
@@ -261,6 +276,7 @@ impl Event {
                 raw_hit_count: None,
                 withheld_draft: None,
                 withheld_unverified: None,
+                withheld_low_relevance: None,
                 unaddressable: None,
                 top_hit_path: None,
                 top_hit_score: None,

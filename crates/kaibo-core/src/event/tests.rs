@@ -81,6 +81,40 @@ fn a_gap_with_an_empty_corpus_is_readable_as_a_different_situation() {
     assert_eq!(attrs["kaibo.withheld_draft"], 0);
 }
 
+#[test]
+fn a_gap_the_relevance_floor_produced_is_readable_as_such() {
+    let census = HitCensus {
+        raw: 4,
+        unaddressable: 0,
+        withheld_unverified: 0,
+        withheld_draft: 0,
+        withheld_low_relevance: 4,
+        kept: 0,
+    };
+    let report = query_report(
+        QueryOutcome::NoHits {
+            moc: MocInventory::Domains(vec!["kaibo".to_string()]),
+        },
+        census,
+    );
+
+    let json = parse(&Event::from_query(&report, 1_700_000_000_000, 12, caller()));
+    let attrs = &json["attributes"];
+
+    assert_eq!(attrs["kaibo.outcome"], "gap");
+    assert_eq!(attrs["kaibo.raw_hit_count"], 4);
+    assert_eq!(attrs["kaibo.withheld_low_relevance"], 4);
+    assert_eq!(attrs["kaibo.withheld_draft"], 0);
+    assert_eq!(attrs["kaibo.hit_count"], 0);
+    assert!(
+        !attrs
+            .as_object()
+            .unwrap()
+            .contains_key("kaibo.top_hit_score"),
+        "a gap has no top hit to score"
+    );
+}
+
 // --- what the event must never claim ----------------------------------
 
 #[test]
@@ -228,6 +262,7 @@ fn a_doctrine_event_omits_the_census_rather_than_reporting_zeroes_it_never_count
         "kaibo.raw_hit_count",
         "kaibo.withheld_draft",
         "kaibo.withheld_unverified",
+        "kaibo.withheld_low_relevance",
         "kaibo.top_hit_score",
     ] {
         assert!(
