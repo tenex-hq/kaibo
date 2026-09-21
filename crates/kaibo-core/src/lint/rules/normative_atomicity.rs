@@ -157,16 +157,17 @@ fn fence(line: &str) -> Option<(char, usize)> {
 }
 
 fn starts_a_list_item(line: &str) -> bool {
-    let rest = match line.chars().next() {
-        Some('-') | Some('*') | Some('+') => &line[1..],
-        Some(c) if c.is_ascii_digit() => {
-            let digits = line.chars().take_while(char::is_ascii_digit).count();
-            match line[digits..].chars().next() {
-                Some('.') | Some(')') => &line[digits + 1..],
-                _ => return false,
-            }
+    let digits = line.chars().take_while(char::is_ascii_digit).count();
+    let rest = if digits > 0 {
+        match line[digits..].chars().next() {
+            Some('.') | Some(')') => &line[digits + 1..],
+            _ => return false,
         }
-        _ => return false,
+    } else {
+        match line.chars().next() {
+            Some('-') | Some('*') | Some('+') => &line[1..],
+            _ => return false,
+        }
     };
     rest.starts_with(' ') || rest.is_empty()
 }

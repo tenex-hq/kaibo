@@ -214,3 +214,31 @@ fn every_claim_marker_is_recognised_on_its_own() {
         );
     }
 }
+
+// The three closing conditions of the fence scanner, each held by a page
+// whose count changes when that condition goes. A test that only asserts
+// "no violation" cannot tell a scanner that closed correctly from one that
+// swallowed the rest of the file, so each of these needs prose on the far
+// side of a fence that does close.
+
+#[test]
+fn prose_after_a_closed_fence_is_counted_again() {
+    // A scanner that never closes swallows the tail, and every one of the
+    // fence tests above would still pass while doing it.
+    let file = page(
+        BINDING,
+        "Library code must not print.\n\n```\nexample\n```\n\nA handler is always the application's job.",
+    );
+    assert_eq!(rule().check(&file).len(), 1);
+}
+
+#[test]
+fn a_tilde_fence_hides_its_contents_the_same_as_a_backtick_fence() {
+    // Tilde fences are the half of the CommonMark rule a scanner is most
+    // likely to lose: nothing in a backtick test notices they are gone.
+    let file = page(
+        BINDING,
+        "Library code must not print.\n\n~~~\nYou should always do this.\n~~~\n",
+    );
+    assert_eq!(rule().check(&file), Vec::new());
+}
