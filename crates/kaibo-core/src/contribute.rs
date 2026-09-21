@@ -38,12 +38,63 @@ use crate::explain::{Explainable, PlannedCommand};
 use crate::frontmatter::{self, Date, Document, Frontmatter, Status};
 use crate::lint::{self, LintOutcome, LintVerb, Violation};
 use crate::moc::{self, DomainSection};
+use crate::normative;
 use crate::output::{Render, RenderOptions};
 use crate::process::CommandRunner;
 use crate::qmd::QmdCommand;
 use crate::trust;
 
 // --- shared helpers ---------------------------------------------------
+
+/// The four normative keys, as the frontmatter passthrough map that
+/// [`frontmatter::serialize`] writes out. Built from typed values, so the
+/// page this produces is one `normative::parse` accepts by construction
+/// rather than by hope.
+fn binding_frontmatter(
+    binding: Option<&BindingInput>,
+) -> std::collections::BTreeMap<String, serde_yaml_ng::Value> {
+    use serde_yaml_ng::Value;
+
+    let mut extra = std::collections::BTreeMap::new();
+    let Some(binding) = binding else {
+        return extra;
+    };
+
+    let mut applies_to = serde_yaml_ng::Mapping::new();
+    applies_to.insert(
+        Value::String("actions".to_string()),
+        Value::Sequence(
+            binding
+                .actions
+                .iter()
+                .map(|a| Value::String(a.as_str().to_string()))
+                .collect(),
+        ),
+    );
+    // An empty `tags` narrows nothing, so write the key only when it does
+    // something. A page carrying `tags: []` reads as a deliberate empty
+    // filter, which is not what "no tags given" means.
+    if !binding.tags.is_empty() {
+        applies_to.insert(
+            Value::String("tags".to_string()),
+            Value::Sequence(
+                binding
+                    .tags
+                    .iter()
+                    .map(|t| Value::String(t.clone()))
+                    .collect(),
+            ),
+        );
+    }
+
+    extra.insert("binding".to_string(), Value::Bool(true));
+    extra.insert(
+        "severity".to_string(),
+        Value::String(binding.severity.as_str().to_string()),
+    );
+    extra.insert("applies_to".to_string(), Value::Mapping(applies_to));
+    extra
+}
 
 /// Keep only lowercase ASCII alphanumerics, collapsing every run of
 /// anything else - including whitespace and control characters such as a
@@ -400,6 +451,21 @@ pub enum Placement {
     Append { path: String },
 }
 
+/// The normative keys a new page carries when the contribution is a
+/// binding standard. Present or absent as a whole, never partly: the
+/// schema's all-or-nothing rule (see [`crate::normative`]) is the reason
+/// this is one struct rather than four optional fields that could disagree.
+///
+/// Typed rather than stringly, so an unknown severity or action is refused
+/// at the argument surface instead of being written into a page that
+/// `kaibo lint` then rejects on the contributor's behalf.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BindingInput {
+    pub severity: normative::Severity,
+    pub actions: Vec<normative::ActionKind>,
+    pub tags: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplyInput {
     pub content_type: String,
@@ -408,6 +474,11 @@ pub struct ApplyInput {
     pub body: String,
     pub tags: Vec<String>,
     pub placement: Placement,
+    /// Set only on [`Placement::Create`]. Appending to an existing page
+    /// stops rather than writing these, because a second claim bolted onto
+    /// a page that already binds one is exactly the atomicity failure
+    /// `normative-atomicity` exists to find.
+    pub binding: Option<BindingInput>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -439,6 +510,7 @@ pub enum ApplyStop {
     CloneUnreadable { detail: String },
     UncommittedChanges { detail: String },
     InvalidField { field: &'static str, value: String },
+    BindingOnAppend { path: String },
     AppendTargetUnreadable { path: String },
     WriteFailed { detail: String },
     LintFailed { violations: Vec<Violation> },
@@ -487,6 +559,10 @@ impl ApplyStop {
             ApplyStop::InvalidField { field, value } => (
                 format!("{field} {value:?} is not a valid path segment"),
                 Some(format!("pass a plain single-segment {field}, no `/`, `..` or control characters")),
+            ),
+            ApplyStop::BindingOnAppend { path } => (
+                format!("a binding standard cannot be appended to {path}"),
+                Some("re-run `kaibo contribute apply` without --append: one page, one normative claim, one verdict".to_string()),
             ),
             ApplyStop::AppendTargetUnreadable { path } => (
                 format!("append target {path} is not a readable file contained in the clone"),
@@ -759,6 +835,9 @@ fn apply(
             value: input.content_type.clone(),
         });
     }
+    if let (Some(_), Placement::Append { path }) = (&input.binding, &input.placement) {
+        stop!(ApplyStop::BindingOnAppend { path: path.clone() });
+    }
     let slug = slugify(&input.title);
     if slug.is_empty() {
         stop!(ApplyStop::InvalidField {
@@ -804,7 +883,7 @@ fn apply(
                     tags: Some(input.tags.clone()),
                     status: Some(Status::Draft),
                     updated: Some(today),
-                    extra: Default::default(),
+                    extra: binding_frontmatter(input.binding.as_ref()),
                 },
                 body: input.body.clone(),
             };

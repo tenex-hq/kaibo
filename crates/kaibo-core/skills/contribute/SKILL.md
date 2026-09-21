@@ -24,6 +24,8 @@ Three content types, pick exactly one:
 - **how-to** - the steps for a task.
 - **faq** - a short answer to a question someone actually asked.
 
+Binding is a **separate question**, not a fourth type. A standard is still a `reference` page; it additionally says that the organization has decided this and that a client is expected to conform. Ask it as a boolean: *would we treat a change that contradicts this as wrong, or merely unlike us?* Only the first is binding. Most contributions are not, and a page that is not binding says nothing about it.
+
 Prose style: no em dashes, no en dashes, no `--` as punctuation. CI fails the PR otherwise, and `kaibo contribute apply` lint-gates before it commits, so a slip stops you locally rather than in review. Tags are kebab-case. New pages land as drafts; correctness is settled in review, not by you.
 
 ## Steps
@@ -43,6 +45,10 @@ Read-only: it returns the domain inventory, the dedup candidates for that gist, 
 
 - **Content type**: choose from the three above. State your choice and a one-line reason.
 - **Domain**: match the knowledge against the inventory `plan` returned. If two domains are plausible, ask the user. No domain fitting at all is the new-domain case, not a dead end.
+- **Binding**: yes or no, by the test above. If yes, you also owe a severity and at least one action, and the page must state **exactly one** normative claim. Two claims means two pages: a contract returns one verdict per standard, so a page binding two claims produces a verdict nobody can read.
+  - **severity**: `must` (always in scope) or `should` (included on request). It is a budget knob, not a scale to argue about.
+  - **actions**: what the caller is about to do, from `file-edit`, `commit-message`, `shell-command`, `chat`, `deploy`, `adr`. Not a filename glob. Pick every one the standard genuinely applies to, and no more.
+  - **narrowing tags** are optional and narrow further; they never widen.
 - **Append or create**: a strong candidate in the right content type means append to it; no strong candidate means create. Drafts count as candidates here - they are existing pages to append to - unlike in `/kaibo:query`'s answer synthesis.
 
 Re-run `plan` with `--type` and `--domain` once you have both, to see the resolved target path before you write anything.
@@ -57,6 +63,16 @@ kaibo contribute apply --type <type> --domain <domain> \
 ```
 
 Appending instead of creating: add `--append <repo-relative-path>` from the candidate you picked.
+
+Filing a binding standard: add `--binding --severity <must|should>` and one `--action <kind>` per action, plus `--applies-to-tag <tag>` for each narrowing tag. All of them together or none of them: half a standard is a page that looks binding and is not, and `apply` refuses it rather than writing it. A binding standard cannot be appended to an existing page, for the same one-claim reason.
+
+```bash
+kaibo contribute apply --type reference --domain <domain> \
+  --title "<title>" --tag <kebab-case-tag> --body "<markdown body>" \
+  --binding --severity must --action file-edit
+```
+
+Before you file one, read the dedup candidates `plan` returned for anything already binding on the same actions. **kaibo prohibits conflicting binding standards**: one instance is one organization, and a contradiction is a corpus defect rather than a nuance to surface later. If your standard contradicts an existing one, do not file it. Report the conflicting page and its path, and let the contributor either supersede that page or drop the new claim. Deviation is legitimate only when argued in an ADR.
 
 ### 5. Report what actually happened
 
