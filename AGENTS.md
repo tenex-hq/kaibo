@@ -150,6 +150,7 @@ One line each; the rationale is in the record, and
 - The default qmd index has no exceptions - [0010](docs/adr/0010-the-default-index-has-no-exceptions.md)
 - Rust, not Go - [0011](docs/adr/0011-rust-not-go.md)
 - The skills ship embedded in the binary - [0013](docs/adr/0013-ship-the-skills-inside-the-binary.md)
+- The conformance schema is decidable only - [0017](docs/adr/0017-the-conformance-schema-is-decidable-only.md)
 
 ## Principles
 
