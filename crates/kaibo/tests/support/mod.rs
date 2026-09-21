@@ -4,12 +4,10 @@
 //! verbs (`query`, `doctrine`, `domains`, `lint`) are all tested against.
 //!
 //! The hostile corpus is written from this file rather than checked in as
-//! a fixture directory on purpose: its hostility is control characters and
-//! an em dash, bytes an editor, a linter or a careless reformat silently
-//! normalises in a checked-in file, and which the repository's own house
-//! rules forbid writing literally. Spelled as `\r`/`\u{2014}` escapes in
-//! Rust source they survive, and there is exactly one place to add the
-//! next hostile page.
+//! a fixture directory on purpose: its hostility is control characters,
+//! bytes an editor, a linter or a careless reformat silently normalises in
+//! a checked-in file. Spelled as `\r` escapes in Rust source they survive,
+//! and there is exactly one place to add the next hostile page.
 //!
 //! Hermetic: the child process's `PATH` never contains a directory that
 //! could hold a real `git` or `qmd`, `HOME` is a fresh temp dir so no config
@@ -430,8 +428,7 @@ pub const HOSTILE_ADMITTED_PATHS: [&str; 6] = [
 ];
 
 /// The hostile page whose frontmatter `tags` carries an embedded carriage
-/// return, and whose body carries an em dash - the two things `lint`'s
-/// `tags-kebab-case` and `prose-style` rules are pointed at.
+/// return - what `lint`'s `tags-kebab-case` rule is pointed at.
 pub const HOSTILE_FORGED_TAG_PATH: &str = "docs/reference/forged-tag.md";
 
 /// The line [`HOSTILE_FORGED_TAG_PATH`]'s tag tries to forge: everything
@@ -518,13 +515,10 @@ pub fn write_hostile_reference_pages(clone: &Path, outside: &Path) {
     )
     .expect("write control-chars.md");
 
-    // A frontmatter tag carrying an embedded carriage return, plus an em
-    // dash in the body. Two separate attacks on one page: the CR tries to
+    // A frontmatter tag carrying an embedded carriage return: it tries to
     // forge an extra reported line (`strip_control_chars` must defuse it
-    // without hiding the tag's own text), and the em dash is the house
-    // style slip `lint`'s heuristic rule annotates but must never gate on.
-    // Written as escapes rather than literal bytes so neither survives an
-    // editor normalising the file.
+    // without hiding the tag's own text). Written as an escape rather than
+    // a literal byte so it survives an editor normalising the file.
     fs::write(
         reference.join("forged-tag.md"),
         "---\ntype: reference\ntitle: Forged Tag Attempt\n\
@@ -532,9 +526,8 @@ pub fn write_hostile_reference_pages(clone: &Path, outside: &Path) {
          status: current\nupdated: 2024-01-01\n---\n\
          This page attacks the trust boundary rather than documenting \
          anything: its `tags` frontmatter embeds a carriage return to \
-         inject a forged line into any tool reporting a tag back verbatim, \
-         and its body uses an em dash (\u{2014}) to trip the prose-style \
-         rule, so the page always carries one heuristic finding too.\n",
+         inject a forged line into any tool reporting a tag back \
+         verbatim.\n",
     )
     .expect("write forged-tag.md");
 

@@ -449,7 +449,7 @@ fn render_text_and_json_show_the_lint_configuration_and_its_source() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
     let config = ConfigBuilder::new(tmp.path())
-        .lint_disabled_rules(vec!["prose-style".to_string()], ConfigSource::File)
+        .lint_disabled_rules(vec!["normative-atomicity".to_string()], ConfigSource::File)
         .build();
 
     let runner = FakeCommandRunner::new()
@@ -468,7 +468,7 @@ fn render_text_and_json_show_the_lint_configuration_and_its_source() {
     let report = StatusVerb::new(&config).gather(&runner, &clock, "0.1.0");
 
     let text = report.render_text(&RenderOptions::default());
-    assert!(text.contains("disabled_rules=[\"prose-style\"] (file)"));
+    assert!(text.contains("disabled_rules=[\"normative-atomicity\"] (file)"));
     assert!(text.contains("required_frontmatter_keys="));
     assert!(text.contains("(default)"));
     assert!(text.contains("tag_pattern="));
@@ -476,7 +476,7 @@ fn render_text_and_json_show_the_lint_configuration_and_its_source() {
     let json = report.render_json();
     assert_eq!(
         json["config"]["lint"]["disabled_rules"]["value"][0],
-        "prose-style"
+        "normative-atomicity"
     );
     assert_eq!(json["config"]["lint"]["disabled_rules"]["source"], "file");
     assert_eq!(
