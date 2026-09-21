@@ -254,6 +254,25 @@ fn repo_owner_and_name(repo: &str) -> Option<(&str, &str)> {
 pub struct Candidate {
     pub path: String,
     pub score: f64,
+    /// Set when the page is a binding standard, so the caller can see what
+    /// it would be contradicting before it files another one. kaibo
+    /// prohibits conflicting binding standards, and a contradiction is a
+    /// judgment `plan` cannot make: this is the material for it, not the
+    /// verdict.
+    ///
+    /// `None` also covers a page that could not be read or whose
+    /// frontmatter is malformed. That is a softer failure than it looks:
+    /// a page kaibo cannot parse is one `kaibo lint` already refuses, and
+    /// the batch integrity job is the gate. This is the nudge.
+    pub binding: Option<CandidateBinding>,
+}
+
+/// What a candidate page binds, as much of it as matters for spotting a
+/// contradiction: what it is about to be applied to, and how hard.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CandidateBinding {
+    pub severity: normative::Severity,
+    pub actions: Vec<normative::ActionKind>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -432,11 +451,31 @@ fn probe_candidates(
             let score = value.get("score")?.as_f64()?;
             let file = value.get("file")?.as_str()?;
             let path = trust::repo_relative_path(file)?;
-            Some(Candidate { path, score })
+            let binding = binding_of(config.clone_path(), &path);
+            Some(Candidate {
+                path,
+                score,
+                binding,
+            })
         })
         .collect();
 
     (candidates, None)
+}
+
+/// Read `path` out of the clone and say what it binds, if anything.
+///
+/// Every failure reads as "not known to be binding": an unreadable file, a
+/// frontmatter block that does not parse, a half-declared standard. None of
+/// those is a page `plan` should be inventing a claim about.
+fn binding_of(clone_path: &Path, path: &str) -> Option<CandidateBinding> {
+    let contents = std::fs::read_to_string(clone_path.join(path)).ok()?;
+    let doc = frontmatter::parse(&contents).ok()?;
+    let standard = normative::parse(&doc.frontmatter, &doc.body).ok()??;
+    Some(CandidateBinding {
+        severity: standard.severity,
+        actions: standard.applies_to.actions,
+    })
 }
 
 // --- `kaibo contribute apply` ------------------------------------------
@@ -1261,8 +1300,21 @@ impl Render for PlanReport {
                 } else {
                     lines.push(format!("candidates: {}", candidates.len()));
                     for candidate in candidates {
+                        let binding = match &candidate.binding {
+                            Some(binding) => format!(
+                                ", binding {} on {}",
+                                binding.severity.as_str(),
+                                binding
+                                    .actions
+                                    .iter()
+                                    .map(|a| a.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                            None => String::new(),
+                        };
                         lines.push(format!(
-                            "  - {} (score {:.3})",
+                            "  - {} (score {:.3}{binding})",
                             candidate.path, candidate.score
                         ));
                     }
@@ -1293,7 +1345,12 @@ impl Render for PlanReport {
                     "name": d.name, "owner": d.owner, "topics": d.topics, "summary": d.summary,
                 })).collect::<Vec<_>>(),
                 "candidates": candidates.iter().map(|c| serde_json::json!({
-                    "path": c.path, "score": c.score,
+                    "path": c.path,
+                    "score": c.score,
+                    "binding": c.binding.as_ref().map(|b| serde_json::json!({
+                        "severity": b.severity.as_str(),
+                        "actions": b.actions.iter().map(|a| a.as_str()).collect::<Vec<_>>(),
+                    })),
                 })).collect::<Vec<_>>(),
                 "qmd_unavailable": qmd_unavailable,
             }),

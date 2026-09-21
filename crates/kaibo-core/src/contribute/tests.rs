@@ -205,6 +205,7 @@ fn plan_candidates_carry_the_exact_path_and_score_qmd_reported() {
                 &vec![Candidate {
                     path: "kaibo/reference/x.md".to_string(),
                     score: 0.87,
+                    binding: None,
                 }]
             );
         }
@@ -1193,4 +1194,136 @@ fn a_binding_standard_is_not_appended_to_a_page_that_already_states_one() {
         other => panic!("expected Stopped, got {other:?}"),
     }
     assert_eq!(report.exit_code(), ExitCode::Usage);
+}
+
+// --- plan marks the binding candidates -----------------------------------
+
+/// Run `plan` against a clone holding one page at
+/// `kaibo/reference/x.md` with `contents`, and hand back the candidate qmd
+/// reported for it.
+fn candidate_for(contents: &str) -> Candidate {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    std::fs::create_dir_all(clone.join("kaibo/reference")).unwrap();
+    std::fs::write(clone.join("kaibo/reference/x.md"), contents).unwrap();
+    write_moc(&clone, "## kaibo\n");
+    let config = config_with_repo(&clone);
+    let response = r#"[{"score":0.87,"file":"qmd://knowledge/kaibo/reference/x.md?index=kaibo"}]"#;
+    let runner = FakeCommandRunner::new().on(QmdCommand::query(&config, "gist"), ok(response));
+
+    let report = ContributePlanVerb::new(&config, "gist", None, None).gather(&runner);
+    match report.outcome {
+        PlanOutcome::Ready { mut candidates, .. } => candidates.pop().expect("one candidate"),
+        other => panic!("expected Ready, got {other:?}"),
+    }
+}
+
+const BINDING_PAGE: &str = "---
+type: reference
+title: Library code logs, it does not print
+tags: [python]
+status: current
+updated: 2026-09-21
+binding: true
+severity: must
+applies_to:
+  actions: [file-edit, commit-message]
+---
+Library code must not print.
+";
+
+#[test]
+fn a_candidate_that_binds_says_what_it_binds_and_on_what() {
+    // A conflict can only exist between two standards, and `plan` cannot
+    // decide whether two claims contradict. It can say which candidates
+    // are even eligible to conflict, which is the part a caller cannot
+    // work out from a path and a score.
+    let candidate = candidate_for(BINDING_PAGE);
+
+    assert_eq!(
+        candidate.binding,
+        Some(CandidateBinding {
+            severity: normative::Severity::Must,
+            actions: vec![
+                normative::ActionKind::FileEdit,
+                normative::ActionKind::CommitMessage
+            ],
+        })
+    );
+}
+
+#[test]
+fn a_candidate_that_does_not_bind_says_nothing_about_binding() {
+    let candidate = candidate_for(
+        "---\ntype: reference\ntitle: How the logger is configured\ntags: [python]\nstatus: current\nupdated: 2026-09-21\n---\nSome prose.\n",
+    );
+    assert_eq!(candidate.binding, None);
+}
+
+#[test]
+fn a_candidate_kaibo_cannot_parse_is_not_invented_into_a_standard() {
+    // Half a standard, which `normative::parse` refuses. `plan` must not
+    // read the half that parsed as though it were a claim.
+    let candidate = candidate_for(
+        "---\ntype: reference\ntitle: Half a standard\ntags: [python]\nstatus: current\nupdated: 2026-09-21\nseverity: must\n---\nSome prose.\n",
+    );
+    assert_eq!(candidate.binding, None);
+}
+
+#[test]
+fn a_candidate_qmd_names_but_the_clone_does_not_hold_is_not_a_standard() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    std::fs::create_dir_all(&clone).unwrap();
+    write_moc(&clone, "## kaibo\n");
+    let config = config_with_repo(&clone);
+    let response =
+        r#"[{"score":0.87,"file":"qmd://knowledge/kaibo/reference/gone.md?index=kaibo"}]"#;
+    let runner = FakeCommandRunner::new().on(QmdCommand::query(&config, "gist"), ok(response));
+
+    let report = ContributePlanVerb::new(&config, "gist", None, None).gather(&runner);
+    match &report.outcome {
+        PlanOutcome::Ready { candidates, .. } => assert_eq!(candidates[0].binding, None),
+        other => panic!("expected Ready, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_json_a_caller_reads_carries_the_binding_facts() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    std::fs::create_dir_all(clone.join("kaibo/reference")).unwrap();
+    std::fs::write(clone.join("kaibo/reference/x.md"), BINDING_PAGE).unwrap();
+    write_moc(&clone, "## kaibo\n");
+    let config = config_with_repo(&clone);
+    let response = r#"[{"score":0.87,"file":"qmd://knowledge/kaibo/reference/x.md?index=kaibo"}]"#;
+    let runner = FakeCommandRunner::new().on(QmdCommand::query(&config, "gist"), ok(response));
+
+    let report = ContributePlanVerb::new(&config, "gist", None, None).gather(&runner);
+    let json = report.render_json();
+    let binding = &json["outcome"]["candidates"][0]["binding"];
+
+    assert_eq!(binding["severity"], "must");
+    assert_eq!(binding["actions"][0], "file-edit");
+    assert_eq!(binding["actions"][1], "commit-message");
+}
+
+#[test]
+fn the_text_a_human_reads_names_the_binding_candidate_as_binding() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    std::fs::create_dir_all(clone.join("kaibo/reference")).unwrap();
+    std::fs::write(clone.join("kaibo/reference/x.md"), BINDING_PAGE).unwrap();
+    write_moc(&clone, "## kaibo\n");
+    let config = config_with_repo(&clone);
+    let response = r#"[{"score":0.87,"file":"qmd://knowledge/kaibo/reference/x.md?index=kaibo"}]"#;
+    let runner = FakeCommandRunner::new().on(QmdCommand::query(&config, "gist"), ok(response));
+
+    let report = ContributePlanVerb::new(&config, "gist", None, None).gather(&runner);
+    let text = report.render_text(&RenderOptions::default());
+
+    assert!(
+        text.contains("binding must on file-edit, commit-message"),
+        "text was: {text}"
+    );
 }
