@@ -186,11 +186,12 @@ client runs locally, against the artifact, before it acts. They produce
 
 [Atomicity](#reference-pages-atomic) is load-bearing here rather than merely
 tidy. A contract returns **one verdict per standard**, so a page binding three
-claims produces a verdict nobody can read: which of the three failed? The
-`normative-atomicity` lint rule counts the normative blocks in a binding
-page's body and says so above the ceiling. It is heuristic, so it annotates
-and never fails a run: counting claims in prose is a judgment call, and a
-judgment call that blocks a contributor is worse than one that nudges.
+claims produces a verdict nobody can read: which of the three failed? Keep one
+claim per binding page, and split it the moment a second one appears.
+`kaibo lint` does not check this today - counting claims in prose is a
+judgment call, and a rule that got it wrong would block a contributor over a
+guess - so this stays a discipline the page's author holds, not something the
+registry enforces.
 
 ### What a standard page holds
 

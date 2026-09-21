@@ -22,7 +22,6 @@ use crate::frontmatter::Frontmatter;
 use crate::lint::{Severity, Violation};
 
 mod frontmatter_contract;
-mod normative_atomicity;
 mod normative_schema;
 mod tags_kebab_case;
 
@@ -74,9 +73,6 @@ pub(crate) fn registry(config: &LintConfig) -> Result<Vec<Box<dyn Rule>>, String
         )),
         Box::new(tags_kebab_case::TagsKebabCaseRule::new(tag_pattern)),
         Box::new(normative_schema::NormativeSchemaRule),
-        Box::new(normative_atomicity::NormativeAtomicityRule::new(
-            config.max_normative_claims,
-        )),
     ];
 
     rules.retain(|rule| !config.disabled_rules.iter().any(|id| id == rule.id()));
@@ -98,7 +94,6 @@ mod tests {
                 "frontmatter-contract",
                 "tags-kebab-case",
                 "normative-schema",
-                "normative-atomicity",
             ]
         );
     }
@@ -106,12 +101,12 @@ mod tests {
     #[test]
     fn a_disabled_rule_id_is_absent_from_the_registry() {
         let config = LintConfig {
-            disabled_rules: vec!["normative-atomicity".to_string()],
+            disabled_rules: vec!["tags-kebab-case".to_string()],
             ..LintConfig::default()
         };
         let rules = registry(&config).unwrap();
-        assert!(!rules.iter().any(|r| r.id() == "normative-atomicity"));
-        assert_eq!(rules.len(), 3);
+        assert!(!rules.iter().any(|r| r.id() == "tags-kebab-case"));
+        assert_eq!(rules.len(), 2);
     }
 
     #[test]
@@ -121,7 +116,6 @@ mod tests {
                 "frontmatter-contract".to_string(),
                 "tags-kebab-case".to_string(),
                 "normative-schema".to_string(),
-                "normative-atomicity".to_string(),
             ],
             ..LintConfig::default()
         };
@@ -139,7 +133,7 @@ mod tests {
             ..LintConfig::default()
         };
         let rules = registry(&config).unwrap();
-        assert_eq!(rules.len(), 4);
+        assert_eq!(rules.len(), 3);
     }
 
     #[test]

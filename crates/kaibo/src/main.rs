@@ -14,8 +14,8 @@
 //! domain's own MOC section plus its `current` reference pages in one call
 //! (a load, not a question), `domains` lists the root MOC's domain
 //! inventory as structured data, and `lint` runs a rule registry over the
-//! corpus (or over given paths), gating on structural violations and only
-//! annotating heuristic ones. `query` and `doctrine` both self-heal via
+//! corpus (or over given paths), gating on any violation. `query` and
+//! `doctrine` both self-heal via
 //! `sync` when the local corpus is missing, stale, or its qmd collection
 //! is gone, and neither ever synthesises an answer - `query` holds no API
 //! key and makes no network call of kaibo's own. `lint` never touches qmd
@@ -92,7 +92,7 @@ enum Commands {
     /// owner, topics, summary.
     Domains,
     /// Run the rule registry over the corpus, or over the given paths.
-    /// Structural violations exit non-zero; heuristic ones only annotate.
+    /// Any violation exits non-zero.
     Lint(LintCommandArgs),
     /// The write side: plan a placement, or apply an already-resolved one.
     #[command(subcommand)]

@@ -36,7 +36,7 @@ use crate::config::Config;
 use crate::error::ExitCode;
 use crate::explain::{Explainable, PlannedCommand};
 use crate::frontmatter::{self, Date, Document, Frontmatter, Status};
-use crate::lint::{self, LintOutcome, LintVerb, Violation};
+use crate::lint::{LintOutcome, LintVerb, Violation};
 use crate::moc::{self, DomainSection};
 use crate::normative;
 use crate::output::{Render, RenderOptions};
@@ -515,8 +515,9 @@ pub struct ApplyInput {
     pub placement: Placement,
     /// Set only on [`Placement::Create`]. Appending to an existing page
     /// stops rather than writing these, because a second claim bolted onto
-    /// a page that already binds one is exactly the atomicity failure
-    /// `normative-atomicity` exists to find.
+    /// a page that already binds one is exactly the atomicity a binding
+    /// standard is required to hold (see `template/CONVENTIONS.md`'s "One
+    /// claim per standard").
     pub binding: Option<BindingInput>,
 }
 
@@ -973,14 +974,13 @@ fn apply(
 
     let lint_report = LintVerb::new(config, vec![path.clone()]).gather();
     if let LintOutcome::Finished { violations, .. } = &lint_report.outcome {
-        let structural: Vec<Violation> = violations
-            .iter()
-            .filter(|v| v.severity == lint::Severity::Structural)
-            .cloned()
-            .collect();
-        if !structural.is_empty() {
+        // Every violation `kaibo lint` can produce today is structural -
+        // `normative-atomicity`, the last rule whose findings only
+        // annotated, is gone - so there is no heuristic-only finding left
+        // to filter out before deciding whether to stop.
+        if !violations.is_empty() {
             stop!(ApplyStop::LintFailed {
-                violations: structural
+                violations: violations.clone()
             });
         }
     } else if !matches!(lint_report.outcome, LintOutcome::NoFilesFound) {
