@@ -82,7 +82,7 @@ fn a_path_argument_naming_a_file_that_does_not_exist_is_invalid_not_a_gap() {
 }
 
 #[test]
-fn a_structural_violation_makes_the_whole_run_exit_2_as_bad_input() {
+fn a_violation_makes_the_whole_run_exit_2_as_bad_input() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("clone");
     write_page(
@@ -98,11 +98,7 @@ fn a_structural_violation_makes_the_whole_run_exit_2_as_bad_input() {
     assert_eq!(report.exit_code(), ExitCode::Usage);
     match report.outcome {
         LintOutcome::Finished { violations, .. } => {
-            assert!(
-                violations
-                    .iter()
-                    .any(|v| v.severity == Severity::Structural)
-            );
+            assert!(!violations.is_empty());
         }
         other => panic!("expected Finished with violations, got {other:?}"),
     }
@@ -221,14 +217,13 @@ fn an_explicitly_named_file_is_linted_even_when_outside_the_collection_mask() {
 }
 
 #[test]
-fn render_text_names_the_rule_and_severity_of_a_structural_violation() {
+fn render_text_names_the_rule_and_path_of_a_violation() {
     let report = LintReport {
         paths: Vec::new(),
         outcome: LintOutcome::Finished {
             files_checked: 1,
             violations: vec![Violation {
                 rule_id: "frontmatter-contract".to_string(),
-                severity: Severity::Structural,
                 path: "kaibo/reference/page.md".to_string(),
                 message: "missing required frontmatter field `title`".to_string(),
             }],
@@ -237,7 +232,6 @@ fn render_text_names_the_rule_and_severity_of_a_structural_violation() {
 
     let text = report.render_text(&RenderOptions::default());
 
-    assert!(text.contains("[structural]"));
     assert!(text.contains("frontmatter-contract"));
     assert!(text.contains("kaibo/reference/page.md"));
     assert!(text.contains("missing required frontmatter field `title`"));
@@ -251,7 +245,6 @@ fn render_json_encodes_each_violation_field_as_the_literal_value_it_carries() {
             files_checked: 1,
             violations: vec![Violation {
                 rule_id: "tags-kebab-case".to_string(),
-                severity: Severity::Structural,
                 path: "kaibo/reference/page.md".to_string(),
                 message: "tag \"bad_tag\" is not kebab-case".to_string(),
             }],
@@ -264,7 +257,6 @@ fn render_json_encodes_each_violation_field_as_the_literal_value_it_carries() {
     assert_eq!(json["outcome"]["files_checked"], 1);
     let violation = &json["outcome"]["violations"][0];
     assert_eq!(violation["rule_id"], "tags-kebab-case");
-    assert_eq!(violation["severity"], "structural");
     assert_eq!(violation["path"], "kaibo/reference/page.md");
     assert_eq!(violation["message"], "tag \"bad_tag\" is not kebab-case");
 }

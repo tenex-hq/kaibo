@@ -317,7 +317,7 @@ fn an_invalid_domain_segment_stops_apply_before_touching_the_clone() {
 }
 
 #[test]
-fn a_page_that_fails_structural_lint_stops_apply_and_leaves_the_write_in_place() {
+fn a_page_that_fails_lint_stops_apply_and_leaves_the_write_in_place() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("corpus");
     std::fs::create_dir_all(&clone).unwrap();
@@ -325,7 +325,7 @@ fn a_page_that_fails_structural_lint_stops_apply_and_leaves_the_write_in_place()
     let runner = FakeCommandRunner::new().on(git_status_porcelain(&clone), ok(""));
     let clock = FixedClock(now());
     let mut input = valid_input();
-    // Not kebab-case: the `tags-kebab-case` structural rule must fire.
+    // Not kebab-case: the `tags-kebab-case` rule must fire.
     input.tags = vec!["NotKebabCase".to_string()];
 
     let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);

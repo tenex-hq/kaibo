@@ -1,5 +1,5 @@
-//! Structural: every key in `lint.frontmatter_contract.required_keys` is
-//! present (default `title`, `tags`, `status`, `updated`), any configured
+//! Every key in `lint.frontmatter_contract.required_keys` is present
+//! (default `title`, `tags`, `status`, `updated`), any configured
 //! `allowed_status` allow-list is respected, and `type` matches the name of
 //! the page's immediate containing folder, subject to
 //! `type_folder_overrides`.
@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 use super::{LintedFile, Rule, violation};
 use crate::frontmatter::Frontmatter;
-use crate::lint::{Severity, Violation};
+use crate::lint::Violation;
 use crate::trust;
 
 pub(crate) struct FrontmatterContractRule {
@@ -53,10 +53,6 @@ impl Default for FrontmatterContractRule {
 impl Rule for FrontmatterContractRule {
     fn id(&self) -> &'static str {
         "frontmatter-contract"
-    }
-
-    fn severity(&self) -> Severity {
-        Severity::Structural
     }
 
     fn check(&self, file: &LintedFile) -> Vec<Violation> {
@@ -292,14 +288,6 @@ mod tests {
         let violations = FrontmatterContractRule::default().check(&f);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].message.contains("malformed"));
-    }
-
-    #[test]
-    fn every_violation_is_reported_as_structural_severity() {
-        let f = file("kaibo/reference/page.md", Frontmatter::default());
-        for v in FrontmatterContractRule::default().check(&f) {
-            assert_eq!(v.severity, Severity::Structural);
-        }
     }
 
     // --- configurable: required_keys ---------------------------------
