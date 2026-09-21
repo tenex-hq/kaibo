@@ -18,13 +18,6 @@ fn write_page(clone: &Path, repo_relative_path: &str, frontmatter: &str, body: &
 const WELL_FORMED_FRONTMATTER: &str =
     "type: reference\ntitle: A page\ntags:\n  - one\nstatus: current\nupdated: 2024-01-01";
 
-/// A well-formed, binding page: `normative-atomicity` only engages on a
-/// page `normative::parse` recognises as a standard, so a heuristic-only
-/// fixture needs the full `binding`/`severity`/`applies_to` set, not just
-/// `WELL_FORMED_FRONTMATTER`.
-const BINDING_FRONTMATTER: &str = "type: reference\ntitle: A page\ntags:\n  - one\nstatus: current\nupdated: 2024-01-01\n\
-     binding: true\nseverity: must\napplies_to:\n  actions: [file-edit]";
-
 #[test]
 fn a_missing_clone_exits_4_stale_not_a_gap() {
     let tmp = tempfile::tempdir().unwrap();
@@ -112,34 +105,6 @@ fn a_structural_violation_makes_the_whole_run_exit_2_as_bad_input() {
             );
         }
         other => panic!("expected Finished with violations, got {other:?}"),
-    }
-}
-
-#[test]
-fn a_well_formed_page_with_only_a_normative_atomicity_slip_still_exits_0() {
-    let tmp = tempfile::tempdir().unwrap();
-    let clone = tmp.path().join("clone");
-    write_page(
-        &clone,
-        "kaibo/reference/page.md",
-        BINDING_FRONTMATTER,
-        "- Library code must not print.\n- A handler is always the application's job.",
-    );
-    let config = config_for(&clone);
-
-    let report = LintVerb::new(&config, Vec::new()).gather();
-
-    assert_eq!(report.exit_code(), ExitCode::Success);
-    match report.outcome {
-        LintOutcome::Finished {
-            files_checked,
-            violations,
-        } => {
-            assert_eq!(files_checked, 1);
-            assert_eq!(violations.len(), 1);
-            assert_eq!(violations[0].severity, Severity::Heuristic);
-        }
-        other => panic!("expected Finished, got {other:?}"),
     }
 }
 
@@ -279,28 +244,6 @@ fn render_text_names_the_rule_and_severity_of_a_structural_violation() {
 }
 
 #[test]
-fn render_text_names_a_heuristic_violation_distinctly_from_a_structural_one() {
-    let report = LintReport {
-        paths: Vec::new(),
-        outcome: LintOutcome::Finished {
-            files_checked: 1,
-            violations: vec![Violation {
-                rule_id: "normative-atomicity".to_string(),
-                severity: Severity::Heuristic,
-                path: "kaibo/reference/page.md".to_string(),
-                message: "a binding page states 2 normative claims, and the ceiling is 1"
-                    .to_string(),
-            }],
-        },
-    };
-
-    let text = report.render_text(&RenderOptions::default());
-
-    assert!(text.contains("[heuristic]"));
-    assert!(!text.contains("[structural]"));
-}
-
-#[test]
 fn render_json_encodes_each_violation_field_as_the_literal_value_it_carries() {
     let report = LintReport {
         paths: vec!["kaibo/reference/page.md".to_string()],
@@ -357,11 +300,11 @@ fn disabling_a_rule_removes_its_violations_from_the_run() {
     write_page(
         &clone,
         "kaibo/reference/page.md",
-        BINDING_FRONTMATTER,
-        "- Library code must not print.\n- A handler is always the application's job.",
+        "type: reference\ntitle: A page\ntags:\n  - NotKebabCase\nstatus: current\nupdated: 2024-01-01",
+        "Fine.",
     );
     let config = ConfigBuilder::new(&clone)
-        .lint_disabled_rules(vec!["normative-atomicity".to_string()], ConfigSource::File)
+        .lint_disabled_rules(vec!["tags-kebab-case".to_string()], ConfigSource::File)
         .build();
 
     let report = LintVerb::new(&config, Vec::new()).gather();

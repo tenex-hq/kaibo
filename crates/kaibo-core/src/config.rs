@@ -56,12 +56,6 @@ const DEFAULT_LINT_REQUIRED_FRONTMATTER_KEYS: &[&str] = &["title", "tags", "stat
 /// a full-string pattern (the rule anchors it), not a substring search.
 const DEFAULT_LINT_TAG_PATTERN: &str = "[a-z0-9]+(-[a-z0-9]+)*";
 
-/// Compiled default for `lint.normative_atomicity.max_claims`. One, because
-/// a contract returns one verdict per standard and a page binding two
-/// claims has no readable verdict. Raised only by a corpus mid-refactor
-/// that wants the worst offenders before every page at once.
-const DEFAULT_LINT_MAX_NORMATIVE_CLAIMS: usize = 1;
-
 /// Claude Code's own config-directory override. Read here rather than
 /// guessed at, because `kaibo install` has to write where Claude Code
 /// actually looks; a user who has moved that directory would otherwise get
@@ -106,7 +100,6 @@ pub enum ConfigKey {
     LintAllowedStatus,
     LintTypeFolderOverrides,
     LintTagPattern,
-    LintMaxNormativeClaims,
 }
 
 /// Failure while resolving config. Resolution runs before anything else, so
@@ -163,14 +156,13 @@ struct ConfigFile {
 /// no shelled-out linter.
 #[derive(Debug, Default, Deserialize)]
 struct LintConfigFile {
-    /// Rule ids to skip entirely, e.g. `["normative-atomicity"]`. A rule id, not a
+    /// Rule ids to skip entirely, e.g. `["tags-kebab-case"]`. A rule id, not a
     /// path or a command - this can only ever remove a rule from the fixed
     /// set the registry already knows how to build, never name new code to
     /// run.
     disabled_rules: Option<Vec<String>>,
     frontmatter_contract: Option<FrontmatterContractConfigFile>,
     tags_kebab_case: Option<TagsKebabCaseConfigFile>,
-    normative_atomicity: Option<NormativeAtomicityConfigFile>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -183,11 +175,6 @@ struct FrontmatterContractConfigFile {
 #[derive(Debug, Default, Deserialize)]
 struct TagsKebabCaseConfigFile {
     pattern: Option<String>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct NormativeAtomicityConfigFile {
-    max_claims: Option<usize>,
 }
 
 /// Resolved parameters for the compiled lint rules - the whole surface of
@@ -217,10 +204,6 @@ pub struct LintConfig {
     /// The pattern `tags-kebab-case` matches each tag against in full (the
     /// rule anchors it as `^(?:pattern)$`), as a `regex`-crate pattern.
     pub tag_pattern: String,
-    /// How many normative claims `normative-atomicity` tolerates in the
-    /// body of a binding page before it says so. The rule is heuristic, so
-    /// this never changes whether a run fails, only what it reports.
-    pub max_normative_claims: usize,
 }
 
 impl Default for LintConfig {
@@ -234,7 +217,6 @@ impl Default for LintConfig {
             allowed_status: Vec::new(),
             type_folder_overrides: BTreeMap::new(),
             tag_pattern: DEFAULT_LINT_TAG_PATTERN.to_string(),
-            max_normative_claims: DEFAULT_LINT_MAX_NORMATIVE_CLAIMS,
         }
     }
 }
@@ -378,7 +360,6 @@ impl Config {
         let lint_file = file.as_ref().and_then(|f| f.lint.as_ref());
         let fm_contract_file = lint_file.and_then(|l| l.frontmatter_contract.as_ref());
         let tags_file = lint_file.and_then(|l| l.tags_kebab_case.as_ref());
-        let atomicity_file = lint_file.and_then(|l| l.normative_atomicity.as_ref());
 
         // File-only, no `KAIBO_*` override: these are lists and maps, not
         // scalars an environment variable can carry cleanly, so the file is
@@ -411,22 +392,15 @@ impl Config {
             None => (DEFAULT_LINT_TAG_PATTERN.to_string(), ConfigSource::Default),
         };
 
-        let (max_normative_claims, max_normative_claims_source) =
-            match atomicity_file.and_then(|a| a.max_claims) {
-                Some(max) => (max, ConfigSource::File),
-                None => (DEFAULT_LINT_MAX_NORMATIVE_CLAIMS, ConfigSource::Default),
-            };
-
         let lint = LintConfig {
             disabled_rules,
             required_frontmatter_keys,
             allowed_status,
             type_folder_overrides,
             tag_pattern,
-            max_normative_claims,
         };
 
-        let mut sources = HashMap::with_capacity(14);
+        let mut sources = HashMap::with_capacity(13);
         sources.insert(ConfigKey::Repo, repo_source);
         sources.insert(ConfigKey::Clone, clone_source);
         sources.insert(ConfigKey::Index, index_source);
@@ -446,10 +420,6 @@ impl Config {
             type_folder_overrides_source,
         );
         sources.insert(ConfigKey::LintTagPattern, tag_pattern_source);
-        sources.insert(
-            ConfigKey::LintMaxNormativeClaims,
-            max_normative_claims_source,
-        );
 
         Ok(Config {
             repo,
@@ -664,7 +634,7 @@ pub(crate) mod testing {
 
     impl ConfigBuilder {
         pub(crate) fn new(clone: impl Into<PathBuf>) -> Self {
-            let mut sources = HashMap::with_capacity(14);
+            let mut sources = HashMap::with_capacity(13);
             for key in [
                 ConfigKey::Repo,
                 ConfigKey::Clone,
@@ -679,7 +649,6 @@ pub(crate) mod testing {
                 ConfigKey::LintAllowedStatus,
                 ConfigKey::LintTypeFolderOverrides,
                 ConfigKey::LintTagPattern,
-                ConfigKey::LintMaxNormativeClaims,
             ] {
                 sources.insert(key, ConfigSource::Default);
             }

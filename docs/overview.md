@@ -74,7 +74,7 @@ fork route is the default for contributors who do not have the commit bit.
 
 | | |
 |---|---|
-| **`kaibo lint`** | Run the rule registry over the corpus, or over given paths. Structural violations fail the run; heuristic ones only annotate. Drops straight into CI. |
+| **`kaibo lint`** | Run the rule registry over the corpus, or over given paths. Any violation fails the run. Drops straight into CI. |
 | **`kaibo status`** | Is this healthy, and what is the one command that fixes it. Read-only. |
 | **`kaibo sync`** | Clone or pull the corpus, refresh the index and embeddings. Also the first-run bootstrap. Idempotent. |
 | **`kaibo install`** | Place the agent skills the binary carries where the agent finds them. Skills and binary are one artefact at one version, so they cannot drift apart. |

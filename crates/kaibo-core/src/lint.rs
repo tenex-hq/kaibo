@@ -5,9 +5,9 @@
 //! file. **Structural rules gate** - any structural violation makes the
 //! run exit non-zero, the same "malformed corpus content is bad input, not
 //! a kaibo bug" mapping [`crate::frontmatter::FrontmatterError`] already
-//! uses ([`crate::error::ExitCode::Usage`]). **Heuristic rules annotate** -
-//! reported in the output, never blocking, because a judgement call must
-//! not stop a contributor at the door.
+//! uses ([`crate::error::ExitCode::Usage`]). Every compiled rule is
+//! structural today - see [`Severity`] for why the type still leaves room
+//! for a rule that only annotates.
 //!
 //! `lint` never calls qmd and never self-heals: it reads whatever is
 //! already on disk under the configured clone, which is also what the
@@ -80,13 +80,19 @@ use crate::trust;
 
 mod rules;
 
-/// Whether a rule's violation blocks the run or merely annotates it.
+/// Whether a rule's violation blocks the run. `Structural` is the only
+/// variant today: `normative-atomicity`, the last rule whose violations only
+/// annotated, was deleted once nothing consumed a heuristic finding
+/// (`contribute apply` filtered to structural before ever reporting one).
+/// The type stays a `Rule`-declared property rather than collapsing into
+/// "every violation gates", because kaibo's other three rule modules still
+/// declare it through [`crate::lint::rules::violation`], and a rule that
+/// only nudges rather than gates remains a legitimate thing to add later -
+/// this is where its severity would go.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
     /// Non-zero exit; this is the CI gate.
     Structural,
-    /// Reported, never blocks.
-    Heuristic,
 }
 
 /// One rule's finding against one file.
@@ -115,8 +121,8 @@ pub enum LintOutcome {
     /// Every candidate path resolved, but none of them turned up a
     /// markdown file to check. The gap signal.
     NoFilesFound,
-    /// At least one file was checked, with whatever violations (structural
-    /// or heuristic, possibly none) the registry found.
+    /// At least one file was checked, with whatever violations (possibly
+    /// none) the registry found.
     Finished {
         files_checked: usize,
         violations: Vec<Violation>,
@@ -134,7 +140,7 @@ impl LintReport {
     /// argument *or* at least one structural violation (both are "bad
     /// input", per [`crate::frontmatter::FrontmatterError::exit_code`]);
     /// `NoHits` when nothing was there to check; `Success` otherwise - a
-    /// run with only heuristic findings, or none at all, still exits 0.
+    /// run with no violations at all still exits 0.
     pub fn exit_code(&self) -> ExitCode {
         match &self.outcome {
             LintOutcome::CloneMissing => ExitCode::Stale,
@@ -337,7 +343,6 @@ fn collect_markdown_files(dir: &Path, clone_root: &Path, out: &mut Vec<PathBuf>)
 fn severity_label(severity: Severity) -> &'static str {
     match severity {
         Severity::Structural => "structural",
-        Severity::Heuristic => "heuristic",
     }
 }
 
