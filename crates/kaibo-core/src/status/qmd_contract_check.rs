@@ -11,10 +11,11 @@
 //! (a) **Collection isolation.** `qmd collection add --index <scratch>`
 //!     must not leak into qmd's default index: `qmd collection list`
 //!     against the default index is byte-identical before and after.
-//! (b) **Mask semantics.** The mask `*/{reference,how-to,faq}/**/*.md` must
-//!     match a domain-nested page (`<domain>/<type>/<page>.md`) and exclude
-//!     a file at the fixture root - checked indirectly through `qmd
-//!     status`'s file count, since no [`QmdCommand`] builder exists for
+//! (b) **Mask semantics.** [`crate::collection_mask::COLLECTION_MASK`] - the
+//!     same constant `sync` registers the collection with, not a copy of
+//!     it - must match a domain-nested page (`<domain>/<type>/<page>.md`)
+//!     and exclude a file at the fixture root - checked indirectly through
+//!     `qmd status`'s file count, since no [`QmdCommand`] builder exists for
 //!     `qmd ls` (see the note on
 //!     [`assert_mask_accepts_nested_and_rejects_root`]).
 //! (c) **Write isolation.** `qmd update --index <scratch>` must leave the
@@ -44,6 +45,7 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use crate::collection_mask::COLLECTION_MASK;
 use crate::config::ConfigSource;
 use crate::config::testing::ConfigBuilder;
 use crate::explain::PlannedCommand;
@@ -61,16 +63,11 @@ const GATE_VAR: &str = "KAIBO_QMD_CONTRACT";
 /// failed run.
 const SCRATCH_INDEX: &str = "kaibo-contract-check";
 
-/// The mask kaibo's own `sync` verb registers its collection with. Kept as
-/// a local literal rather than imported from `crate::sync`, whose
-/// `COLLECTION_MASK` is private to that module - this is a fixture input
-/// for this check, not a shared production constant.
-const MASK: &str = "*/{reference,how-to,faq}/**/*.md";
-
-/// A fixture's worth of markdown, laid out exactly like the mask
-/// `MASK` is meant to accept or reject: one page nested two levels under
-/// the fixture root (`<domain>/<type>/<page>.md`, matching), and one file
-/// sitting at the fixture root (`README.md`, must be excluded).
+/// A fixture's worth of markdown, laid out exactly like
+/// [`COLLECTION_MASK`](crate::collection_mask::COLLECTION_MASK) is meant to
+/// accept or reject: one page nested two levels under the fixture root
+/// (`<domain>/<type>/<page>.md`, matching), and one file sitting at the
+/// fixture root (`README.md`, must be excluded).
 fn write_fixture(root: &std::path::Path) {
     let nested_dir = root.join("kaibo").join("reference");
     std::fs::create_dir_all(&nested_dir).expect("create fixture nested dir");
@@ -231,7 +228,7 @@ fn qmd_contract_check() {
 
     run_ok(
         &runner,
-        &QmdCommand::collection_add(&config, fixture.path(), "knowledge", MASK),
+        &QmdCommand::collection_add(&config, fixture.path(), "knowledge", COLLECTION_MASK),
     );
     run_ok(&runner, &QmdCommand::update(&config));
 
@@ -306,7 +303,12 @@ fn assert_mask_accepts_nested_and_rejects_root(
         .build();
     run_ok(
         runner,
-        &QmdCommand::collection_add(&root_only_config, root_only.path(), "knowledge", MASK),
+        &QmdCommand::collection_add(
+            &root_only_config,
+            root_only.path(),
+            "knowledge",
+            COLLECTION_MASK,
+        ),
     );
     run_ok(runner, &QmdCommand::update(&root_only_config));
 

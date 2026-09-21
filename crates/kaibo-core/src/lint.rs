@@ -15,6 +15,16 @@
 //! nothing to print - `lint` shells out to nothing - and that empty plan
 //! is itself the proof that `--explain` runs nothing for this verb.
 //!
+//! **A directory walk only ever turns up what [`crate::collection_mask`]
+//! accepts** - the same mask `sync` registers the `knowledge` collection
+//! with, so a full-corpus run (or a directory `path` argument) checks
+//! exactly the file set `sync` indexes, never more. A root `README.md` or a
+//! domain's `_index.md` is navigation, not knowledge; `sync` never embeds
+//! it, and a walk here never surfaces it either, so it can no longer fail
+//! `frontmatter-contract` forever for lacking frontmatter it was never
+//! meant to carry. Naming a file explicitly as a `path` argument still
+//! checks it regardless of the mask - see [`collect_markdown_files`].
+//!
 //! **Every path this module reads comes from an argument or a directory
 //! walk, never from parsed page content.** A `path` argument is corpus-
 //! shaped user input (like `doctrine`'s `<domain>`), not a flag naming a
@@ -60,6 +70,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
+use crate::collection_mask;
 use crate::config::Config;
 use crate::error::ExitCode;
 use crate::explain::{Explainable, PlannedCommand};
@@ -179,7 +190,7 @@ fn gather(config: &Config, paths: &[String]) -> LintReport {
 
     let mut candidates = Vec::new();
     if paths.is_empty() {
-        collect_markdown_files(config.clone_path(), &mut candidates);
+        collect_markdown_files(config.clone_path(), config.clone_path(), &mut candidates);
     } else {
         for path in paths {
             // Validated for containment before anything is read from it -
@@ -199,7 +210,12 @@ fn gather(config: &Config, paths: &[String]) -> LintReport {
             };
             let raw = config.clone_path().join(path);
             if canonical.is_dir() {
-                collect_markdown_files(&raw, &mut candidates);
+                // A directory argument is still a *walk*, so it is filtered
+                // through the same collection mask `sync` indexes with -
+                // only a single, explicitly-named file (the `else` branch
+                // below) bypasses it, since naming one file by hand is a
+                // request to check that file, not a discovery step.
+                collect_markdown_files(&raw, config.clone_path(), &mut candidates);
             } else {
                 candidates.push(raw);
             }
@@ -272,12 +288,23 @@ fn gather(config: &Config, paths: &[String]) -> LintReport {
     }
 }
 
-/// Recursively collect every `.md` file under `dir`, skipping any
-/// directory whose name starts with `.` (chiefly `.git`, which is neither
-/// corpus content nor safe to walk into wholesale) and not following a
-/// symlinked directory - `DirEntry::file_type` does not follow symlinks, so
-/// a symlinked subdirectory is skipped here rather than walked into.
-fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
+/// Recursively collect every `.md` file under `dir` that also matches
+/// [`collection_mask::matches`] - the same mask `sync` registers the
+/// `knowledge` collection with - skipping any directory whose name starts
+/// with `.` (chiefly `.git`, which is neither corpus content nor safe to
+/// walk into wholesale) and not following a symlinked directory -
+/// `DirEntry::file_type` does not follow symlinks, so a symlinked
+/// subdirectory is skipped here rather than walked into.
+///
+/// `clone_root` is always the configured clone root, not necessarily `dir`
+/// itself: a directory `path` argument recurses starting below the clone
+/// root, and the mask is defined relative to the clone root, so the file
+/// set a directory argument turns up stays identical to what a full-corpus
+/// run would have found under that same subtree. This is what makes lint's
+/// walk provably cover the same files `sync` indexes - see
+/// `crate::collection_mask` and, for the corpus `README.md` this used to
+/// wrongly fail on, `tests::a_repo_root_readme_is_excluded_from_the_default_corpus_walk`.
+fn collect_markdown_files(dir: &Path, clone_root: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -294,9 +321,15 @@ fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
             continue;
         }
         if file_type.is_dir() {
-            collect_markdown_files(&path, out);
+            collect_markdown_files(&path, clone_root, out);
         } else if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
-            out.push(path);
+            let repo_relative = path
+                .strip_prefix(clone_root)
+                .ok()
+                .map(|relative| relative.to_string_lossy().replace('\\', "/"));
+            if repo_relative.is_some_and(|relative| collection_mask::matches(&relative)) {
+                out.push(path);
+            }
         }
     }
 }

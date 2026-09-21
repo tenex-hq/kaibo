@@ -158,6 +158,96 @@ fn linting_a_single_path_argument_only_checks_that_file_not_the_whole_corpus() {
     }
 }
 
+// --- collection mask: lint's walk covers the same files sync indexes ----
+
+#[test]
+fn a_repo_root_readme_is_excluded_from_the_default_corpus_walk() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    write_page(
+        &clone,
+        "kaibo/reference/page.md",
+        WELL_FORMED_FRONTMATTER,
+        "Fine.",
+    );
+    // No frontmatter at all - sync never indexes this, so lint must never
+    // see it either, structural violations and all.
+    std::fs::write(clone.join("README.md"), "Not corpus content.\n").unwrap();
+    let config = config_for(&clone);
+
+    let report = LintVerb::new(&config, Vec::new()).gather();
+
+    assert_eq!(report.exit_code(), ExitCode::Success);
+    match report.outcome {
+        LintOutcome::Finished { files_checked, .. } => assert_eq!(files_checked, 1),
+        other => panic!("expected Finished, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_domain_root_file_outside_any_typed_folder_is_excluded_from_the_walk() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    write_page(
+        &clone,
+        "kaibo/reference/page.md",
+        WELL_FORMED_FRONTMATTER,
+        "Fine.",
+    );
+    // Sits at the domain root, one level above any `reference`/`how-to`/
+    // `faq` folder - outside the mask even though it is nested.
+    std::fs::write(clone.join("kaibo/_index.md"), "Not corpus content.\n").unwrap();
+    let config = config_for(&clone);
+
+    let report = LintVerb::new(&config, Vec::new()).gather();
+
+    assert_eq!(report.exit_code(), ExitCode::Success);
+    match report.outcome {
+        LintOutcome::Finished { files_checked, .. } => assert_eq!(files_checked, 1),
+        other => panic!("expected Finished, got {other:?}"),
+    }
+}
+
+#[test]
+fn linting_a_directory_argument_also_excludes_files_outside_the_collection_mask() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    write_page(
+        &clone,
+        "kaibo/reference/page.md",
+        WELL_FORMED_FRONTMATTER,
+        "Fine.",
+    );
+    std::fs::write(clone.join("kaibo/_index.md"), "Not corpus content.\n").unwrap();
+    let config = config_for(&clone);
+
+    let report = LintVerb::new(&config, vec!["kaibo".to_string()]).gather();
+
+    assert_eq!(report.exit_code(), ExitCode::Success);
+    match report.outcome {
+        LintOutcome::Finished { files_checked, .. } => assert_eq!(files_checked, 1),
+        other => panic!("expected Finished, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_explicitly_named_file_is_linted_even_when_outside_the_collection_mask() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    std::fs::create_dir_all(&clone).unwrap();
+    // A contributor who names this file by hand still gets it checked - the
+    // mask governs discovery during a walk, not an explicit request.
+    std::fs::write(clone.join("README.md"), "Not corpus content.\n").unwrap();
+    let config = config_for(&clone);
+
+    let report = LintVerb::new(&config, vec!["README.md".to_string()]).gather();
+
+    match report.outcome {
+        LintOutcome::Finished { files_checked, .. } => assert_eq!(files_checked, 1),
+        other => panic!("expected Finished, got {other:?}"),
+    }
+}
+
 #[test]
 fn render_text_names_the_rule_and_severity_of_a_structural_violation() {
     let report = LintReport {
@@ -356,7 +446,12 @@ fn a_type_folder_override_remaps_the_expected_type_end_to_end() {
         .lint_type_folder_overrides(overrides, ConfigSource::File)
         .build();
 
-    let report = LintVerb::new(&config, Vec::new()).gather();
+    // Named explicitly, not the default whole-corpus walk: a folder called
+    // `howto` (rather than `how-to`) is outside the collection mask `sync`
+    // indexes with, so a walk never discovers it - this test is about
+    // whether the override changes what `frontmatter-contract` reports for
+    // a page it is handed, not about walk discovery.
+    let report = LintVerb::new(&config, vec!["kaibo/howto/page.md".to_string()]).gather();
 
     // Without the override, `type: how-to` under a folder literally named
     // `howto` would mismatch the identity mapping and fail; the override
