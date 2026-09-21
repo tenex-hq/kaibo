@@ -167,10 +167,11 @@ failure on unknown flags.
 
 **Idempotent, no hidden state.** Retries are always safe.
 
-**One client, two backends.** The skills read a local clone, MCP reads a hosted
-tenant, and they can answer the same question differently. A single binary with
-a local and a remote backend is the only clean fix. Anything that speaks MCP
-wraps the same core rather than reimplementing it.
+**One client, two backends, if MCP ships.** Were an MCP server built alongside
+the skills, the skills would read a local clone while MCP read a hosted tenant,
+and the two could answer the same question differently (#56). A single binary
+with a local and a remote backend would be the only clean fix: anything that
+speaks MCP would wrap the same core rather than reimplementing it (#42).
 
 **AI-optional survives.** The degradation ladder is not negotiable. The CLI is
 a thin orchestrator over git, qmd and plain markdown; it is never a store.
