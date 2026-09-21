@@ -19,8 +19,9 @@ full precedence: environment, then config file, then default.
 
 The same file can carry a `[lint]` table to reparameterise `kaibo lint`'s
 compiled rules - which frontmatter keys are required, which `status` values
-are accepted, how a folder maps to an expected `type`, and the tag pattern -
-plus `lint.disabled_rules` to turn a rule off entirely. None of this can come
+are accepted, how a folder maps to an expected `type`, the tag pattern, and how many
+normative claims a binding page may state before `normative-atomicity` says
+so - plus `lint.disabled_rules` to turn a rule off entirely. None of this can come
 from the knowledge repo itself: see the module docs on
 [`crates/kaibo-core/src/lint.rs`](../crates/kaibo-core/src/lint.rs) for why,
 and for the full shape of the table. `prose-style` (no em dash, no en dash,
@@ -40,6 +41,9 @@ howto = "how-to"
 
 [lint.tags_kebab_case]
 pattern = "[a-z0-9]+(-[a-z0-9]+)*"
+
+[lint.normative_atomicity]
+max_claims = 1
 ```
 
 ## 2. Bootstrap

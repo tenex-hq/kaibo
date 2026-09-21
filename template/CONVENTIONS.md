@@ -182,6 +182,16 @@ client runs locally, against the artifact, before it acts. They produce
   still carries a severity, and still reaches the caller as prose. Requiring
   checks would quietly exclude most real standards.
 
+### One claim per standard
+
+[Atomicity](#reference-pages-atomic) is load-bearing here rather than merely
+tidy. A contract returns **one verdict per standard**, so a page binding three
+claims produces a verdict nobody can read: which of the three failed? The
+`normative-atomicity` lint rule counts the normative blocks in a binding
+page's body and says so above the ceiling. It is heuristic, so it annotates
+and never fails a run: counting claims in prose is a judgment call, and a
+judgment call that blocks a contributor is worse than one that nudges.
+
 ### No judgment checks
 
 The schema has one check species, the decidable one. A second was specified -
