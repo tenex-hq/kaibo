@@ -2163,6 +2163,65 @@ fn a_mix_of_relevant_and_irrelevant_hits_returns_only_the_relevant_one_and_stays
     assert_eq!(report.census.withheld_low_relevance, 1);
 }
 
+/// The floor is inclusive: a hit sitting exactly on it is kept. The boundary
+/// is worth pinning because it is the difference between `<` and `<=` on the
+/// one comparison that decides whether the corpus is reported as having
+/// nothing, and both readings look equally plausible in the source.
+#[test]
+fn a_hit_sitting_exactly_on_the_relevance_floor_is_kept_and_one_just_below_is_not() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_page(
+        &clone,
+        "kaibo/reference/on-the-floor.md",
+        "status: current",
+        "Just barely worth returning.",
+    );
+    write_page(
+        &clone,
+        "kaibo/reference/under-the-floor.md",
+        "status: current",
+        "Just barely not.",
+    );
+
+    let hits = vec![
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/on-the-floor.md?index=kaibo",
+            "On The Floor",
+            0.15,
+            "a snippet that only just clears",
+        ),
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/under-the-floor.md?index=kaibo",
+            "Under The Floor",
+            0.1499,
+            "a snippet that only just misses",
+        ),
+    ];
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        ok(qmd_query_json(&hits)),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert_eq!(report.exit_code(), ExitCode::Success);
+    match &report.outcome {
+        QueryOutcome::Hits(hits) => {
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].path, "kaibo/reference/on-the-floor.md");
+        }
+        other => panic!("expected the hit sitting on the floor, got {other:?}"),
+    }
+    assert_eq!(report.census.kept, 1);
+    assert_eq!(report.census.withheld_low_relevance, 1);
+}
+
 /// Ordering follows rerank relevance, not the order qmd happened to return
 /// hits in - qmd's own array here lists the low-relevance hit first.
 #[test]
