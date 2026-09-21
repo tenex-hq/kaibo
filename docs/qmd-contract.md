@@ -82,20 +82,25 @@ qmd embed --index kaibo         # (re)generate pending vector embeddings
 ## Querying - the shape kaibo parses
 
 Scope with `-c` (**legitimate here** - it's a search-time filter) and ask for
-JSON. Progress output goes to **stderr**, so redirect it when capturing:
+JSON with `--explain`. Progress output goes to **stderr**, so redirect it when
+capturing:
 
 ```bash
-qmd query "<natural question>" -c knowledge --index kaibo --json 2>/dev/null
+qmd query "<natural question>" -c knowledge --index kaibo --json --explain 2>/dev/null
 ```
 
 - `qmd query` - hybrid: auto query-expansion + BM25 + vector + LLM rerank.
   **Default choice** for `kaibo query`.
 - `qmd search` - BM25 keywords only (fast, no LLM). Good for exact identifiers.
 - `qmd vsearch` - vector similarity only.
+- `--explain` is required, not optional, for `kaibo query`'s own use: it is
+  the only way to get `explain.rerankScore` (see below), which is what
+  `query::gather` actually sorts and floors on.
 
 ### `--json` output shape
 
-An array of hits, best first:
+An array of hits, in qmd's own order (dominated by rank position - see
+below):
 
 ```json
 [
@@ -104,7 +109,11 @@ An array of hits, best first:
     "score": 0.88,
     "file": "qmd://knowledge/kaibo/how-to/add-a-knowledge-domain.md",
     "title": "Add a Knowledge Domain",
-    "snippet": "@@ -35,4 @@ (34 before, 17 after)\n..."
+    "snippet": "@@ -35,4 @@ (34 before, 17 after)\n...",
+    "explain": {
+      "rerankScore": 0.0043,
+      "blendedScore": 0.88
+    }
   }
 ]
 ```
@@ -116,6 +125,16 @@ An array of hits, best first:
   exact region.
 - Fetch fuller context with
   `qmd get "qmd://knowledge/<domain>/<type>/<page>.md" --index kaibo -l 40`.
+- **`score` (top-level) is not a relevance signal - kaibo never reads it.**
+  It equals `explain.blendedScore`, which is `0.75 * (1/rank) + 0.25 *
+  rerankScore`: mostly a restatement of qmd's own rank position. A nonsense
+  question's top hit can score `0.75` on this field purely from being ranked
+  first, with no bearing on whether the hit is actually relevant.
+- **`explain.rerankScore`** is the cross-encoder's relevance probability
+  (`[0, 1]`), and is what `kaibo query` sorts hits by and floors on (below a
+  compiled threshold, a hit is withheld and, if nothing clears it, the whole
+  query reports a gap - exit code 3). See `crates/kaibo-core/src/query.rs`
+  for the calibration behind the floor's value.
 
 ## Gotchas
 

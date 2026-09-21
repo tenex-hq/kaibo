@@ -30,14 +30,22 @@ fn write_page(clone: &Path, repo_relative_path: &str, frontmatter: &str, body: &
     std::fs::write(full, format!("---\n{frontmatter}\n---\n{body}\n")).unwrap();
 }
 
-fn qmd_hit(file: &str, title: &str, score: f64, snippet: &str) -> serde_json::Value {
+/// `relevance` becomes `explain.rerankScore` - the field `query::gather`
+/// actually reads - not the top-level `score`, which most tests below set to
+/// the same value only so a fixture inspected by eye still looks internally
+/// consistent; nothing under test reads it. A test that needs `score` and
+/// `explain.rerankScore` to disagree builds its hit JSON by hand instead of
+/// through this helper (see `a_hit_missing_rerank_score_is_withheld...` and
+/// the ordering tests).
+fn qmd_hit(file: &str, title: &str, relevance: f64, snippet: &str) -> serde_json::Value {
     json!({
         "docid": "#abc123",
-        "score": score,
+        "score": relevance,
         "file": file,
         "line": 1,
         "title": title,
         "snippet": snippet,
+        "explain": {"rerankScore": relevance},
     })
 }
 
@@ -1481,24 +1489,33 @@ fn qmd_output_that_is_not_a_json_array_is_an_internal_error_not_a_stale_corpus()
     );
 }
 
+/// The degradation ladder ADR 0002 requires: a hit qmd could not (or did
+/// not) rerank must not be silently kept as if it scored 0.0 relevance, and
+/// must not fall back to trusting qmd's blended `score` as though it were
+/// relevance. It is withheld, the same as a hit that scored below
+/// `RELEVANCE_FLOOR` - see `RELEVANCE_UNAVAILABLE`.
 #[test]
-fn a_hit_missing_score_still_parses_with_a_default() {
+fn a_hit_missing_explain_rerank_score_is_withheld_not_defaulted_to_zero_relevance() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("clone");
     git_dir(&clone);
     let config = config_with_repo(&clone);
     write_page(
         &clone,
-        "kaibo/reference/no-score.md",
+        "kaibo/reference/no-rerank-score.md",
         "status: current",
         "Body.",
     );
 
-    // Built by hand, not via `qmd_hit`, specifically to omit `score`.
+    // Built by hand, not via `qmd_hit`, specifically to omit `explain`
+    // entirely - qmd's own top-level `score` (a high, deliberately
+    // misleading value) is present, to prove `gather` never falls back to
+    // it as a relevance substitute.
     let raw_hits = json!([{
         "docid": "#abc123",
-        "file": "qmd://knowledge/kaibo/reference/no-score.md?index=kaibo",
-        "title": "No Score",
+        "score": 0.99,
+        "file": "qmd://knowledge/kaibo/reference/no-rerank-score.md?index=kaibo",
+        "title": "No Rerank Score",
         "snippet": "some snippet",
     }]);
     let runner = healthy_fixture(&clone, &config).on(
@@ -1511,13 +1528,10 @@ fn a_hit_missing_score_still_parses_with_a_default() {
         .unwrap()
         .gather(&runner, &clock, false);
 
-    match &report.outcome {
-        QueryOutcome::Hits(hits) => {
-            assert_eq!(hits.len(), 1);
-            assert_eq!(hits[0].score, 0.0);
-        }
-        other => panic!("expected Hits with a defaulted score, got {other:?}"),
-    }
+    assert_eq!(report.exit_code(), ExitCode::NoHits);
+    assert_eq!(report.census.raw, 1);
+    assert_eq!(report.census.withheld_low_relevance, 1);
+    assert_eq!(report.census.kept, 0);
 }
 
 #[test]
@@ -1551,6 +1565,7 @@ fn one_unparsable_hit_does_not_fail_the_whole_batch() {
             "file": "qmd://knowledge/kaibo/reference/good-page.md?index=kaibo",
             "title": "Good Page",
             "snippet": "a fine snippet",
+            "explain": {"rerankScore": 0.9},
         },
     ]);
     let runner = healthy_fixture(&clone, &config).on(
@@ -1886,6 +1901,7 @@ fn a_gap_with_nothing_retrieved_at_all_records_no_withholding() {
     assert_eq!(report.census.withheld_draft, 0);
     assert_eq!(report.census.withheld_unverified, 0);
     assert_eq!(report.census.unaddressable, 0);
+    assert_eq!(report.census.withheld_low_relevance, 0);
     assert_eq!(report.census.kept, 0);
 }
 
@@ -1971,6 +1987,12 @@ fn every_hit_qmd_returned_is_accounted_for_in_exactly_one_census_bucket() {
         "status: [unclosed",
         "Body.",
     );
+    write_page(
+        &clone,
+        "kaibo/reference/irrelevant.md",
+        "status: current",
+        "Body.",
+    );
 
     let hits = vec![
         qmd_hit(
@@ -1992,6 +2014,12 @@ fn every_hit_qmd_returned_is_accounted_for_in_exactly_one_census_bucket() {
             "snippet",
         ),
         qmd_hit("/etc/passwd", "Elsewhere", 0.6, "snippet"),
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/irrelevant.md?index=kaibo",
+            "Irrelevant",
+            0.01,
+            "snippet",
+        ),
     ];
     let runner = healthy_fixture(&clone, &config).on(
         QmdCommand::query(&config, "question"),
@@ -2004,13 +2032,312 @@ fn every_hit_qmd_returned_is_accounted_for_in_exactly_one_census_bucket() {
         .gather(&runner, &clock, false);
 
     let census = report.census;
-    assert_eq!(census.raw, 4);
+    assert_eq!(census.raw, 5);
     assert_eq!(census.kept, 1);
     assert_eq!(census.withheld_draft, 1);
     assert_eq!(census.withheld_unverified, 1);
     assert_eq!(census.unaddressable, 1);
+    assert_eq!(census.withheld_low_relevance, 1);
     assert_eq!(
         census.raw,
-        census.kept + census.withheld_draft + census.withheld_unverified + census.unaddressable
+        census.kept
+            + census.withheld_draft
+            + census.withheld_unverified
+            + census.unaddressable
+            + census.withheld_low_relevance
     );
+}
+
+// --- the relevance floor -----------------------------------------------
+
+/// This is the change that makes exit 3 mean "I found nothing" for real:
+/// before it, `NoHits` only fired when qmd returned literally zero rows,
+/// which on a non-empty corpus effectively never happened - a nonsense
+/// question's top hit scored 0.75 on qmd's blended `score` and was served as
+/// a grounded hit. Every hit here clears qmd's old bar (it returned them at
+/// all) but none clears `RELEVANCE_FLOOR`.
+#[test]
+fn nothing_clearing_the_relevance_floor_is_a_gap_not_a_pile_of_low_relevance_hits() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_page(
+        &clone,
+        "kaibo/reference/unrelated-a.md",
+        "status: current",
+        "Body A.",
+    );
+    write_page(
+        &clone,
+        "kaibo/reference/unrelated-b.md",
+        "status: current",
+        "Body B.",
+    );
+
+    let hits = vec![
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/unrelated-a.md?index=kaibo",
+            "Unrelated A",
+            0.0619,
+            "snippet a",
+        ),
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/unrelated-b.md?index=kaibo",
+            "Unrelated B",
+            0.0045,
+            "snippet b",
+        ),
+    ];
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "asdkfj qwoeiru zxcvblkj"),
+        ok(qmd_query_json(&hits)),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "asdkfj qwoeiru zxcvblkj")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert_eq!(report.exit_code(), ExitCode::NoHits);
+    assert!(matches!(report.outcome, QueryOutcome::NoHits { .. }));
+    assert_eq!(report.census.raw, 2);
+    assert_eq!(report.census.withheld_low_relevance, 2);
+    assert_eq!(report.census.kept, 0);
+}
+
+/// A partial gap is not a gap: the hit that clears the floor is returned,
+/// the one that does not is silently withheld, and the report stays exit 0.
+#[test]
+fn a_mix_of_relevant_and_irrelevant_hits_returns_only_the_relevant_one_and_stays_a_hit() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_page(
+        &clone,
+        "kaibo/reference/on-topic.md",
+        "status: current",
+        "The real answer.",
+    );
+    write_page(
+        &clone,
+        "kaibo/reference/off-topic.md",
+        "status: current",
+        "Noise that happened to match on keywords.",
+    );
+
+    let hits = vec![
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/on-topic.md?index=kaibo",
+            "On Topic",
+            0.9996,
+            "the real snippet",
+        ),
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/off-topic.md?index=kaibo",
+            "Off Topic",
+            0.0292,
+            "a barely-related snippet",
+        ),
+    ];
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        ok(qmd_query_json(&hits)),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert_eq!(report.exit_code(), ExitCode::Success);
+    match &report.outcome {
+        QueryOutcome::Hits(hits) => {
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].path, "kaibo/reference/on-topic.md");
+        }
+        other => panic!("expected exactly the on-topic hit, got {other:?}"),
+    }
+    assert_eq!(report.census.kept, 1);
+    assert_eq!(report.census.withheld_low_relevance, 1);
+}
+
+/// The floor is inclusive: a hit sitting exactly on it is kept. The boundary
+/// is worth pinning because it is the difference between `<` and `<=` on the
+/// one comparison that decides whether the corpus is reported as having
+/// nothing, and both readings look equally plausible in the source.
+#[test]
+fn a_hit_sitting_exactly_on_the_relevance_floor_is_kept_and_one_just_below_is_not() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_page(
+        &clone,
+        "kaibo/reference/on-the-floor.md",
+        "status: current",
+        "Just barely worth returning.",
+    );
+    write_page(
+        &clone,
+        "kaibo/reference/under-the-floor.md",
+        "status: current",
+        "Just barely not.",
+    );
+
+    let hits = vec![
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/on-the-floor.md?index=kaibo",
+            "On The Floor",
+            0.15,
+            "a snippet that only just clears",
+        ),
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/under-the-floor.md?index=kaibo",
+            "Under The Floor",
+            0.1499,
+            "a snippet that only just misses",
+        ),
+    ];
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        ok(qmd_query_json(&hits)),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    assert_eq!(report.exit_code(), ExitCode::Success);
+    match &report.outcome {
+        QueryOutcome::Hits(hits) => {
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].path, "kaibo/reference/on-the-floor.md");
+        }
+        other => panic!("expected the hit sitting on the floor, got {other:?}"),
+    }
+    assert_eq!(report.census.kept, 1);
+    assert_eq!(report.census.withheld_low_relevance, 1);
+}
+
+/// Ordering follows rerank relevance, not the order qmd happened to return
+/// hits in - qmd's own array here lists the low-relevance hit first.
+#[test]
+fn hits_are_ordered_by_rerank_relevance_not_by_qmds_returned_order() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_page(
+        &clone,
+        "kaibo/reference/returned-first-scored-lower.md",
+        "status: current",
+        "Body.",
+    );
+    write_page(
+        &clone,
+        "kaibo/reference/returned-second-scored-higher.md",
+        "status: current",
+        "Body.",
+    );
+
+    // qmd lists the lower-relevance hit first in its own array.
+    let hits = vec![
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/returned-first-scored-lower.md?index=kaibo",
+            "Returned First, Scored Lower",
+            0.3333,
+            "snippet",
+        ),
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/returned-second-scored-higher.md?index=kaibo",
+            "Returned Second, Scored Higher",
+            0.9999,
+            "snippet",
+        ),
+    ];
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        ok(qmd_query_json(&hits)),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    match &report.outcome {
+        QueryOutcome::Hits(hits) => {
+            assert_eq!(hits.len(), 2);
+            assert_eq!(
+                hits[0].path, "kaibo/reference/returned-second-scored-higher.md",
+                "the higher-relevance hit must sort first regardless of qmd's own order"
+            );
+            assert_eq!(
+                hits[1].path,
+                "kaibo/reference/returned-first-scored-lower.md"
+            );
+        }
+        other => panic!("expected both hits, ordered by relevance, got {other:?}"),
+    }
+}
+
+/// A page whose highest-ranked chunk is nothing but its own YAML
+/// frontmatter embeds blandly and used to win on qmd's rank-dominated
+/// `score`; the cross-encoder rates it near zero because frontmatter is not
+/// an answer to anything. The floor drops it as a side effect, with no
+/// separate frontmatter-detection logic needed.
+#[test]
+fn a_frontmatter_only_chunk_with_near_zero_relevance_is_dropped() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_page(
+        &clone,
+        "kaibo/reference/frontmatter-wins-on-rank.md",
+        "status: current\ntags: [observability, principles]",
+        "## The actual claim\n\nThe real answer lives here in the body.",
+    );
+    write_page(
+        &clone,
+        "kaibo/reference/answers-the-question.md",
+        "status: current",
+        "## The actual claim\n\nThis page genuinely answers the question.",
+    );
+
+    let hits = vec![
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/frontmatter-wins-on-rank.md?index=kaibo",
+            "Frontmatter Wins On Rank",
+            0.001,
+            "title: Frontmatter Wins On Rank\ntags: [observability, principles]\nstatus: current",
+        ),
+        qmd_hit(
+            "qmd://knowledge/kaibo/reference/answers-the-question.md?index=kaibo",
+            "Answers The Question",
+            0.9973,
+            "## The actual claim\n\nThis page genuinely answers the question.",
+        ),
+    ];
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, "question"),
+        ok(qmd_query_json(&hits)),
+    );
+    let clock = FixedClock(now());
+
+    let report = QueryVerb::new(&config, "question")
+        .unwrap()
+        .gather(&runner, &clock, false);
+
+    match &report.outcome {
+        QueryOutcome::Hits(hits) => {
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].path, "kaibo/reference/answers-the-question.md");
+        }
+        other => panic!("expected only the substantive-body hit, got {other:?}"),
+    }
+    assert_eq!(report.census.withheld_low_relevance, 1);
 }

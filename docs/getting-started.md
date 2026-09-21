@@ -126,7 +126,7 @@ qmd update --index kaibo
 qmd embed --index kaibo
 
 # ask something
-qmd query "how do I add a domain" -c knowledge --index kaibo --json 2>/dev/null
+qmd query "how do I add a domain" -c knowledge --index kaibo --json --explain 2>/dev/null
 ```
 
 See [`qmd-contract.md`](qmd-contract.md) for the exact QMD command contract.

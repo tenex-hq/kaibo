@@ -357,7 +357,7 @@ fn query_excludes_a_draft_page_by_default_but_include_drafts_surfaces_it_labelle
     );
     let response = support::write_query_response(
         &harness.outside_dir(),
-        r#"[{"file": "qmd://knowledge/docs/reference/onboarding-notes.md?index=kaibo", "title": "Onboarding Notes", "snippet": "clean snippet", "score": 0.9}]"#,
+        r#"[{"file": "qmd://knowledge/docs/reference/onboarding-notes.md?index=kaibo", "title": "Onboarding Notes", "snippet": "clean snippet", "score": 0.9, "explain": {"rerankScore": 0.9}}]"#,
     );
     let env = [("KAIBO_TEST_QMD_QUERY_RESPONSE", response.to_str().unwrap())];
 

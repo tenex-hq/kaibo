@@ -136,6 +136,15 @@ fn extra_string_facet(frontmatter: &frontmatter::Frontmatter, key: &str) -> Opti
 /// not be read" - the two are deliberately not distinguished here (see
 /// `gather`, which does, to decide inclusion under `include_drafts`).
 ///
+/// `relevance` is qmd's `explain.rerankScore` - a cross-encoder relevance
+/// probability in `[0, 1]` - never qmd's blended `score` field. `score` is
+/// `0.75 * (1/rank) + 0.25 * rerankScore`, so it is mostly a restatement of
+/// rank position and provably cannot separate a genuine hit from a nonsense
+/// question (see [`RELEVANCE_FLOOR`]); kaibo does not surface it at all, so
+/// nothing downstream can mistake it for relevance. By the time a `Hit`
+/// exists, `relevance` has already cleared [`RELEVANCE_FLOOR`] - see
+/// `gather`.
+///
 /// `snippet` is kept as plain content and only fenced at render time (see
 /// [`trust::fence`]); nothing here is ever fed into a [`PlannedCommand`]
 /// this module builds.
@@ -144,7 +153,7 @@ pub struct Hit {
     pub path: String,
     pub title: String,
     pub status: Option<Status>,
-    pub score: f64,
+    pub relevance: f64,
     pub snippet: String,
     pub facets: Facets,
 }
@@ -185,12 +194,20 @@ pub enum QueryOutcome {
 /// What became of every hit `qmd` returned.
 ///
 /// `NoHits` fires on the *filtered* list, so an empty result can mean "the
-/// corpus has nothing" or "everything it had was withheld" - and those call
-/// for opposite editorial actions, writing a page versus promoting a draft.
-/// Without the buckets the two are the same signal. `raw` always equals the
-/// sum of the other four, which
+/// corpus has nothing", "everything it had was withheld", or "nothing
+/// retrieved was actually relevant" - and those call for different editorial
+/// or diagnostic reactions. Without the buckets they are the same signal.
+/// `raw` always equals the sum of the other five, which
 /// `every_hit_qmd_returned_is_accounted_for_in_exactly_one_census_bucket`
 /// enforces.
+///
+/// Bucket order (also the order `gather` checks them in): unaddressable,
+/// then unverified, then draft, then low-relevance. The first three gate on
+/// whether kaibo can trust and address the *page* at all; only a hit that
+/// already cleared those is then judged on whether the retrieved chunk is
+/// actually relevant to *this question*, which is a property of the match,
+/// not the page. A hit that fails an earlier gate is never double-counted
+/// against `withheld_low_relevance` too.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct HitCensus {
     pub raw: usize,
@@ -201,6 +218,12 @@ pub struct HitCensus {
     /// caution as a draft.
     pub withheld_unverified: usize,
     pub withheld_draft: usize,
+    /// Relevance (qmd's `explain.rerankScore`) fell below
+    /// [`RELEVANCE_FLOOR`], or qmd produced no rerank relevance for this hit
+    /// at all - the two are not distinguished, since both mean kaibo will
+    /// not vouch for the hit as an answer to this question (see
+    /// `relevance_of`).
+    pub withheld_low_relevance: usize,
     pub kept: usize,
 }
 
@@ -433,7 +456,8 @@ fn gather(
     };
     let mut hits: Vec<Hit> = Vec::new();
     for raw in raw_hits {
-        let Some((hit, verified)) = build_hit(config, raw) else {
+        let relevance = relevance_of(&raw);
+        let Some((hit, verified)) = build_hit(config, raw, relevance) else {
             census.unaddressable += 1;
             continue;
         };
@@ -445,12 +469,27 @@ fn gather(
             census.withheld_draft += 1;
             continue;
         }
+        if hit.relevance < RELEVANCE_FLOOR {
+            census.withheld_low_relevance += 1;
+            continue;
+        }
         hits.push(hit);
     }
     census.kept = hits.len();
-    // Stable partition: current (and everything else) first, deprecated
-    // last - `sort_by_key` on a bool is stable, so relevance order within
-    // each group is preserved.
+    // Primary order: relevance descending - the whole point of this change,
+    // see `RELEVANCE_FLOOR`'s doc comment. `partial_cmp` only returns `None`
+    // for NaN, which `relevance_of` never produces (`f64::as_f64` on JSON
+    // rejects NaN at the serde layer, and `RELEVANCE_UNAVAILABLE` is a
+    // literal), so the fallback is unreachable in practice and exists only
+    // to keep `sort_by` total.
+    hits.sort_by(|a, b| {
+        b.relevance
+            .partial_cmp(&a.relevance)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    // Then a stable partition on top: current (and everything else) first,
+    // deprecated last. `sort_by_key` on a bool is stable, so the relevance
+    // order just established survives within each group.
     hits.sort_by_key(|hit| matches!(hit.status, Some(Status::Deprecated)));
 
     let outcome = if hits.is_empty() {
@@ -470,20 +509,71 @@ fn gather(
     }
 }
 
-/// Fields of one `qmd query --format json` hit this module uses. Unknown
-/// fields are ignored, not rejected - this is qmd's output, not a contract
-/// this crate controls. `score` defaults to `0.0` so a hit missing a score
-/// does not take the rest of the batch down with it; `file` has no default
-/// since a hit with no addressable page is not one this crate can use.
+/// Below this, `explain.rerankScore` (a cross-encoder relevance probability
+/// in `[0, 1]`) is indistinguishable from noise. Calibrated 2026-09-21
+/// against the real corpus and qmd's own reranker: across 20 questions the
+/// corpus genuinely answers, the top hit's rerank relevance ranged from
+/// 0.333 to 1.0 (median 0.9992); across 17 questions it genuinely does not
+/// cover (12 plausible-but-uncovered, 5 nonsense strings), the top hit's
+/// rerank relevance ranged from 0.0002 to 0.0751. The two ranges did not
+/// overlap in that sample, and 0.15 sits near the middle of the gap between
+/// them - any value from roughly 0.08 to 0.33 would have behaved identically
+/// on the calibration data, so the exact literal is not fine-tuned, just
+/// inside the safe band.
+///
+/// A compiled constant, never a flag, config key, or environment variable:
+/// it is a property of this specific reranker model, not a caller
+/// preference. `AGENTS.md` already forbids a verb taking a target-bearing
+/// flag; a `--min-relevance` flag would additionally hand a caller (or an
+/// agent composing a command line from retrieved text) a knob to talk kaibo
+/// out of ever reporting a gap.
+const RELEVANCE_FLOOR: f64 = 0.15;
+
+/// Not a valid rerank probability - `explain.rerankScore` is always in
+/// `[0, 1]` when qmd produces one - so a hit carrying this value can never
+/// clear [`RELEVANCE_FLOOR`]. This is the degradation ladder ADR 0002
+/// requires: if qmd's `--explain` output is missing `explain` entirely, or
+/// `explain.rerankScore` specifically, kaibo withholds the hit exactly as it
+/// would withhold a below-floor one, rather than crashing or silently
+/// trusting qmd's blended `score` as though it were relevance. See
+/// `relevance_of`.
+const RELEVANCE_UNAVAILABLE: f64 = -1.0;
+
+/// Fields of one `qmd query --format json --explain` hit this module uses.
+/// Unknown fields are ignored, not rejected - this is qmd's output, not a
+/// contract this crate controls. `file` has no default since a hit with no
+/// addressable page is not one this crate can use; `explain` defaults to
+/// `None` so a hit qmd could not rerank degrades via [`relevance_of`] rather
+/// than failing to parse.
 #[derive(Debug, Deserialize)]
 struct RawHit {
-    #[serde(default)]
-    score: f64,
     file: String,
     #[serde(default)]
     title: String,
     #[serde(default)]
     snippet: String,
+    #[serde(default)]
+    explain: Option<RawExplain>,
+}
+
+/// The one field of qmd's `explain` block this crate reads. `rerank_score`
+/// is `Option` (not defaulted to `0.0`) so "present but literally zero" and
+/// "absent" stay distinguishable at parse time, even though `relevance_of`
+/// collapses them to the same withholding outcome today.
+#[derive(Debug, Deserialize)]
+struct RawExplain {
+    #[serde(rename = "rerankScore", default)]
+    rerank_score: Option<f64>,
+}
+
+/// A hit's rerank relevance, or [`RELEVANCE_UNAVAILABLE`] if qmd produced
+/// none - see that constant's doc comment for why this is the degradation
+/// path rather than a fallback to the blended `score`.
+fn relevance_of(raw: &RawHit) -> f64 {
+    raw.explain
+        .as_ref()
+        .and_then(|explain| explain.rerank_score)
+        .unwrap_or(RELEVANCE_UNAVAILABLE)
 }
 
 /// Builds a `Hit` plus whether its frontmatter was actually verified (as
@@ -491,8 +581,11 @@ struct RawHit {
 /// path this crate will read (see [`trust::repo_relative_path`]).
 ///
 /// `title` and `path` are stripped of control characters before storing,
-/// since both print unfenced in `render_text`/`render_json`.
-fn build_hit(config: &Config, raw: RawHit) -> Option<(Hit, bool)> {
+/// since both print unfenced in `render_text`/`render_json`. `relevance` is
+/// computed by the caller (`relevance_of`, before `raw` is moved in here) so
+/// the floor check in `gather` and this constructor cannot read the field
+/// two different ways.
+fn build_hit(config: &Config, raw: RawHit, relevance: f64) -> Option<(Hit, bool)> {
     let path = trust::repo_relative_path(&raw.file)?;
     let (status, facets, verified) = match read_frontmatter_facts(config, &path) {
         FrontmatterFacts::Parsed { status, facets } => (status, facets, true),
@@ -503,7 +596,7 @@ fn build_hit(config: &Config, raw: RawHit) -> Option<(Hit, bool)> {
             path: trust::strip_control_chars(&path),
             title: trust::strip_control_chars(&raw.title),
             status,
-            score: raw.score,
+            relevance,
             snippet: raw.snippet,
             facets,
         },
@@ -665,11 +758,11 @@ impl Render for QueryReport {
                         tags.push_str(" [deprecated]");
                     }
                     lines.push(format!(
-                        "- {}{} - {} (score {:.2}, status {})",
+                        "- {}{} - {} (relevance {:.2}, status {})",
                         hit.path,
                         tags,
                         hit.title,
-                        hit.score,
+                        hit.relevance,
                         status_label(&hit.status),
                     ));
                     lines.push(trust::fence(&hit.path, &hit.snippet));
@@ -711,7 +804,7 @@ impl Render for QueryReport {
                     "path": hit.path,
                     "title": hit.title,
                     "status": status_label(&hit.status),
-                    "score": hit.score,
+                    "relevance": hit.relevance,
                     "snippet": trust::fence(&hit.path, &hit.snippet),
                     "facets": hit.facets,
                 })).collect::<Vec<_>>(),
