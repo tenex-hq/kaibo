@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::clock::Clock;
+use crate::collection_mask::COLLECTION_MASK;
 use crate::config::Config;
 use crate::error::ExitCode;
 use crate::explain::{Explainable, PlannedCommand};
@@ -26,12 +27,6 @@ use crate::status::{
     self, ConfigSummary, IndexStatus, STALE_THRESHOLD, commit_age, config_summary,
     git_last_commit_command, parse_commit_epoch, parse_qmd_status, render_count,
 };
-
-/// The mask `sync` restricts the `knowledge` collection to: typed content
-/// folders only (`reference`, `how-to`, `faq`) one level under each domain
-/// folder. Root files like `README.md`, `_index.md`, and `CODEOWNERS` are
-/// navigation and metadata, not knowledge, and stay out of the index.
-const COLLECTION_MASK: &str = "*/{reference,how-to,faq}/**/*.md";
 
 /// One thing worth telling the user about, with the exact next command
 /// where a fix exists. Deliberately its own type, not shared with
