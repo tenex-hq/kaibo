@@ -83,7 +83,7 @@ tasks:
   # --- SKILL.md §4, status filtering ---------------------------------------
   # span-naming.md is the only page on the topic and it is `status: draft`.
   - name: A draft page is surfaced only with the draft label
-    prompt: "Do we have a convention for naming spans?"
+    prompt: "Do we have a span naming convention?"
     expect: >
       The response reports the actual convention from the corpus - span names
       are `<service>.<kind>.<operation>`, lowercased - AND marks it as not
