@@ -65,7 +65,7 @@ what keeps the corpus usable when the AI layer is unavailable.
 | | |
 |---|---|
 | **`kaibo contribute plan`** | Surface placement candidates for a piece of knowledge: which domain, which existing page to append to, or a new page. Read-only; it never writes and never decides for you. |
-| **`kaibo contribute apply`** | Write the page, lint-gate it, branch, commit, push (directly or via a verified fork), open the PR, and watch CI. One command, the whole round trip. |
+| **`kaibo contribute apply`** | Write the page, lint-gate it, check its references with reflock when installed, branch, commit, push (directly or via a verified fork), open the PR, and watch CI. One command, the whole round trip. |
 
 Contribution needs read access to the knowledge repo, not write access. The
 fork route is the default for contributors who do not have the commit bit.
