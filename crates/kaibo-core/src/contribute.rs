@@ -4,11 +4,11 @@
 //! calling agent. `plan` surfaces placement candidates and never mutates
 //! anything or prompts interactively - see [`ContributePlanVerb`]. `apply`
 //! takes an already-resolved placement and does the git/gh ceremony:
-//! write, lint-gate, branch, commit, push (direct or via a verified fork),
-//! open a PR, and watch CI - see [`ContributeApplyVerb`].
+//! write, lint-gate, reference-check, branch, commit, push (direct or via a
+//! verified fork), open a PR, and watch CI - see [`ContributeApplyVerb`].
 //!
 //! **Stop and report, never discard**: a dirty clone, a branch-name
-//! collision, or a lint failure all stop `apply` before it
+//! collision, a lint failure, or a dangling reference all stop `apply` before it
 //! mutates the clone's branch state further. Nothing here ever runs `git
 //! reset --hard`, `git checkout -f`, or deletes the clone.
 //!
@@ -40,7 +40,7 @@ use crate::lint::{LintOutcome, LintVerb, Violation};
 use crate::moc::{self, DomainSection};
 use crate::normative;
 use crate::output::{Render, RenderOptions};
-use crate::process::CommandRunner;
+use crate::process::{CommandOutput, CommandRunner};
 use crate::qmd::QmdCommand;
 use crate::trust;
 
@@ -241,6 +241,76 @@ fn gh_pr_checks(repo: &str, pr_url_or_number: &str) -> PlannedCommand {
         "gh",
         ["pr", "checks", pr_url_or_number, "--repo", repo, "--watch"],
     )
+}
+
+/// `reflock check` on the one page `apply` wrote, addressed by `--root`
+/// because a [`PlannedCommand`] carries no working directory. reflock only
+/// reads: it lists files through `git ls-files` and `git check-ignore`,
+/// neither of which runs a hook, and treats `.reflockignore` as data.
+fn reflock_check(clone_path: &Path, repo_relative_path: &str) -> PlannedCommand {
+    PlannedCommand::new(
+        "reflock",
+        [
+            "--root".to_string(),
+            clone_path.to_string_lossy().into_owned(),
+            "check".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+            clone_path
+                .join(repo_relative_path)
+                .to_string_lossy()
+                .into_owned(),
+        ],
+    )
+}
+
+/// Reduce reflock's JSON report to the one question `apply` asks: does the
+/// written page reference something that does not exist? A report kaibo
+/// cannot read is a stop, not a pass, because the check exists to withhold.
+/// Findings other than `DANGLING` are about targets that changed elsewhere
+/// and are left to the knowledge repo's CI.
+fn judge_references(output: &CommandOutput) -> Result<(), ApplyStop> {
+    let uncheckable = |detail: &str| ApplyStop::ReferencesUncheckable {
+        detail: detail.to_string(),
+    };
+    let report: Value = serde_json::from_str(&output.stdout)
+        .map_err(|_| uncheckable("reflock's report is not JSON"))?;
+    if report["schema"] != 1 {
+        return Err(uncheckable(&format!(
+            "reflock's report has schema {}, kaibo reads schema 1",
+            report["schema"]
+        )));
+    }
+    if let Some(error) = report.get("error") {
+        return Err(uncheckable(&format!(
+            "reflock reported an error: {}",
+            error["message"].as_str().unwrap_or_default()
+        )));
+    }
+    let Some(findings) = report["findings"].as_array() else {
+        return Err(uncheckable("reflock's report carries no findings list"));
+    };
+
+    let dangling: Vec<DanglingReference> = findings
+        .iter()
+        .filter(|finding| finding["verdict"] == "DANGLING")
+        .map(|finding| DanglingReference {
+            line: finding["line"].as_u64().unwrap_or_default(),
+            target: finding["target"].as_str().unwrap_or_default().to_string(),
+            detail: finding["detail"].as_str().unwrap_or_default().to_string(),
+        })
+        .collect();
+    if !dangling.is_empty() {
+        return Err(ApplyStop::DanglingReferences {
+            references: dangling,
+        });
+    }
+    if !output.success() && findings.is_empty() {
+        return Err(uncheckable(
+            "reflock exited non-zero without reporting a finding",
+        ));
+    }
+    Ok(())
 }
 
 fn repo_owner_and_name(repo: &str) -> Option<(&str, &str)> {
@@ -534,6 +604,24 @@ pub struct PushRoute {
     pub owner: Option<String>,
 }
 
+/// A reference on the written page that resolves to nothing, as reflock
+/// reported it. `target` and `detail` are corpus text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DanglingReference {
+    pub line: u64,
+    pub target: String,
+    pub detail: String,
+}
+
+/// Whether the written page's references were checked before the PR opened.
+/// reflock is optional: without it the run goes on, because the knowledge
+/// repo's CI is the gate that holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReferenceCheck {
+    Checked,
+    ReflockMissing,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CiVerdict {
     Passed,
@@ -554,6 +642,8 @@ pub enum ApplyStop {
     AppendTargetUnreadable { path: String },
     WriteFailed { detail: String },
     LintFailed { violations: Vec<Violation> },
+    DanglingReferences { references: Vec<DanglingReference> },
+    ReferencesUncheckable { detail: String },
     BranchCollision { branch: String },
     CheckoutFailed { detail: String },
     AddFailed { detail: String },
@@ -578,7 +668,7 @@ impl ApplyStop {
         }
     }
 
-    fn finding(&self, clone_display: &str) -> (String, Option<String>) {
+    fn finding(&self, clone_display: &str, path: &str) -> (String, Option<String>) {
         match self {
             ApplyStop::RepoNotConfigured => (
                 "no corpus repo configured".to_string(),
@@ -617,6 +707,37 @@ impl ApplyStop {
                 Some(format!(
                     "fix the reported violation(s) in {clone_display}, or revert the write with \
                      `git -C {clone_display} checkout -- <path>`, then re-run `kaibo contribute apply`"
+                )),
+            ),
+            ApplyStop::DanglingReferences { references } => (
+                format!(
+                    "reflock found {} dangling reference(s) on the written page: {}",
+                    references.len(),
+                    references
+                        .iter()
+                        .map(|r| format!(
+                            "line {} `{}` ({})",
+                            r.line,
+                            trust::strip_control_chars(&r.target),
+                            trust::strip_control_chars(&r.detail)
+                        ))
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                ),
+                Some(format!(
+                    "fix the reference(s) in the body you pass, discard the unfinished write at \
+                     {clone_display}/{path}, then re-run `kaibo contribute apply`"
+                )),
+            ),
+            ApplyStop::ReferencesUncheckable { detail } => (
+                format!(
+                    "could not read reflock's reference check: {}",
+                    trust::strip_control_chars(detail)
+                ),
+                Some(format!(
+                    "run `reflock --root {clone_display} check {clone_display}/{path}` to see why, \
+                     discard the unfinished write at {clone_display}/{path}, then re-run \
+                     `kaibo contribute apply`"
                 )),
             ),
             ApplyStop::BranchCollision { branch } => (
@@ -681,6 +802,8 @@ pub struct ApplyReport {
     /// return-to-main checkout itself failed after branching, which is
     /// reported as its own finding regardless of the primary outcome.
     pub returned_to_main: Option<bool>,
+    /// `None` until the reference check let the run go on.
+    pub references: Option<ReferenceCheck>,
     pub outcome: ApplyOutcome,
 }
 
@@ -700,7 +823,18 @@ impl ApplyReport {
         let clone_display = self.clone_display.as_str();
         let mut findings = Vec::new();
         if let ApplyOutcome::Stopped(stop) = &self.outcome {
-            findings.push(stop.finding(clone_display));
+            findings.push(stop.finding(clone_display, &self.path));
+        }
+        if self.references == Some(ReferenceCheck::ReflockMissing) {
+            findings.push((
+                "reflock could not be run, so the page's references went unchecked; \
+                 the knowledge repo's CI still checks them on the PR"
+                    .to_string(),
+                Some(
+                    "install reflock, or put it on PATH, to catch a broken reference before the PR opens"
+                        .to_string(),
+                ),
+            ));
         }
         if let ApplyOutcome::Completed {
             ci: CiVerdict::Failed { detail },
@@ -764,6 +898,7 @@ fn planned_apply_commands(config: &Config, input: &ApplyInput) -> Vec<PlannedCom
 
     let commands = vec![
         git_status_porcelain(clone_path),
+        reflock_check(clone_path, &path),
         git_branch_list(clone_path, &branch),
         git_checkout_new_branch(clone_path, &branch),
         git_add(clone_path, &path),
@@ -842,6 +977,7 @@ fn apply(
     let clone_path = config.clone_path();
 
     let clone_display = clone_path.display().to_string();
+    let mut references = None;
     macro_rules! stop {
         ($stop:expr) => {
             return ApplyReport {
@@ -849,6 +985,7 @@ fn apply(
                 branch: branch.clone(),
                 clone_display: clone_display.clone(),
                 returned_to_main: None,
+                references,
                 outcome: ApplyOutcome::Stopped($stop),
             }
         };
@@ -987,6 +1124,16 @@ fn apply(
         });
     }
 
+    match runner.run(&reflock_check(clone_path, &path)) {
+        Ok(output) => {
+            if let Err(stop) = judge_references(&output) {
+                stop!(stop);
+            }
+            references = Some(ReferenceCheck::Checked);
+        }
+        Err(_) => references = Some(ReferenceCheck::ReflockMissing),
+    }
+
     let branch_list_output = match runner.run(&git_branch_list(clone_path, &branch)) {
         Ok(output) if output.success() => output,
         Ok(output) => stop!(ApplyStop::CheckoutFailed {
@@ -1014,6 +1161,7 @@ fn apply(
             branch,
             clone_display,
             returned_to_main,
+            references,
             outcome: ApplyOutcome::Completed {
                 push_route,
                 pr_url,
@@ -1025,6 +1173,7 @@ fn apply(
             branch,
             clone_display,
             returned_to_main,
+            references,
             outcome: ApplyOutcome::Stopped(stop),
         },
     }
@@ -1436,6 +1585,11 @@ impl Render for ApplyReport {
             "path": self.path,
             "branch": self.branch,
             "returned_to_main": self.returned_to_main,
+            "references": match self.references {
+                None => Value::Null,
+                Some(ReferenceCheck::Checked) => "checked".into(),
+                Some(ReferenceCheck::ReflockMissing) => "unchecked".into(),
+            },
             "outcome": outcome,
             "exit_code": self.exit_code().code(),
         })

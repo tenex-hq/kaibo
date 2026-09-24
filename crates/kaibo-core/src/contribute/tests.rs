@@ -4,7 +4,8 @@ use super::*;
 use crate::clock::testing::FixedClock;
 use crate::config::ConfigSource;
 use crate::config::testing::ConfigBuilder;
-use crate::process::testing::{FakeCommandRunner, failed, ok};
+use crate::process::CommandOutput;
+use crate::process::testing::{FakeCommandRunner, failed, failed_with_stdout, ok};
 
 const NOW_EPOCH: u64 = 1_700_000_000; // 2023-11-14
 
@@ -345,6 +346,294 @@ fn a_page_that_fails_lint_stops_apply_and_leaves_the_write_in_place() {
         && c.args.contains(&"-b".to_string()))));
 }
 
+// --- `apply`: reference integrity -------------------------------------------
+
+const CREATED_PATH: &str = "kaibo/how-to/write-a-good-query.md";
+
+/// reflock's JSON report on a page whose references all resolve.
+fn reflock_clean() -> CommandOutput {
+    ok(r#"{"schema": 1, "reflock": "0.5.0", "command": "check", "findings": [], "problems": 0}"#)
+}
+
+/// reflock's JSON report, exit 1, carrying `findings` verbatim.
+fn reflock_findings(findings: serde_json::Value) -> CommandOutput {
+    failed_with_stdout(
+        serde_json::json!({"schema": 1, "reflock": "0.5.0", "command": "check", "findings": findings})
+            .to_string(),
+    )
+}
+
+fn dangling(line: u64, target: &str, detail: &str) -> serde_json::Value {
+    serde_json::json!({
+        "verdict": "DANGLING",
+        "file": CREATED_PATH,
+        "line": line,
+        "target": target,
+        "detail": detail,
+        "reason": "no-such-file",
+    })
+}
+
+/// Run `apply` on a fresh clone with reflock answering `reflock`, scripting
+/// every later command as succeeding so the run completes if it gets past
+/// the reference check.
+fn apply_with_reflock(
+    reflock: Option<CommandOutput>,
+) -> (tempfile::TempDir, ApplyReport, FakeCommandRunner) {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    std::fs::create_dir_all(&clone).unwrap();
+    let config = config_with_repo(&clone);
+    let input = valid_input();
+    let branch = "contribute/write-a-good-query";
+    let runner = FakeCommandRunner::new().on(git_status_porcelain(&clone), ok(""));
+    let runner = match reflock {
+        Some(output) => runner.on(reflock_check(&clone, CREATED_PATH), output),
+        None => runner.on_missing(reflock_check(&clone, CREATED_PATH)),
+    };
+    let runner = runner
+        .on(git_branch_list(&clone, branch), ok(""))
+        .on(git_checkout_new_branch(&clone, branch), ok(""))
+        .on(git_add(&clone, CREATED_PATH), ok(""))
+        .on(git_commit(&clone, &commit_message(&input)), ok(""))
+        .on(gh_permission_check("org/knowledge"), ok("true\n"))
+        .on(git_push(&clone, "origin", branch), ok(""))
+        .on(
+            gh_pr_create(
+                "org/knowledge",
+                "main",
+                branch,
+                &trust::strip_control_chars(&input.title),
+                &pr_body(&input),
+            ),
+            ok("https://github.com/org/knowledge/pull/7\n"),
+        )
+        .on(
+            gh_pr_checks("org/knowledge", "https://github.com/org/knowledge/pull/7"),
+            ok(""),
+        )
+        .on(git_checkout_main(&clone), ok(""));
+
+    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &FixedClock(now()));
+    (tmp, report, runner)
+}
+
+fn branched(runner: &FakeCommandRunner) -> bool {
+    runner.calls().iter().any(|c| {
+        c.program == "git"
+            && c.args.contains(&"checkout".to_string())
+            && c.args.contains(&"-b".to_string())
+    })
+}
+
+#[test]
+fn the_reference_check_runs_reflock_on_the_written_page_from_the_clone_root() {
+    let clone = std::path::Path::new("/tmp/corpus");
+
+    let command = reflock_check(clone, CREATED_PATH);
+
+    assert_eq!(command.program, "reflock");
+    assert_eq!(
+        command.args,
+        [
+            "--root",
+            "/tmp/corpus",
+            "check",
+            "--format",
+            "json",
+            "/tmp/corpus/kaibo/how-to/write-a-good-query.md",
+        ]
+    );
+}
+
+#[test]
+fn a_page_with_a_dangling_reference_stops_apply_before_anything_is_branched() {
+    let (tmp, report, runner) = apply_with_reflock(Some(reflock_findings(serde_json::json!([
+        dangling(
+            5,
+            "../reference/missing.md",
+            "no such file: kaibo/reference/missing.md"
+        ),
+        dangling(9, "gone-page", "no such file: gone-page"),
+    ]))));
+
+    assert_eq!(
+        report.outcome,
+        ApplyOutcome::Stopped(ApplyStop::DanglingReferences {
+            references: vec![
+                DanglingReference {
+                    line: 5,
+                    target: "../reference/missing.md".to_string(),
+                    detail: "no such file: kaibo/reference/missing.md".to_string(),
+                },
+                DanglingReference {
+                    line: 9,
+                    target: "gone-page".to_string(),
+                    detail: "no such file: gone-page".to_string(),
+                },
+            ],
+        })
+    );
+    assert_eq!(report.exit_code(), ExitCode::Usage);
+    let clone = tmp.path().join("corpus");
+    assert_eq!(
+        report.findings(),
+        [(
+            "reflock found 2 dangling reference(s) on the written page: line 5 `../reference/missing.md` \
+             (no such file: kaibo/reference/missing.md); line 9 `gone-page` (no such file: gone-page)"
+                .to_string(),
+            Some(format!(
+                "fix the reference(s) in the body you pass, discard the unfinished write at {}/{CREATED_PATH}, \
+                 then re-run `kaibo contribute apply`",
+                clone.display()
+            )),
+        )]
+    );
+    // Stop and report, never discard: the write stays on disk, unbranched.
+    assert!(clone.join(CREATED_PATH).exists());
+    assert!(!branched(&runner));
+    assert_eq!(report.returned_to_main, None);
+}
+
+/// A dangling target is corpus text, so it reaches output as data: an
+/// escape sequence in it cannot repaint or rewrite the terminal it lands on.
+#[test]
+fn a_dangling_target_reaches_the_finding_stripped_of_control_characters() {
+    let (_tmp, report, _runner) =
+        apply_with_reflock(Some(reflock_findings(serde_json::json!([dangling(
+            1,
+            "evil\u{1b}[2J.md",
+            "no such file: evil\u{1b}[2J.md"
+        ),]))));
+
+    let (message, _) = &report.findings()[0];
+    assert_eq!(
+        message,
+        "reflock found 1 dangling reference(s) on the written page: line 1 `evil[2J.md` (no such file: evil[2J.md)"
+    );
+}
+
+#[test]
+fn without_reflock_apply_says_the_references_went_unchecked_and_opens_the_pr() {
+    let (_tmp, report, _runner) = apply_with_reflock(None);
+
+    assert!(matches!(report.outcome, ApplyOutcome::Completed { .. }));
+    assert_eq!(report.references, Some(ReferenceCheck::ReflockMissing));
+    assert_eq!(report.exit_code(), ExitCode::Success);
+    assert_eq!(
+        report.findings(),
+        [(
+            "reflock could not be run, so the page's references went unchecked; the knowledge repo's CI still checks them on the PR"
+                .to_string(),
+            Some("install reflock, or put it on PATH, to catch a broken reference before the PR opens".to_string()),
+        )]
+    );
+    assert_eq!(report.render_json()["references"], "unchecked");
+}
+
+#[test]
+fn a_clean_reference_check_lets_apply_open_the_pr_and_reports_it_checked() {
+    let (_tmp, report, _runner) = apply_with_reflock(Some(reflock_clean()));
+
+    assert!(matches!(report.outcome, ApplyOutcome::Completed { .. }));
+    assert_eq!(report.references, Some(ReferenceCheck::Checked));
+    assert!(report.findings().is_empty());
+    assert_eq!(report.render_json()["references"], "checked");
+}
+
+/// Drift and unstamped pins are about targets that changed elsewhere, not
+/// about the page being contributed. They are the knowledge repo's CI to
+/// judge; only a reference that resolves to nothing stops `apply`.
+#[test]
+fn a_finding_that_is_not_dangling_does_not_stop_apply() {
+    let (_tmp, report, _runner) = apply_with_reflock(Some(reflock_findings(serde_json::json!([{
+        "verdict": "DRIFTED",
+        "file": CREATED_PATH,
+        "line": 3,
+        "target": "../reference/moved.md",
+        "detail": "target content changed since stamped",
+        "reason": "fingerprint-mismatch",
+    }]))));
+
+    assert!(matches!(report.outcome, ApplyOutcome::Completed { .. }));
+    assert_eq!(report.references, Some(ReferenceCheck::Checked));
+}
+
+/// The check exists to withhold a broken page from a PR, so a report kaibo
+/// cannot read withholds it too, rather than passing it for want of a
+/// verdict.
+#[test]
+fn a_reflock_report_kaibo_cannot_read_stops_apply_rather_than_passing_the_page() {
+    let unreadable = [
+        (
+            "not JSON at all",
+            failed_with_stdout("Traceback (most recent call last):"),
+            "reflock's report is not JSON",
+        ),
+        (
+            "a schema this kaibo does not know",
+            ok(r#"{"schema": 2, "findings": []}"#),
+            "reflock's report has schema 2, kaibo reads schema 1",
+        ),
+        (
+            "an error instead of a verdict",
+            failed_with_stdout(
+                r#"{"schema": 1, "findings": [], "error": {"kind": "scope", "message": "no such path in tree: x.md"}}"#,
+            ),
+            "reflock reported an error: no such path in tree: x.md",
+        ),
+        (
+            "no findings list",
+            ok(r#"{"schema": 1}"#),
+            "reflock's report carries no findings list",
+        ),
+        (
+            "a failing exit with nothing found",
+            failed_with_stdout(r#"{"schema": 1, "findings": []}"#),
+            "reflock exited non-zero without reporting a finding",
+        ),
+    ];
+
+    for (situation, output, expected_detail) in unreadable {
+        let (tmp, report, runner) = apply_with_reflock(Some(output));
+
+        assert_eq!(
+            report.outcome,
+            ApplyOutcome::Stopped(ApplyStop::ReferencesUncheckable {
+                detail: expected_detail.to_string(),
+            }),
+            "{situation}"
+        );
+        let clone = tmp.path().join("corpus").display().to_string();
+        assert_eq!(
+            report.findings(),
+            [(
+                format!("could not read reflock's reference check: {expected_detail}"),
+                Some(format!(
+                    "run `reflock --root {clone} check {clone}/{CREATED_PATH}` to see why, discard the unfinished \
+                     write at {clone}/{CREATED_PATH}, then re-run `kaibo contribute apply`"
+                )),
+            )],
+            "{situation}"
+        );
+        assert!(!branched(&runner), "{situation}");
+    }
+}
+
+#[test]
+fn a_run_that_stops_before_the_reference_check_reports_no_reference_verdict() {
+    let report = ApplyReport {
+        path: CREATED_PATH.to_string(),
+        branch: "contribute/write-a-good-query".to_string(),
+        clone_display: "/tmp/corpus".to_string(),
+        returned_to_main: None,
+        references: None,
+        outcome: ApplyOutcome::Stopped(ApplyStop::CloneMissing),
+    };
+
+    assert_eq!(report.render_json()["references"], serde_json::Value::Null);
+}
+
 #[test]
 fn a_branch_name_that_already_exists_stops_apply_without_creating_it() {
     let tmp = tempfile::tempdir().unwrap();
@@ -354,6 +643,10 @@ fn a_branch_name_that_already_exists_stops_apply_without_creating_it() {
     let branch = "contribute/write-a-good-query";
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
+        .on(
+            reflock_check(&clone, "kaibo/how-to/write-a-good-query.md"),
+            reflock_clean(),
+        )
         .on(
             git_branch_list(&clone, branch),
             ok("  contribute/write-a-good-query\n"),
@@ -407,6 +700,7 @@ fn a_title_with_a_newline_and_shell_metacharacters_never_reaches_the_commit_mess
     let body = pr_body(&input);
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
+        .on(reflock_check(&clone, &path), reflock_clean())
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, &path), ok(""))
@@ -445,6 +739,7 @@ fn a_fork_whose_parent_is_not_the_configured_repo_stops_apply_and_never_pushes_t
 
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
+        .on(reflock_check(&clone, &path), reflock_clean())
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, &path), ok(""))
@@ -495,6 +790,7 @@ fn apply_returns_the_clone_to_main_even_when_the_push_itself_fails() {
 
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
+        .on(reflock_check(&clone, &path), reflock_clean())
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, &path), ok(""))
@@ -533,6 +829,7 @@ fn a_direct_push_contribution_writes_a_draft_page_opens_a_pr_and_reports_ci() {
 
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
+        .on(reflock_check(&clone, &path), reflock_clean())
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, &path), ok(""))
@@ -589,6 +886,7 @@ fn a_caller_without_push_access_forks_verifies_the_parent_and_pushes_there() {
 
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
+        .on(reflock_check(&clone, &path), reflock_clean())
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, &path), ok(""))
@@ -648,6 +946,7 @@ fn a_red_pr_is_reported_as_a_failed_ci_verdict_and_a_non_success_exit_code() {
 
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
+        .on(reflock_check(&clone, &path), reflock_clean())
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, &path), ok(""))
@@ -700,6 +999,10 @@ fn appending_bumps_updated_and_preserves_the_existing_title_and_tags() {
 
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
+        .on(
+            reflock_check(&clone, "kaibo/how-to/existing.md"),
+            reflock_clean(),
+        )
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, "kaibo/how-to/existing.md"), ok(""))
@@ -776,6 +1079,7 @@ fn apply_explain_is_non_empty_and_names_no_command_runner_to_call() {
     assert!(commands.len() >= 8);
     assert!(commands.iter().any(|c| c.program == "git"));
     assert!(commands.iter().any(|c| c.program == "gh"));
+    assert!(commands.contains(&reflock_check(&clone, CREATED_PATH)));
 }
 
 // --- exit codes --------------------------------------------------------------
@@ -868,6 +1172,7 @@ fn a_report_that_did_return_to_main_carries_no_return_to_main_finding() {
         branch: "contribute/x".to_string(),
         clone_display: "/tmp/corpus".to_string(),
         returned_to_main: Some(true),
+        references: Some(ReferenceCheck::Checked),
         outcome: ApplyOutcome::Completed {
             push_route: PushRoute {
                 kind: PushRouteKind::Direct,
@@ -888,6 +1193,7 @@ fn a_failed_return_to_main_is_reported_as_its_own_finding() {
         branch: "contribute/x".to_string(),
         clone_display: "/tmp/corpus".to_string(),
         returned_to_main: Some(false),
+        references: Some(ReferenceCheck::Checked),
         outcome: ApplyOutcome::Completed {
             push_route: PushRoute {
                 kind: PushRouteKind::Direct,
@@ -959,6 +1265,10 @@ fn a_failing_branch_list_command_stops_apply_as_checkout_failed_not_a_collision(
     let branch = format!("contribute/{}", slugify(&input.title));
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
+        .on(
+            reflock_check(&clone, "kaibo/how-to/write-a-good-query.md"),
+            reflock_clean(),
+        )
         .on(
             git_branch_list(&clone, &branch),
             failed("git: command not found"),
@@ -1043,6 +1353,7 @@ fn apply_render_json_carries_the_pr_url_and_push_route_on_completion() {
         branch: "contribute/x".to_string(),
         clone_display: "/tmp/corpus".to_string(),
         returned_to_main: Some(true),
+        references: Some(ReferenceCheck::Checked),
         outcome: ApplyOutcome::Completed {
             push_route: PushRoute {
                 kind: PushRouteKind::Fork,
