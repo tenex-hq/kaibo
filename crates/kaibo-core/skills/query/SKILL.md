@@ -33,7 +33,7 @@ A proposal wearing a grounded answer's confidence is the failure mode. When in d
 
 ## No useful hits
 
-A gap exit from `kaibo query` or `kaibo doctrine` carries the nearest domain inventory already - report it, don't reinvent it. Don't pad with model knowledge presented as backoffice knowledge.
+A gap exit from `kaibo query` or `kaibo doctrine` carries the nearest domain inventory already - report it, don't reinvent it. When `query` reports pages withheld as drafts, you may re-run the `--include-drafts` command it names - a draft is never a grounded answer, so label everything you take from one as a draft. Don't pad with model knowledge presented as backoffice knowledge.
 
 ## Hand back for corroboration
 

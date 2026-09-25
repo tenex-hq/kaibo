@@ -2,7 +2,7 @@ use serde_json::Value;
 
 use super::*;
 use crate::frontmatter::Status;
-use crate::query::{Facets, Hit, HitCensus};
+use crate::query::{Facets, Hit, HitCensus, WithheldDrafts};
 
 fn caller() -> Caller {
     Caller {
@@ -29,6 +29,7 @@ fn query_report(outcome: QueryOutcome, census: HitCensus) -> QueryReport {
         self_heal: None,
         outcome,
         census,
+        withheld: WithheldDrafts::default(),
     }
 }
 

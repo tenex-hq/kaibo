@@ -227,6 +227,58 @@ pub struct HitCensus {
     pub kept: usize,
 }
 
+/// Pages withheld only because drafts were excluded, and relevant enough that
+/// `--include-drafts` would actually serve them.
+///
+/// Not a restatement of [`HitCensus`]: the census counts every withheld
+/// draft, relevant or not, and never judges relevance on a hit an earlier
+/// gate already stopped. This counts only what the rendered notice promises,
+/// because the notice is an instruction and following it must change the
+/// answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct WithheldDrafts {
+    pub draft: usize,
+    /// Frontmatter kaibo could not read, which `--include-drafts` also
+    /// admits. Kept apart because kaibo does not know such a page is a draft.
+    pub unverified: usize,
+}
+
+impl WithheldDrafts {
+    fn any(&self) -> bool {
+        self.draft + self.unverified > 0
+    }
+
+    fn describe(&self) -> String {
+        let count = |n: usize, what: &str| match n {
+            1 => format!("1 {what} page"),
+            n => format!("{n} {what} pages"),
+        };
+        let mut parts = Vec::new();
+        if self.draft > 0 {
+            parts.push(count(self.draft, "draft"));
+        }
+        if self.unverified > 0 {
+            parts.push(count(self.unverified, "unverified"));
+        }
+        parts.join(" and ")
+    }
+}
+
+/// The command that re-asks `question` with drafts surfaced, as a caller
+/// would paste it into a POSIX shell. Inside double quotes only `\`, `"`,
+/// `$` and a backtick are special, so escaping those four keeps the
+/// question byte for byte.
+fn include_drafts_command(question: &str) -> String {
+    let mut quoted = String::with_capacity(question.len());
+    for c in question.chars() {
+        if matches!(c, '\\' | '"' | '$' | '`') {
+            quoted.push('\\');
+        }
+        quoted.push(c);
+    }
+    format!("kaibo query --include-drafts \"{quoted}\"")
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueryReport {
     pub question: String,
@@ -237,6 +289,9 @@ pub struct QueryReport {
     pub outcome: QueryOutcome,
     /// Empty on the paths where `qmd query` never ran.
     pub census: HitCensus,
+    /// Always empty when `include_drafts` is set, since nothing is then
+    /// withheld for being a draft.
+    pub withheld: WithheldDrafts,
 }
 
 impl QueryReport {
@@ -386,6 +441,7 @@ fn gather(
                     findings,
                 },
                 census: HitCensus::default(),
+                withheld: WithheldDrafts::default(),
             };
         }
 
@@ -405,6 +461,7 @@ fn gather(
                     detail: output.stderr.trim().to_string(),
                 },
                 census: HitCensus::default(),
+                withheld: WithheldDrafts::default(),
             };
         }
         Err(err) => {
@@ -416,6 +473,7 @@ fn gather(
                     detail: err.to_string(),
                 },
                 census: HitCensus::default(),
+                withheld: WithheldDrafts::default(),
             };
         }
     };
@@ -441,6 +499,7 @@ fn gather(
                     detail: format!("qmd query did not return a JSON array of hits: {err}"),
                 },
                 census: HitCensus::default(),
+                withheld: WithheldDrafts::default(),
             };
         }
     };
@@ -454,6 +513,7 @@ fn gather(
         raw: raw_hits.len(),
         ..HitCensus::default()
     };
+    let mut withheld = WithheldDrafts::default();
     let mut hits: Vec<Hit> = Vec::new();
     for raw in raw_hits {
         let relevance = relevance_of(&raw);
@@ -461,15 +521,18 @@ fn gather(
             census.unaddressable += 1;
             continue;
         };
+        let relevant = hit.relevance >= RELEVANCE_FLOOR;
         if !trust::admits_unverified(verified, include_drafts) {
             census.withheld_unverified += 1;
+            withheld.unverified += usize::from(relevant);
             continue;
         }
         if !trust::admits_draft_status(&hit.status, include_drafts) {
             census.withheld_draft += 1;
+            withheld.draft += usize::from(relevant);
             continue;
         }
-        if hit.relevance < RELEVANCE_FLOOR {
+        if !relevant {
             census.withheld_low_relevance += 1;
             continue;
         }
@@ -506,6 +569,7 @@ fn gather(
         self_heal,
         outcome,
         census,
+        withheld,
     }
 }
 
@@ -770,6 +834,14 @@ impl Render for QueryReport {
             }
         }
 
+        if self.withheld.any() {
+            lines.push(format!(
+                "withheld: {} -> next: `{}`",
+                self.withheld.describe(),
+                include_drafts_command(&self.question),
+            ));
+        }
+
         if options.full {
             lines.push(format!("exit code: {}", self.exit_code().code()));
         }
@@ -819,6 +891,11 @@ impl Render for QueryReport {
                 "summary": self_heal_summary(outcome),
             })),
             "outcome": outcome,
+            "withheld": self.withheld.any().then(|| serde_json::json!({
+                "draft": self.withheld.draft,
+                "unverified": self.withheld.unverified,
+                "next": include_drafts_command(&self.question),
+            })),
             "exit_code": self.exit_code().code(),
         })
     }

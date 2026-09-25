@@ -2,7 +2,7 @@ use std::fs;
 
 use super::*;
 use crate::event::Caller;
-use crate::query::{HitCensus, MocInventory, QueryOutcome, QueryReport};
+use crate::query::{HitCensus, MocInventory, QueryOutcome, QueryReport, WithheldDrafts};
 
 fn event(question: &str) -> Event {
     let report = QueryReport {
@@ -13,6 +13,7 @@ fn event(question: &str) -> Event {
             moc: MocInventory::Domains(vec![]),
         },
         census: HitCensus::default(),
+        withheld: WithheldDrafts::default(),
     };
     Event::from_query(
         &report,

@@ -2,7 +2,7 @@ use serde_json::json;
 
 use super::*;
 use crate::event::Caller;
-use crate::query::{Facets, Hit, HitCensus, QueryOutcome, QueryReport};
+use crate::query::{Facets, Hit, HitCensus, QueryOutcome, QueryReport, WithheldDrafts};
 
 fn event() -> Event {
     let report = QueryReport {
@@ -18,6 +18,7 @@ fn event() -> Event {
             facets: Facets::default(),
         }]),
         census: HitCensus::default(),
+        withheld: WithheldDrafts::default(),
     };
     Event::from_query(
         &report,

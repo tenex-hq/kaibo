@@ -368,6 +368,13 @@ fn query_excludes_a_draft_page_by_default_but_include_drafts_surfaces_it_labelle
         "a draft page must be excluded by default (the gap signal), stderr: {}",
         String::from_utf8_lossy(&excluded.stderr)
     );
+    let excluded_stdout = String::from_utf8(excluded.stdout).unwrap();
+    assert!(
+        excluded_stdout.contains(
+            "withheld: 1 draft page -> next: `kaibo query --include-drafts \"a question\"`"
+        ),
+        "a withheld draft must be announced with the command that surfaces it, got: {excluded_stdout}"
+    );
 
     let included_json = harness.run(&["--json", "query", "a question", "--include-drafts"], &env);
     assert_eq!(
