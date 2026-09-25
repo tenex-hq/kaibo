@@ -20,35 +20,48 @@ import sys
 KNOWLEDGE = pathlib.Path(os.environ["HOME"]) / ".kaibo" / "knowledge"
 QUERY_SKILL = pathlib.Path(os.environ["HOME"]) / ".claude" / "skills" / "query" / "SKILL.md"
 
+# The fixed section format template/CONVENTIONS.md gives the root MOC, which is
+# what crates/kaibo-core/src/moc.rs reads: bold `- **label:**` bullets. Plain
+# `- owner:` bullets parse as no fields at all, and `kaibo doctrine` then reports
+# every domain as "owner: unknown, topics: none listed".
 MOC = """\
+---
+type: index
+---
+
 # Knowledge backoffice
 
 One section per domain. This is an inventory of what exists, nothing more.
 
 ## event-schemas
-- owner: @platform
-- topics: schema registry, event contracts, compatibility windows
-- summary: How event payload schemas are published and evolved.
+- **owner:** @platform
+- **domain:** Event payload contracts
+- **topics:** schema registry, event contracts, compatibility windows
+- **summary:** How event payload schemas are published and evolved.
 
 ## observability
-- owner: @platform
-- topics: OpenTelemetry collector, span naming, sampling
-- summary: How we instrument services and where telemetry goes.
+- **owner:** @platform
+- **domain:** Telemetry
+- **topics:** OpenTelemetry collector, span naming, sampling
+- **summary:** How we instrument services and where telemetry goes.
 
 ## deployment
-- owner: @platform
-- topics: rollout strategy
-- summary: Thin. One page, and it is deprecated with no replacement yet.
+- **owner:** @platform
+- **domain:** Shipping services
+- **topics:** rollout strategy
+- **summary:** Thin. One page, and it is deprecated with no replacement yet.
 
 ## security
-- owner: @secops
-- topics: secrets handling
-- summary: How secrets reach running services.
+- **owner:** @secops
+- **domain:** Secrets and access
+- **topics:** secrets handling
+- **summary:** How secrets reach running services.
 
 ## docs
-- owner: @docs-wg
-- topics: Agent Docs Standard, AGENTS.md conventions
-- summary: How repositories carry context for agents.
+- **owner:** @docs-wg
+- **domain:** Repository documentation
+- **topics:** Agent Docs Standard, AGENTS.md conventions
+- **summary:** How repositories carry context for agents.
 """
 
 PAGES = {

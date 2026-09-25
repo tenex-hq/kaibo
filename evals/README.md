@@ -113,7 +113,11 @@ rollout, secrets), everything else returns zero hits. That makes both branches
 of the query skill reachable with a known-in-advance right answer - the grounded
 path and the gap path - which is what lets case 4 be graded at all. The stub
 also seeds the root MOC into the attempt's HOME on first call, since the skill
-reads `~/.kaibo/knowledge/_index.md` on the no-hits path.
+reads `~/.kaibo/knowledge/_index.md` on the no-hits path. It is written in the
+section format [`template/CONVENTIONS.md`](../template/CONVENTIONS.md) fixes,
+bold `- **owner:**` bullets and all, because that is the only shape kaibo's MOC
+parser reads; anything else leaves `kaibo doctrine` reporting every domain as
+owned by no one with no topics.
 
 The grounded-answer page is **invented**, not a convention anyone has written
 down: invented tools, an invented rationale, an arbitrary threshold. That is
