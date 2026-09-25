@@ -20,7 +20,8 @@ skills:
   - ../crates/kaibo-core/skills/contribute/SKILL.md
   - ../crates/kaibo-core/skills/sync/SKILL.md
 
-# ./stubs holds fake `qmd` and `gh` binaries, prepended to PATH. The `gh` one
+# ./stubs holds a fake `qmd` and `gh`, and `git` and `kaibo` shims that seed the
+# fake corpus, all prepended to PATH. The `gh` one
 # exists because the sync skill's honest "I am not authenticated" report matched
 # caliper's own not-logged-in heuristic and aborted whole runs - see its
 # docstring.

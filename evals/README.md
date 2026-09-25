@@ -92,6 +92,14 @@ the real `~/.kaibo/knowledge` clone and the `kaibo` qmd index are not there.
 Both specs put [`stubs/qmd`](stubs/qmd) on PATH via `sandbox.extra_path`, ahead
 of the real binary.
 
+The skills reach the corpus through `kaibo`, not qmd, and kaibo is real: it
+parses qmd's `--format json --explain` output against
+[`docs/qmd-contract.md`](../docs/qmd-contract.md), floors on
+`explain.rerankScore`, and reads each hit's frontmatter off the clone. So the
+stub speaks that contract, and a [`stubs/kaibo`](stubs/kaibo) shim seeds the
+clone before handing off to the real binary, because kaibo checks the clone on
+disk before it runs anything.
+
 The stub serves a deliberately lopsided corpus: a handful of domains are
 covered (schema registry, collector processor ordering, span naming, sampling,
 rollout, secrets), everything else returns zero hits. That makes both branches
@@ -166,7 +174,7 @@ proposal, cannot know the rollout page is deprecated. But neither arm should be
 quoted yet, because the corpus seeding is still wrong in a way that costs the
 *full* arm points. See below.
 
-## The seeding problem (open)
+## The seeding problem
 
 Where the fake corpus lives turns out to decide what the eval measures, and both
 obvious answers are wrong. This bit three times in one day.
@@ -177,7 +185,7 @@ bodies. The skill works; the staleness check passes; nothing spuriously fires
 three tasks passed 3/3 *without* the skill and the ablated arm read 52.4%
 instead of 14.3%. The ablation measured nothing.
 
-**Pages not on disk** (current state). Only `_index.md` is seeded - inventory,
+**Pages not on disk.** Only `_index.md` is seeded - inventory,
 no doctrine - and page bodies are reachable solely through `qmd get`. The
 ablation is honest again. But the agent-under-test now verifies its own
 citations against the clone, finds the page absent, concludes its retrieval was
@@ -185,10 +193,15 @@ hallucinated, and *retracts a correct answer* - on one attempt it stated
 outright that its own citation had been fabricated. That is the full arm's 1/3
 on the grounded-answer task, and it is the harness's fault, not the skill's.
 
-**The fix, not yet built:** seed page bodies only when the `query` skill is
-actually installed in the attempt. The stub can check its skills root. That
-matches reality - the corpus is what the skill reaches - and keeps the ablated
-agent empty-handed. Until then, treat the behaviour numbers as a floor.
+It also stopped working outright once the skill went through `kaibo query`:
+kaibo withholds a hit whose frontmatter it cannot read off the clone, so every
+hit was withheld and every task read as a gap.
+
+**Pages on disk when `query` is installed** (current state). `_corpus.py` writes
+page bodies only if `~/.claude/skills/query/SKILL.md` exists in the attempt,
+which `--ablate query` leaves out. That matches reality - the corpus is what the
+skill reaches - and keeps the ablated agent empty-handed. The behaviour numbers
+above predate it.
 
 ## Other harness gotchas found the hard way
 
