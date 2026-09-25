@@ -11,12 +11,17 @@ the skill never reaches the qmd stub and every task reads as a broken install.
 The hand-off is to `target/release/kaibo` in this checkout, never to whatever
 `kaibo` is on PATH: an installed release grades the behaviour of a binary the
 change under test is not in. A missing build is a hard stop naming the command
-that makes one, rather than a quiet fall-through to an installed copy.
+that makes one, rather than a quiet fall-through to an installed copy. So is a
+stale build, one whose sources changed after it was linked: it grades the
+change before last. Staleness is read off cargo's dep-info file, which lists
+every file compiled into the binary, the skills it embeds included. It does not
+list registry crates, so a dependency bump alone is not caught.
 
 Everything after seeding is that binary, exec'd with the same argv.
 """
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -25,16 +30,33 @@ from _corpus import guard_home, seed_clone  # noqa: E402
 
 WORKSPACE = Path(__file__).resolve().parent.parent.parent
 BUILD = WORKSPACE / "target" / "release" / "kaibo"
+DEP_INFO = BUILD.with_suffix(".d")
+REBUILD = f"cargo build --release --locked -p kaibo (from {WORKSPACE})"
+
+
+def build_problem() -> str | None:
+    """Why the workspace build cannot be graded, or None when it can."""
+    if not (BUILD.is_file() and os.access(BUILD, os.X_OK)):
+        return f"no workspace build at {BUILD}"
+    if not DEP_INFO.is_file():
+        # Without the input list, freshness cannot be told, so do not assume it.
+        return f"no dep-info at {DEP_INFO}, so the build's freshness is unknown"
+    # One make rule, `target: dep dep ...`, with spaces in paths escaped.
+    tokens = re.split(r"(?<!\\)\s+", DEP_INFO.read_text().strip())[1:]
+    built = BUILD.stat().st_mtime_ns
+    for token in tokens:
+        source = Path(token.replace("\\ ", " "))
+        if not source.exists():
+            return f"the build is stale: {source} was compiled into it and is gone"
+        if source.stat().st_mtime_ns > built:
+            return f"the build is stale: {source} changed after it was built"
+    return None
 
 
 if __name__ == "__main__":
     guard_home()
-    if not (BUILD.is_file() and os.access(BUILD, os.X_OK)):
-        sys.exit(
-            f"eval stub: no workspace build at {BUILD}.\n"
-            f"Build it before `caliper run`: cargo build --release --locked -p kaibo "
-            f"(from {WORKSPACE})"
-        )
+    if problem := build_problem():
+        sys.exit(f"eval stub: {problem}.\nRebuild before `caliper run`: {REBUILD}")
     # Seeding runs git, and the git shim must not recurse into seeding.
     os.environ["_CALIPER_SEEDING"] = "1"
     seed_clone()
