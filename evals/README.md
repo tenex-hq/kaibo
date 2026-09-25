@@ -49,8 +49,9 @@ uvx --from caliper-eval caliper run evals/behaviour.eval.yaml  --k 3 --timeout 3
 **Build before every `caliper run`.** The [`stubs/kaibo`](stubs/kaibo) shim
 hands off to `target/release/kaibo` in this checkout, never to a `kaibo` on
 PATH, so the run grades the binary the change under test is in rather than an
-installed release. A missing build stops every attempt with the build command;
-a stale one is not detected, so rebuild after any change to `crates/`.
+installed release. A missing or stale build stops every attempt with the build
+command. Stale means a file cargo compiled into the binary, an embedded skill
+included, changed after it was linked; a dependency bump alone is not caught.
 
 `--timeout 300` is not optional. A skill that fires still executes its body, and
 `contribute` does git and gh work against a repo that is not there. At the 120s
