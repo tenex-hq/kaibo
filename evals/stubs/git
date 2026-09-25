@@ -15,19 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _corpus import guard_home, seed_clone  # noqa: E402
-
-
-def real_git() -> str:
-    """The first `git` on PATH that is not this shim."""
-    here = Path(__file__).resolve().parent
-    for d in os.environ.get("PATH", "").split(os.pathsep):
-        if not d or Path(d).resolve() == here:
-            continue
-        cand = Path(d) / "git"
-        if cand.is_file() and os.access(cand, os.X_OK):
-            return str(cand)
-    sys.exit("eval stub: no real git found on PATH")
+from _corpus import guard_home, real_binary, seed_clone  # noqa: E402
 
 
 if __name__ == "__main__":
@@ -36,4 +24,4 @@ if __name__ == "__main__":
     if os.environ.get("_CALIPER_SEEDING") != "1":
         os.environ["_CALIPER_SEEDING"] = "1"
         seed_clone()
-    os.execv(real_git(), ["git", *sys.argv[1:]])
+    os.execv(real_binary("git"), ["git", *sys.argv[1:]])

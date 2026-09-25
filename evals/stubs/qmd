@@ -59,6 +59,37 @@ def route(question: str) -> list[str]:
     return []
 
 
+# Flags that take a value, so the value is not mistaken for the question:
+# `kaibo query` runs `qmd query --index kaibo "<question>" -c knowledge ...`.
+VALUE_FLAGS = {"--index", "-c", "--collection", "--format", "-n", "-l"}
+
+
+def positionals(args: list[str]) -> list[str]:
+    out, skip = [], False
+    for a in args:
+        if skip:
+            skip = False
+        elif a in VALUE_FLAGS:
+            skip = True
+        elif not a.startswith("-"):
+            out.append(a)
+    return out
+
+
+def flag_value(args: list[str], flag: str) -> str | None:
+    for a, b in zip(args, args[1:]):
+        if a == flag:
+            return b
+    return None
+
+
+def title_of(uri: str) -> str:
+    for line in PAGES[uri].splitlines():
+        if line.startswith("title: "):
+            return line.removeprefix("title: ")
+    return ""
+
+
 def main() -> int:
     guard_home()
     seed_clone()
@@ -69,17 +100,31 @@ def main() -> int:
     cmd, rest = argv[0], argv[1:]
 
     if cmd in ("query", "search"):
-        question = next((a for a in rest if not a.startswith("-")), "")
+        question = positionals(rest)[0] if positionals(rest) else ""
         uris = route(question)
+        # The shape docs/qmd-contract.md pins for `--format json --explain`: a
+        # bare array, keyed by `file`. `explain.rerankScore` is what `kaibo
+        # query` floors on, and a hit without it is withheld as unrankable.
+        # Every routed hit is on-topic by construction, so each clears the
+        # floor with a fixed score: the stub stays deterministic.
         hits = [
-            {"uri": u, "score": round(0.92 - i * 0.07, 2), "snippet": SNIPPETS[u]}
+            {
+                "file": u,
+                "title": title_of(u),
+                "score": round(0.92 - i * 0.07, 2),
+                "snippet": SNIPPETS[u],
+                "explain": {
+                    "rerankScore": round(0.95 - i * 0.05, 2),
+                    "blendedScore": round(0.92 - i * 0.07, 2),
+                },
+            }
             for i, u in enumerate(uris)
         ]
-        if "--json" in rest:
-            print(json.dumps({"results": hits}))
+        if "--json" in rest or flag_value(rest, "--format") == "json":
+            print(json.dumps(hits))
         else:
             for h in hits:
-                print(f"{h['score']:.2f}  {h['uri']}\n    {h['snippet']}")
+                print(f"{h['score']:.2f}  {h['file']}\n    {h['snippet']}")
         return 0
 
     if cmd == "get":

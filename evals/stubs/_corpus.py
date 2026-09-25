@@ -2,8 +2,9 @@
 
 Imported by `qmd`, `gh` and `git` in this directory. It exists because seeding
 has to happen before *whatever the skill touches first*, and that differs per
-skill: `query` starts with qmd, `contribute` starts by inspecting the clone with
-git, `sync` starts with gh. Seeding from only one of them leaves the others
+skill: `query` starts with `kaibo`, which checks the clone on disk before it
+runs a single subprocess, `contribute` starts by inspecting the clone with git,
+`sync` starts with gh. Seeding from only one of them leaves the others
 seeing an unbootstrapped machine - which they then, correctly, try to fix by
 firing `sync`, and the activation assertion fails for a reason that has nothing
 to do with the description under test.
@@ -17,6 +18,7 @@ import subprocess
 import sys
 
 KNOWLEDGE = pathlib.Path(os.environ["HOME"]) / ".kaibo" / "knowledge"
+QUERY_SKILL = pathlib.Path(os.environ["HOME"]) / ".claude" / "skills" / "query" / "SKILL.md"
 
 MOC = """\
 # Knowledge backoffice
@@ -186,7 +188,8 @@ SNIPPETS = {
     "qmd://knowledge/observability/how-to/collector-ordering.md":
         "Order processors memory_limiter -> batch -> exporter.",
     "qmd://knowledge/observability/reference/span-naming.md":
-        "Proposed convention: span names are <service>.<kind>.<operation>.",
+        "Proposed convention: span names are <service>.<kind>.<operation>, "
+        "lowercased, with dots inside the operation replaced by underscores.",
     "qmd://knowledge/observability/reference/sampling-primitives.md":
         "Head sampling: parent-based sampler at a fixed 10% ratio. Tail "
         "sampling is not configured anywhere.",
@@ -196,6 +199,18 @@ SNIPPETS = {
         "Secrets reach services through the platform's env injection at pod "
         "start.",
 }
+
+
+def real_binary(name: str) -> str:
+    """The first `name` on PATH that is not a shim in this directory."""
+    here = pathlib.Path(__file__).resolve().parent
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        if not d or pathlib.Path(d).resolve() == here:
+            continue
+        cand = pathlib.Path(d) / name
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return str(cand)
+    sys.exit(f"eval stub: no real {name} found on PATH")
 
 
 def guard_home() -> None:
@@ -232,21 +247,28 @@ def seed_clone() -> None:
     if (KNOWLEDGE / ".git").exists():
         return
     KNOWLEDGE.mkdir(parents=True, exist_ok=True)
-    # The MOC only. Page *bodies* are deliberately NOT written to disk: they are
-    # reachable solely through `qmd get`, which is the query skill's own path to
-    # them.
-    #
-    # An earlier version did write them, and it silently destroyed the
-    # ablation. A bare agent with `query` removed could simply Read the corpus
-    # off the filesystem, so three tasks passed 3/3 without the skill and the
-    # ablated arm read 52.4% instead of 14.3% - the plugin appeared to be worth
-    # a third of what it is worth. Anything a bare agent can reach is not
-    # measuring the skill.
-    #
-    # The MOC is safe to seed because it is an inventory - domains, owners,
+    # The MOC is always safe to seed: it is an inventory - domains, owners,
     # topics, one-line summaries - and carries no doctrine. The gap branch reads
     # it, so it has to exist.
     (KNOWLEDGE / "_index.md").write_text(MOC)
+    # Page bodies only when the `query` skill is installed in this attempt.
+    #
+    # They have to be on disk for the skill to work at all: `kaibo query` reads
+    # each hit's frontmatter off the clone to decide its status, and withholds
+    # a hit it cannot verify, so a corpus served only through the qmd stub is
+    # all gap. `kaibo doctrine` reads bodies off the clone too.
+    #
+    # But unconditionally they destroy the ablation. A bare agent with `query`
+    # removed could simply Read the corpus off the filesystem, so three tasks
+    # passed 3/3 without the skill and the ablated arm read 52.4% instead of
+    # 14.3%. Anything a bare agent can reach is not measuring the skill. Caliper
+    # installs the skill neighbourhood at ~/.claude/skills/<name>/, and
+    # `--ablate query` leaves that directory out.
+    if QUERY_SKILL.is_file():
+        for uri, page in PAGES.items():
+            path = KNOWLEDGE / uri.removeprefix("qmd://knowledge/")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(page)
     env = {
         **os.environ,
         "GIT_AUTHOR_NAME": "eval", "GIT_AUTHOR_EMAIL": "eval@local",
