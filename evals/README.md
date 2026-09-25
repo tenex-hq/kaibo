@@ -41,9 +41,16 @@ imperative install. Run it ephemerally:
 ```bash
 uvx --from caliper-eval caliper validate evals/activation.eval.yaml
 
+cargo build --release --locked -p kaibo
 uvx --from caliper-eval caliper run evals/activation.eval.yaml --k 3 --timeout 300
 uvx --from caliper-eval caliper run evals/behaviour.eval.yaml  --k 3 --timeout 300
 ```
+
+**Build before every `caliper run`.** The [`stubs/kaibo`](stubs/kaibo) shim
+hands off to `target/release/kaibo` in this checkout, never to a `kaibo` on
+PATH, so the run grades the binary the change under test is in rather than an
+installed release. A missing build stops every attempt with the build command;
+a stale one is not detected, so rebuild after any change to `crates/`.
 
 `--timeout 300` is not optional. A skill that fires still executes its body, and
 `contribute` does git and gh work against a repo that is not there. At the 120s
@@ -97,8 +104,8 @@ parses qmd's `--format json --explain` output against
 [`docs/qmd-contract.md`](../docs/qmd-contract.md), floors on
 `explain.rerankScore`, and reads each hit's frontmatter off the clone. So the
 stub speaks that contract, and a [`stubs/kaibo`](stubs/kaibo) shim seeds the
-clone before handing off to the real binary, because kaibo checks the clone on
-disk before it runs anything.
+clone before handing off to the workspace build, because kaibo checks the clone
+on disk before it runs anything.
 
 The stub serves a deliberately lopsided corpus: a handful of domains are
 covered (schema registry, collector processor ordering, span naming, sampling,

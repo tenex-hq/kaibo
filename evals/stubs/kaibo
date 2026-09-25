@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""A `kaibo` shim that seeds the fake corpus, then hands off to the real kaibo.
+"""A `kaibo` shim that seeds the fake corpus, then hands off to this workspace's
+release build of kaibo.
 
 It intercepts nothing. The query skill's first command is `kaibo query` or
 `kaibo doctrine`, and kaibo checks for ~/.kaibo/knowledge/.git with a plain
@@ -7,7 +8,12 @@ filesystem read before it runs any subprocess. Finding no clone, it self-heals
 by running `sync`, which stops on "no corpus repo configured" in a sandbox, so
 the skill never reaches the qmd stub and every task reads as a broken install.
 
-Everything after seeding is the real kaibo binary, exec'd with the same argv.
+The hand-off is to `target/release/kaibo` in this checkout, never to whatever
+`kaibo` is on PATH: an installed release grades the behaviour of a binary the
+change under test is not in. A missing build is a hard stop naming the command
+that makes one, rather than a quiet fall-through to an installed copy.
+
+Everything after seeding is that binary, exec'd with the same argv.
 """
 
 import os
@@ -15,13 +21,22 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _corpus import guard_home, real_binary, seed_clone  # noqa: E402
+from _corpus import guard_home, seed_clone  # noqa: E402
+
+WORKSPACE = Path(__file__).resolve().parent.parent.parent
+BUILD = WORKSPACE / "target" / "release" / "kaibo"
 
 
 if __name__ == "__main__":
     guard_home()
+    if not (BUILD.is_file() and os.access(BUILD, os.X_OK)):
+        sys.exit(
+            f"eval stub: no workspace build at {BUILD}.\n"
+            f"Build it before `caliper run`: cargo build --release --locked -p kaibo "
+            f"(from {WORKSPACE})"
+        )
     # Seeding runs git, and the git shim must not recurse into seeding.
     os.environ["_CALIPER_SEEDING"] = "1"
     seed_clone()
     del os.environ["_CALIPER_SEEDING"]
-    os.execv(real_binary("kaibo"), ["kaibo", *sys.argv[1:]])
+    os.execv(str(BUILD), ["kaibo", *sys.argv[1:]])
