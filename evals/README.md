@@ -152,16 +152,13 @@ different measurement.
 
 ## Findings so far
 
-**Caveat, and now for two reasons.** Every number below was measured against an
-older copy of the skills, not the canonical copy in this repo that the specs now
-point at. And the stub corpus has since changed: the grounded-answer page was
-replaced with an invented convention in a different domain, and the task that
-grades it asks a different question, so the behaviour numbers no longer describe
-the suite that exists. Re-run both suites before quoting any of this again.
+All runs `claude-code:claude-sonnet-5`.
 
-All runs `claude-code:claude-sonnet-5`. The k=3 numbers below are 2026-09-18.
+### Activation: 36/39 = 92.3% (k=3), 2026-09-18, stale
 
-### Activation: 36/39 = 92.3% (k=3)
+**Caveat.** Measured against an older copy of the skills, not the canonical copy
+in this repo that the spec now points at, and before the stub tools spoke
+kaibo's contract. Re-run before quoting it.
 
 Every task 3/3 except one, which was **0/3** - consistent, not noise. All four
 hardened negatives held, including the OpenTelemetry-SDK-syntax trap, and all
@@ -175,16 +172,33 @@ directions on one prompt, so this is the prompt shape rather than the model: a
 bare domain entry with no project in front of it. The description's worked
 example, *"lets do observability"*, passes 3/3.
 
-**This is the only finding here that is about kaibo.** Everything below is about
-the harness.
+This and the grounded-answer depth below are the findings about kaibo.
+Everything else here is about the harness.
 
-### Behaviour: 85.7% full, 31.0% ablated (k=3), and both numbers are provisional
+### Behaviour: 85.7% full, 33.3% ablated (k=3), 2026-09-25
 
-The ablation delta is real and large - the bare agent cannot produce the
-corpus's reasoning about a convention nobody has published, cannot label a
-proposal, cannot know the rollout page is deprecated. But neither arm should be
-quoted yet, because the corpus seeding is still wrong in a way that costs the
-*full* arm points. See below.
+Judge `claude-code:claude-haiku-4-5-20251001`, `--timeout 300`,
+`--no-user-customizations`, against a fresh workspace build. No attempt was
+UNUSABLE in either arm.
+
+**Full arm, 18/21.** Six tasks 3/3. The seventh, *Grounded answer cites
+repo-relative paths*, is **0/3**, and it is a finding about kaibo: the query
+skill cannot read past a hit's snippet. Its `allowed-tools` are `kaibo query`,
+`doctrine` and `domains`, and `kaibo query` prints the snippet and nothing else,
+so a grounded answer is as deep as the snippet is. All three attempts cited the
+right page with the right path and recommended the right tool, giving the one
+reason the snippet carries (the check runs at publish time) and never the one
+only the page body holds (it reads the CI linter's contract file). The stub's
+snippet is one sentence where qmd's real ones carry a few lines of context, so
+the stub makes this worse than it would be against a real corpus, but it does not
+invent it: a rationale longer than the excerpt is always cut off. Whether kaibo
+should do anything about it is #95.
+
+**Ablated arm, 7/21, and the number is contaminated.** 7 of the 21 attempts
+reached kaibo knowledge without the skill, and 4 of the 7 passes are among them.
+Of the 14 clean attempts, 3 passed; two of those are *Reports a gap*, which the
+bare agent passes by saying it has nothing, so that task does not tell the arms
+apart. The leaks are in the harness gotchas below.
 
 ## The seeding problem
 
@@ -212,8 +226,8 @@ hit was withheld and every task read as a gap.
 **Pages on disk when `query` is installed** (current state). `_corpus.py` writes
 page bodies only if `~/.claude/skills/query/SKILL.md` exists in the attempt,
 which `--ablate query` leaves out. That matches reality - the corpus is what the
-skill reaches - and keeps the ablated agent empty-handed. The behaviour numbers
-above predate it.
+skill reaches - and keeps the ablated agent empty-handed, as far as the fake
+corpus goes. It does nothing about the real one; see the gotchas.
 
 ## Other harness gotchas found the hard way
 
@@ -234,8 +248,26 @@ above predate it.
   rubrics should get the same guard.
 - **The judge has a hardcoded 60s timeout** and hit it twice in one k=3 run.
   Those attempts become `judge_error` and drop out of the denominator, so a task
-  can quietly report 2/3 usable rather than 3/3.
+  can quietly report 2/3 usable rather than 3/3. Not always, though: in the
+  2026-09-25 ablated arm a judge timeout on *Answer is the delta* was counted as
+  a **pass**. Read `autorater_reasoning` before trusting a pass.
+- **The sandbox isolates HOME, not the disk.** An ablated attempt with nothing
+  in its own HOME ran `find / -iname "*kaibo*"`, found the operator's real
+  `~/.kaibo/knowledge` on the host, and answered from it. Four attempts in the
+  2026-09-25 ablated arm did this, so on a workstation with a clone the ablated
+  number includes the operator's own corpus. The full arm never went looking.
+- **Ablating the skill does not ablate the CLI.** `stubs/kaibo` is on PATH in
+  both arms, so a bare agent that guesses the name gets a seeded clone and a
+  working `kaibo query`. Four ablated attempts did, one via the `sync` skill.
+  Whether that is a leak depends on the question: it is if the ablation asks
+  "what is kaibo worth", it is not if it asks "what is the skill worth on top
+  of the installed binary".
+- **Results land in the repo.** Caliper writes every run's JSON, transcripts
+  included, to `.caliper/` in the working directory. Transcripts quote whatever
+  the agent read, the host corpus included, so the directory is gitignored.
 
 ### Not yet run
 
-Any model other than sonnet-5 since the rewrite; the activation suite ablated.
+Any model other than sonnet-5 since the rewrite; the activation suite at all
+since the stub tools were fixed; the activation suite ablated; a clean ablated
+behaviour arm.
