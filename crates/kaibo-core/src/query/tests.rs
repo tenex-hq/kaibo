@@ -1940,6 +1940,216 @@ fn a_hit_whose_frontmatter_will_not_parse_is_counted_as_unverified_not_as_a_draf
     assert_eq!(report.census.kept, 0);
 }
 
+// --- a withheld page is announced, with the command that surfaces it -------
+
+/// Runs one query against a clone holding `pages`, each `(repo-relative
+/// path, frontmatter, rerank relevance)`, with qmd returning every page as a
+/// hit. Titles and snippets are fixed, recognisable corpus text, so a test
+/// can assert that none of it leaks into kaibo's own notice.
+fn gather_over(pages: &[(&str, &str, f64)], question: &str, include_drafts: bool) -> QueryReport {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    let mut hits = Vec::new();
+    for (path, frontmatter, relevance) in pages {
+        write_page(&clone, path, frontmatter, "Body.");
+        hits.push(qmd_hit(
+            &format!("qmd://knowledge/{path}?index=kaibo"),
+            "Corpus Title Words",
+            *relevance,
+            "corpus snippet words",
+        ));
+    }
+    let runner = healthy_fixture(&clone, &config).on(
+        QmdCommand::query(&config, question),
+        ok(qmd_query_json(&hits)),
+    );
+    let clock = FixedClock(now());
+    QueryVerb::new(&config, question)
+        .unwrap()
+        .gather(&runner, &clock, include_drafts)
+}
+
+#[test]
+fn a_gap_that_withheld_a_draft_says_so_and_names_the_command_that_surfaces_it() {
+    let report = gather_over(
+        &[(
+            "observability/reference/span-naming.md",
+            "status: draft",
+            0.9,
+        )],
+        "span naming convention",
+        false,
+    );
+
+    assert_eq!(report.exit_code(), ExitCode::NoHits);
+    let text = report.render_text(&crate::output::RenderOptions::default());
+    assert!(
+        text.contains(
+            "withheld: 1 draft page -> next: \
+             `kaibo query --include-drafts \"span naming convention\"`"
+        ),
+        "got: {text}"
+    );
+    let json = report.render_json();
+    assert_eq!(json["outcome"]["state"], "no_hits");
+    assert_eq!(
+        json["withheld"],
+        json!({
+            "draft": 1,
+            "unverified": 0,
+            "next": "kaibo query --include-drafts \"span naming convention\"",
+        })
+    );
+}
+
+#[test]
+fn hits_served_alongside_withheld_drafts_still_announce_the_drafts() {
+    let report = gather_over(
+        &[
+            (
+                "observability/reference/sampling.md",
+                "status: current",
+                0.9,
+            ),
+            (
+                "observability/reference/span-naming.md",
+                "status: draft",
+                0.8,
+            ),
+            (
+                "observability/reference/span-kinds.md",
+                "status: draft",
+                0.7,
+            ),
+        ],
+        "question",
+        false,
+    );
+
+    assert_eq!(report.exit_code(), ExitCode::Success);
+    let text = report.render_text(&crate::output::RenderOptions::default());
+    assert!(
+        text.contains(
+            "withheld: 2 draft pages -> next: `kaibo query --include-drafts \"question\"`"
+        ),
+        "got: {text}"
+    );
+    let json = report.render_json();
+    assert_eq!(json["outcome"]["state"], "hits");
+    assert_eq!(json["withheld"]["draft"], 2);
+}
+
+/// `--include-drafts` also admits a page whose frontmatter kaibo could not
+/// read, so the notice counts it - but not as a draft, since kaibo does not
+/// know its status.
+#[test]
+fn a_withheld_unverified_page_is_announced_apart_from_drafts() {
+    let report = gather_over(
+        &[
+            ("kaibo/reference/span-naming.md", "status: draft", 0.9),
+            ("kaibo/reference/broken.md", "status: [unclosed", 0.9),
+        ],
+        "question",
+        false,
+    );
+
+    let text = report.render_text(&crate::output::RenderOptions::default());
+    assert!(
+        text.contains(
+            "withheld: 1 draft page and 1 unverified page -> next: \
+             `kaibo query --include-drafts \"question\"`"
+        ),
+        "got: {text}"
+    );
+    assert_eq!(report.render_json()["withheld"]["unverified"], 1);
+}
+
+/// The notice is an instruction, so following it has to change the answer:
+/// a draft too irrelevant to clear the floor would be withheld again under
+/// `--include-drafts`, and announcing it would send the caller round a loop.
+#[test]
+fn a_withheld_draft_that_is_not_relevant_to_the_question_is_not_announced() {
+    let report = gather_over(
+        &[("kaibo/reference/span-naming.md", "status: draft", 0.01)],
+        "question",
+        false,
+    );
+
+    assert_eq!(report.exit_code(), ExitCode::NoHits);
+    let text = report.render_text(&crate::output::RenderOptions::default());
+    assert!(!text.contains("withheld"), "got: {text}");
+    assert!(!text.contains("--include-drafts"), "got: {text}");
+    assert_eq!(report.render_json()["withheld"], serde_json::Value::Null);
+}
+
+#[test]
+fn a_gap_with_no_draft_withheld_carries_no_notice() {
+    let report = gather_over(&[], "question", false);
+
+    assert_eq!(report.exit_code(), ExitCode::NoHits);
+    let text = report.render_text(&crate::output::RenderOptions::default());
+    assert!(!text.contains("--include-drafts"), "got: {text}");
+    assert_eq!(report.render_json()["withheld"], serde_json::Value::Null);
+}
+
+#[test]
+fn nothing_is_announced_as_withheld_when_drafts_are_already_included() {
+    let report = gather_over(
+        &[("kaibo/reference/span-naming.md", "status: draft", 0.9)],
+        "question",
+        true,
+    );
+
+    let text = report.render_text(&crate::output::RenderOptions::default());
+    assert!(!text.contains("withheld"), "got: {text}");
+    assert_eq!(report.render_json()["withheld"], serde_json::Value::Null);
+}
+
+/// The question is the caller's own text, so it may carry anything a shell
+/// would expand. Inside double quotes a POSIX shell treats only `\`, `"`,
+/// `$` and a backtick specially; each is escaped so the command re-asks
+/// exactly the question that was asked.
+#[test]
+fn the_suggested_command_quotes_the_question_for_a_shell() {
+    let report = gather_over(
+        &[("kaibo/reference/span-naming.md", "status: draft", 0.9)],
+        r#"why "$HOME" and `pwd` \ here"#,
+        false,
+    );
+
+    assert_eq!(
+        report.render_json()["withheld"]["next"],
+        r#"kaibo query --include-drafts "why \"\$HOME\" and \`pwd\` \\ here""#
+    );
+}
+
+#[test]
+fn the_withheld_notice_carries_no_corpus_text() {
+    let report = gather_over(
+        &[("kaibo/reference/span-naming.md", "status: draft", 0.9)],
+        "question",
+        false,
+    );
+
+    let text = report.render_text(&crate::output::RenderOptions::default());
+    let notice = text
+        .lines()
+        .find(|line| line.starts_with("withheld:"))
+        .expect("a withheld notice");
+    assert!(!notice.contains("Corpus Title Words"), "got: {notice}");
+    assert!(!notice.contains("corpus snippet words"), "got: {notice}");
+    assert!(!notice.contains("span-naming"), "got: {notice}");
+    let json = report.render_json();
+    let notice_json = json["withheld"].to_string();
+    assert!(
+        !notice_json.contains("Corpus Title Words"),
+        "got: {notice_json}"
+    );
+    assert!(!notice_json.contains("span-naming"), "got: {notice_json}");
+}
+
 #[test]
 fn a_hit_qmd_addresses_outside_the_repo_is_counted_as_unaddressable() {
     let tmp = tempfile::tempdir().unwrap();
@@ -2340,4 +2550,16 @@ fn a_frontmatter_only_chunk_with_near_zero_relevance_is_dropped() {
         other => panic!("expected only the substantive-body hit, got {other:?}"),
     }
     assert_eq!(report.census.withheld_low_relevance, 1);
+}
+
+/// A page kaibo could not read is not known to be a draft, so a notice about
+/// unverified pages alone must not claim any draft was withheld.
+#[test]
+fn a_notice_about_only_unverified_pages_names_no_draft() {
+    let withheld = WithheldDrafts {
+        draft: 0,
+        unverified: 2,
+    };
+
+    assert_eq!(withheld.describe(), "2 unverified pages");
 }
