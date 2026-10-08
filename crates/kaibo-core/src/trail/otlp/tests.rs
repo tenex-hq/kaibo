@@ -27,6 +27,7 @@ fn event() -> Event {
         Caller {
             build_profile: "release",
             stdout_tty: false,
+            session_id: Some("5f1e2d3c-0000-4000-8000-00000000abcd".to_string()),
         },
     )
 }
@@ -50,6 +51,10 @@ fn the_two_sinks_describe_the_same_invocation() {
     assert!(
         exported.contains(&"kaibo.subject".to_string()),
         "sanity: the comparison would pass on two empty lists too"
+    );
+    assert!(
+        exported.contains(&"session.id".to_string()),
+        "the session that issued the invocation must reach the collector too"
     );
 }
 

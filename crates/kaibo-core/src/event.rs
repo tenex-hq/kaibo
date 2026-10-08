@@ -54,7 +54,7 @@ pub enum SelfHeal {
 /// the test-traffic contamination that sank the predecessor instrument. These
 /// are things the process can see about itself without trusting anyone, and
 /// the reader classifies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Caller {
     /// `debug` builds are almost always someone's `./target/debug/kaibo` run.
     #[serde(rename = "kaibo.build_profile")]
@@ -62,13 +62,18 @@ pub struct Caller {
     /// False under a pipe, a harness, or CI.
     #[serde(rename = "kaibo.stdout_tty")]
     pub stdout_tty: bool,
+    /// The agent session that issued this invocation, as the harness names
+    /// it in its own telemetry. A join key, not a classification: it says
+    /// where to look up the session, never whether the traffic was real use.
+    #[serde(rename = "session.id", skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 impl Caller {
     /// `debug_assertions` is the only build-profile signal available without
     /// a build script, and it is exactly the one that separates a dev run
     /// from an installed binary.
-    pub fn observed(stdout_tty: bool) -> Caller {
+    pub fn observed(stdout_tty: bool, session_id: Option<String>) -> Caller {
         Caller {
             build_profile: if cfg!(debug_assertions) {
                 "debug"
@@ -76,6 +81,7 @@ impl Caller {
                 "release"
             },
             stdout_tty,
+            session_id,
         }
     }
 }

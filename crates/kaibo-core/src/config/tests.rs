@@ -210,6 +210,56 @@ fn missing_home_dir_is_fine_if_clone_is_explicit() {
     assert_eq!(config.source(ConfigKey::Clone), ConfigSource::Env);
 }
 
+// --- which agent session issued the invocation ---------------------------
+
+#[test]
+fn the_session_claude_code_exports_to_its_shells_is_the_one_recorded() {
+    let env = FakeEnvironment::new(Some(PathBuf::from("/home/someone"))).with_var(
+        "CLAUDE_CODE_SESSION_ID",
+        "5f1e2d3c-0000-4000-8000-00000000abcd",
+    );
+
+    assert_eq!(
+        Config::resolve_with(&env).unwrap().session_id(),
+        Some("5f1e2d3c-0000-4000-8000-00000000abcd")
+    );
+}
+
+#[test]
+fn kaibo_own_session_variable_wins_so_another_harness_can_name_its_session() {
+    let env = FakeEnvironment::new(Some(PathBuf::from("/home/someone")))
+        .with_var("CLAUDE_CODE_SESSION_ID", "from-claude-code")
+        .with_var("KAIBO_SESSION_ID", "from-another-harness");
+
+    assert_eq!(
+        Config::resolve_with(&env).unwrap().session_id(),
+        Some("from-another-harness")
+    );
+}
+
+#[test]
+fn an_empty_session_variable_falls_through_rather_than_recording_a_blank_session() {
+    let env = FakeEnvironment::new(Some(PathBuf::from("/home/someone")))
+        .with_var("KAIBO_SESSION_ID", "")
+        .with_var("CLAUDE_CODE_SESSION_ID", "from-claude-code");
+    assert_eq!(
+        Config::resolve_with(&env).unwrap().session_id(),
+        Some("from-claude-code")
+    );
+
+    let env = FakeEnvironment::new(Some(PathBuf::from("/home/someone")))
+        .with_var("KAIBO_SESSION_ID", "")
+        .with_var("CLAUDE_CODE_SESSION_ID", "");
+    assert_eq!(Config::resolve_with(&env).unwrap().session_id(), None);
+}
+
+#[test]
+fn outside_any_agent_session_there_is_no_session_to_record() {
+    let env = FakeEnvironment::new(Some(PathBuf::from("/home/someone")));
+
+    assert_eq!(Config::resolve_with(&env).unwrap().session_id(), None);
+}
+
 /// The real guarantee is structural: `Config::resolve` is the only public
 /// constructor, it never takes content as input, and `Config` has no
 /// setters - there is no path by which parsed frontmatter could reach a

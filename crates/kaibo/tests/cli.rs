@@ -1585,6 +1585,66 @@ fn doctrine_given_a_topic_word_instead_of_a_domain_name_exits_usage_not_gap() {
 }
 
 #[test]
+fn both_verbs_record_the_agent_session_claude_code_ran_them_from() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    let session = (
+        "CLAUDE_CODE_SESSION_ID",
+        "5f1e2d3c-0000-4000-8000-00000000abcd",
+    );
+
+    harness.run(&["query", "a question"], &[session]);
+    harness.run(&["doctrine", support::DOMAIN], &[session]);
+
+    let events = harness.trail();
+    assert_eq!(events.len(), 2);
+    for event in &events {
+        assert_eq!(
+            event["attributes"]["session.id"], "5f1e2d3c-0000-4000-8000-00000000abcd",
+            "{} lost its session",
+            event["event_name"]
+        );
+    }
+}
+
+#[test]
+fn kaibo_session_variable_names_the_session_over_claude_code_own() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    harness.run(
+        &["query", "a question"],
+        &[
+            ("CLAUDE_CODE_SESSION_ID", "from-claude-code"),
+            ("KAIBO_SESSION_ID", "from-another-harness"),
+        ],
+    );
+
+    assert_eq!(
+        harness.trail()[0]["attributes"]["session.id"],
+        "from-another-harness"
+    );
+}
+
+#[test]
+fn an_invocation_outside_any_agent_session_records_no_session() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    harness.run(&["query", "a question"], &[]);
+
+    let events = harness.trail();
+    assert_eq!(events.len(), 1);
+    assert!(
+        !events[0]["attributes"]
+            .as_object()
+            .unwrap()
+            .contains_key("session.id"),
+        "no session must mean no attribute, not an empty one"
+    );
+}
+
+#[test]
 fn a_second_invocation_appends_rather_than_replacing_the_first() {
     let harness = Harness::new();
     support::write_minimal_corpus(&harness.clone_dir());

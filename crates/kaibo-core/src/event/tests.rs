@@ -8,6 +8,7 @@ fn caller() -> Caller {
     Caller {
         build_profile: "release",
         stdout_tty: false,
+        session_id: None,
     }
 }
 
@@ -347,8 +348,64 @@ fn the_caller_is_described_by_observed_facts_and_carries_no_declared_identity() 
 }
 
 #[test]
+fn the_agent_session_that_issued_the_invocation_is_recorded_under_the_semconv_name() {
+    let report = query_report(
+        QueryOutcome::Hits(vec![hit("kaibo/reference/a.md", 0.9)]),
+        HitCensus::default(),
+    );
+    let caller = Caller {
+        session_id: Some("5f1e2d3c-0000-4000-8000-00000000abcd".to_string()),
+        ..caller()
+    };
+
+    let json = parse(&Event::from_query(&report, 1, 1, caller));
+
+    assert_eq!(
+        json["attributes"]["session.id"],
+        "5f1e2d3c-0000-4000-8000-00000000abcd"
+    );
+}
+
+#[test]
+fn an_invocation_from_no_known_session_carries_no_session_attribute_at_all() {
+    let report = query_report(
+        QueryOutcome::Hits(vec![hit("kaibo/reference/a.md", 0.9)]),
+        HitCensus::default(),
+    );
+
+    let json = parse(&Event::from_query(&report, 1, 1, caller()));
+
+    assert!(
+        !json["attributes"]
+            .as_object()
+            .unwrap()
+            .contains_key("session.id"),
+        "an absent session is absent, never present-and-empty"
+    );
+}
+
+#[test]
+fn a_doctrine_load_carries_its_session_as_well() {
+    let report = DoctrineReport {
+        domain: "kaibo".to_string(),
+        self_heal: None,
+        outcome: DoctrineOutcome::UnknownDomain {
+            available_domains: vec!["observability".to_string()],
+        },
+    };
+    let caller = Caller {
+        session_id: Some("session-from-the-harness".to_string()),
+        ..caller()
+    };
+
+    let json = parse(&Event::from_doctrine(&report, 1, 1, caller));
+
+    assert_eq!(json["attributes"]["session.id"], "session-from-the-harness");
+}
+
+#[test]
 fn a_debug_build_is_observable_without_anyone_declaring_it() {
-    let observed = Caller::observed(true);
+    let observed = Caller::observed(true, None);
     let expected = if cfg!(debug_assertions) {
         "debug"
     } else {
