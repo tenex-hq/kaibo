@@ -1730,6 +1730,51 @@ fn a_config_file_still_carrying_the_retired_export_switch_stops_with_the_replace
 }
 
 #[test]
+fn a_retired_export_switch_left_saying_off_runs_the_verb_and_status_points_it_out() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    let config_dir = harness.home_dir().join(".kaibo");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(config_dir.join("config.toml"), "otlp_export = false\n").unwrap();
+
+    let query = harness.run(&["query", "a question with no answer"], &[]);
+    let status = harness.run(&["--json", "status"], &[]);
+
+    assert_eq!(query.status.code(), Some(3), "the gap belongs to the query");
+    let findings = parse_json(&status.stdout)["findings"].clone();
+    assert!(
+        findings.as_array().unwrap().iter().any(|finding| finding
+            == &serde_json::json!({
+                "message": "`otlp_export` in ~/.kaibo/config.toml is retired and has no effect",
+                "fix": "delete the `otlp_export` line from ~/.kaibo/config.toml",
+            })),
+        "{findings}"
+    );
+}
+
+#[test]
+fn an_https_endpoint_runs_the_verb_and_status_says_why_nothing_is_exported() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    let endpoint = ("KAIBO_OTLP_ENDPOINT", "https://otel.example:4318");
+
+    let query = harness.run(&["query", "a question with no answer"], &[endpoint]);
+    let status = harness.run(&["--json", "status"], &[endpoint]);
+
+    assert_eq!(query.status.code(), Some(3), "the gap belongs to the query");
+    assert_eq!(
+        String::from_utf8_lossy(&query.stderr),
+        "",
+        "no exporter may be built, so nothing can fail"
+    );
+    assert_eq!(
+        parse_json(&status.stdout)["otlp_endpoint_problem"],
+        "the `https://` scheme is not supported; this build exports over plain \
+         `http://` only, with no TLS"
+    );
+}
+
+#[test]
 fn status_reports_the_collector_named_in_the_environment() {
     let harness = Harness::new();
     support::write_minimal_corpus(&harness.clone_dir());

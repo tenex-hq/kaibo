@@ -133,8 +133,8 @@ pub enum ConfigError {
         source: Box<toml::de::Error>,
     },
 
-    // Silently ignoring a retired switch would leave someone believing they
-    // export while nothing leaves the machine. ADR 0018.
+    // Silently ignoring a retired switch that said "on" would leave someone
+    // believing they export while nothing leaves the machine. ADR 0018.
     #[error(
         "`otlp_export` in {path} is no longer read: export is switched on by naming the \
          collector. Replace it with `otlp_endpoint = \"http://localhost:4318\"` (your \
@@ -169,7 +169,7 @@ struct ConfigFile {
     api_url: Option<String>,
     no_log: Option<bool>,
     otlp_endpoint: Option<String>,
-    /// Read only so that its presence can be refused, never for its value.
+    /// Retired. Read only to refuse anything but an explicit `false`.
     otlp_export: Option<toml::Value>,
     lint: Option<LintConfigFile>,
 }
@@ -278,6 +278,34 @@ pub struct OtlpTarget {
     pub timeout: Duration,
 }
 
+/// Why a configured `otlp_endpoint` cannot be exported to. The verbs carry on
+/// with export off and `kaibo status` names the fix: an unusable value must
+/// never build an exporter that looks like it works.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OtlpEndpointProblem {
+    /// Any scheme but `http`. The exporter carries no TLS stack.
+    UnsupportedScheme(String),
+    MissingScheme,
+    /// No host, a port that is not a number, or whitespace in the value.
+    Malformed,
+}
+
+impl std::fmt::Display for OtlpEndpointProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OtlpEndpointProblem::UnsupportedScheme(scheme) => write!(
+                f,
+                "the `{scheme}://` scheme is not supported; this build exports over \
+                 plain `http://` only, with no TLS"
+            ),
+            OtlpEndpointProblem::MissingScheme => f.write_str("it has no `http://` scheme"),
+            OtlpEndpointProblem::Malformed => {
+                f.write_str("it is not a host with an optional numeric port after `http://`")
+            }
+        }
+    }
+}
+
 /// Resolved, immutable configuration for a kaibo process. Fields are
 /// private with no setters; read them through the getters below.
 #[derive(Debug, Clone)]
@@ -291,6 +319,7 @@ pub struct Config {
     trail: Option<PathBuf>,
     otlp_endpoint: Option<String>,
     otlp_timeout: Duration,
+    retired_otlp_export: Vec<ConfigSource>,
     skills_dir: Option<PathBuf>,
     lint: LintConfig,
     sources: HashMap<ConfigKey, ConfigSource>,
@@ -332,11 +361,17 @@ impl Config {
         // have to survive.
         let trail = home.as_ref().map(|h| h.join(".kaibo").join(TRAIL_FILE));
 
-        if env
-            .var(ENV_RETIRED_OTLP_EXPORT)
-            .is_some_and(|v| !v.is_empty())
-        {
-            return Err(ConfigError::RetiredOtlpExportEnv);
+        // An explicit "off" cannot make anyone believe they export, so it is
+        // accepted as a no-op and left to `status` to point out.
+        let mut retired_otlp_export = Vec::new();
+        if let Some(raw) = env.var(ENV_RETIRED_OTLP_EXPORT).filter(|v| !v.is_empty()) {
+            if parse_bool(&raw) != Some(false) {
+                return Err(ConfigError::RetiredOtlpExportEnv);
+            }
+            retired_otlp_export.push(ConfigSource::Env);
+        }
+        if file.as_ref().is_some_and(|f| f.otlp_export.is_some()) {
+            retired_otlp_export.push(ConfigSource::File);
         }
         let (otlp_endpoint, otlp_endpoint_source) = resolve_optional(
             env,
@@ -460,6 +495,7 @@ impl Config {
             trail,
             otlp_endpoint,
             otlp_timeout,
+            retired_otlp_export,
             skills_dir,
             lint,
             sources,
@@ -517,6 +553,9 @@ impl Config {
     /// exactly what resolving config in one place exists to prevent.
     pub fn otlp(&self) -> Option<OtlpTarget> {
         let base = self.otlp_endpoint.as_deref()?;
+        if check_otlp_endpoint(base).is_some() {
+            return None;
+        }
         Some(OtlpTarget {
             logs_endpoint: format!("{}/{OTLP_LOGS_PATH}", base.trim_end_matches('/')),
             timeout: self.otlp_timeout,
@@ -527,6 +566,17 @@ impl Config {
     /// path is appended. `None` means export is off.
     pub fn otlp_endpoint(&self) -> Option<&str> {
         self.otlp_endpoint.as_deref()
+    }
+
+    /// Why the configured `otlp_endpoint` cannot be used, if it cannot.
+    pub fn otlp_endpoint_problem(&self) -> Option<OtlpEndpointProblem> {
+        self.otlp_endpoint.as_deref().and_then(check_otlp_endpoint)
+    }
+
+    /// Where the retired `otlp_export` switch is still set to "off": a no-op
+    /// worth removing, never an error.
+    pub fn retired_otlp_export(&self) -> &[ConfigSource] {
+        &self.retired_otlp_export
     }
 
     /// The directory Claude Code discovers plugins in:
@@ -570,10 +620,40 @@ fn load_config_file(home: Option<&Path>) -> Result<Option<ConfigFile>, ConfigErr
         path: path.clone(),
         source: Box::new(source),
     })?;
-    if file.otlp_export.is_some() {
+    if file
+        .otlp_export
+        .as_ref()
+        .is_some_and(|value| value.as_bool() != Some(false))
+    {
         return Err(ConfigError::RetiredOtlpExportKey { path });
     }
     Ok(Some(file))
+}
+
+/// A deliberately small check: enough to refuse what the exporter would
+/// reject or could not reach, without a URL parser in the default build.
+fn check_otlp_endpoint(value: &str) -> Option<OtlpEndpointProblem> {
+    let Some((scheme, rest)) = value.split_once("://") else {
+        return Some(OtlpEndpointProblem::MissingScheme);
+    };
+    if !scheme.eq_ignore_ascii_case("http") {
+        return Some(OtlpEndpointProblem::UnsupportedScheme(
+            scheme.to_ascii_lowercase(),
+        ));
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    // A bracketed IPv6 host carries colons of its own and may have no port.
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((host, port)) if !authority.ends_with(']') => (host, Some(port)),
+        _ => (authority, None),
+    };
+    if host.is_empty()
+        || port.is_some_and(|port| port.parse::<u16>().is_err())
+        || value.chars().any(char::is_whitespace)
+    {
+        return Some(OtlpEndpointProblem::Malformed);
+    }
+    None
 }
 
 /// An empty value counts as unset, at every layer: `std::env::var` cannot
@@ -663,6 +743,7 @@ pub(crate) mod testing {
         trail: Option<PathBuf>,
         otlp_endpoint: Option<String>,
         otlp_timeout: Duration,
+        retired_otlp_export: Vec<ConfigSource>,
         skills_dir: Option<PathBuf>,
         lint: LintConfig,
         sources: HashMap<ConfigKey, ConfigSource>,
@@ -705,6 +786,7 @@ pub(crate) mod testing {
                 trail: None,
                 otlp_endpoint: None,
                 otlp_timeout: Duration::from_millis(DEFAULT_OTLP_TIMEOUT_MS),
+                retired_otlp_export: Vec::new(),
                 lint: LintConfig::default(),
                 sources,
             }
@@ -743,6 +825,11 @@ pub(crate) mod testing {
         pub(crate) fn otlp_endpoint(mut self, value: &str, source: ConfigSource) -> Self {
             self.otlp_endpoint = Some(value.to_string());
             self.sources.insert(ConfigKey::OtlpEndpoint, source);
+            self
+        }
+
+        pub(crate) fn retired_otlp_export(mut self, source: ConfigSource) -> Self {
+            self.retired_otlp_export.push(source);
             self
         }
 
@@ -805,6 +892,7 @@ pub(crate) mod testing {
                 trail: self.trail,
                 otlp_endpoint: self.otlp_endpoint,
                 otlp_timeout: self.otlp_timeout,
+                retired_otlp_export: self.retired_otlp_export,
                 skills_dir: self.skills_dir,
                 lint: self.lint,
                 sources: self.sources,

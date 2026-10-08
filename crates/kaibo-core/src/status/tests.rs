@@ -804,13 +804,19 @@ fn the_json_report_carries_the_installed_version_and_what_drifted() {
 /// build fact pinned rather than taken from however this test binary was
 /// compiled.
 fn export_report(clone: &Path, endpoint: Option<&str>, exporter_built: bool) -> StatusReport {
-    let builder =
-        ConfigBuilder::new(clone).skills_dir(clone.join("home").join(".claude").join("skills"));
-    let config = match endpoint {
-        Some(url) => builder.otlp_endpoint(url, ConfigSource::File),
-        None => builder,
-    }
-    .build();
+    let builder = match endpoint {
+        Some(url) => export_config(clone).otlp_endpoint(url, ConfigSource::File),
+        None => export_config(clone),
+    };
+    built_export_report(clone, builder, exporter_built)
+}
+
+fn export_config(clone: &Path) -> ConfigBuilder {
+    ConfigBuilder::new(clone).skills_dir(clone.join("home").join(".claude").join("skills"))
+}
+
+fn built_export_report(clone: &Path, builder: ConfigBuilder, exporter_built: bool) -> StatusReport {
+    let config = builder.build();
     InstallVerb::new(&config, CLI_VERSION, InstallMode::Install).apply();
     let mut report = skills_report(clone, &config, CLI_VERSION);
     report.exporter_built = exporter_built;
@@ -837,6 +843,7 @@ fn status_names_the_collector_the_trail_is_exported_to_and_where_that_came_from(
         serde_json::json!({"value": "http://localhost:4320", "source": "file"})
     );
     assert_eq!(json["exporter_built"], true);
+    assert_eq!(json["otlp_endpoint_problem"], serde_json::Value::Null);
 }
 
 #[test]
@@ -874,8 +881,9 @@ fn a_collector_named_for_a_binary_that_cannot_export_is_a_finding_with_the_fix()
                       without the otlp feature, so nothing is exported"
                 .to_string(),
             fix: Some(
-                "brew upgrade kaibo, or rebuild with `cargo build --release -p kaibo \
-                 --features otlp`"
+                "upgrade to a release that includes the exporter (`brew upgrade kaibo`, \
+                 or re-run the installer), or rebuild with `cargo build --release -p \
+                 kaibo --features otlp`"
                     .to_string()
             ),
         }
@@ -901,4 +909,84 @@ fn status_reports_whether_this_build_carries_the_exporter() {
     assert!(report.exporter_built);
     #[cfg(not(feature = "otlp"))]
     assert!(!report.exporter_built);
+}
+
+#[test]
+fn an_endpoint_the_exporter_cannot_use_is_a_finding_naming_the_reason_and_the_fix() {
+    // No TLS in the exporter: an `https://` collector would look configured
+    // and receive nothing, so status says so instead.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+
+    let report = export_report(tmp.path(), Some("https://otel.example:4318"), true);
+
+    assert_eq!(
+        only_finding(&report),
+        Finding {
+            message: "otlp_endpoint https://otel.example:4318 cannot be used, so nothing is \
+                      exported: the `https://` scheme is not supported; this build exports \
+                      over plain `http://` only, with no TLS"
+                .to_string(),
+            fix: Some(
+                "set `otlp_endpoint = \"http://<collector-host>:<port>\"` in ~/.kaibo/config.toml"
+                    .to_string()
+            ),
+        }
+    );
+    let text = report.render_text(&RenderOptions::default());
+    assert!(
+        text.lines()
+            .any(|line| line == "export: https://otel.example:4318 (file), unusable"),
+        "{text}"
+    );
+    assert_eq!(
+        report.render_json()["otlp_endpoint_problem"],
+        "the `https://` scheme is not supported; this build exports over plain \
+         `http://` only, with no TLS"
+    );
+}
+
+#[test]
+fn an_unusable_endpoint_from_the_environment_is_fixed_in_the_environment() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let builder = export_config(tmp.path()).otlp_endpoint("localhost:4320", ConfigSource::Env);
+
+    let report = built_export_report(tmp.path(), builder, true);
+
+    assert_eq!(
+        only_finding(&report),
+        Finding {
+            message: "otlp_endpoint localhost:4320 cannot be used, so nothing is exported: \
+                      it has no `http://` scheme"
+                .to_string(),
+            fix: Some("export KAIBO_OTLP_ENDPOINT=http://<collector-host>:<port>".to_string()),
+        }
+    );
+}
+
+#[test]
+fn a_retired_export_switch_left_saying_off_is_a_finding_to_remove_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let builder = export_config(tmp.path())
+        .retired_otlp_export(ConfigSource::Env)
+        .retired_otlp_export(ConfigSource::File);
+
+    let report = built_export_report(tmp.path(), builder, true);
+
+    assert_eq!(
+        report.findings(),
+        vec![
+            Finding {
+                message: "KAIBO_OTLP_EXPORT is retired and has no effect".to_string(),
+                fix: Some("unset KAIBO_OTLP_EXPORT".to_string()),
+            },
+            Finding {
+                message: "`otlp_export` in ~/.kaibo/config.toml is retired and has no effect"
+                    .to_string(),
+                fix: Some("delete the `otlp_export` line from ~/.kaibo/config.toml".to_string()),
+            },
+        ]
+    );
 }

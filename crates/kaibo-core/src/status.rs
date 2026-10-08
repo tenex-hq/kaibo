@@ -13,7 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 
 use crate::clock::Clock;
-use crate::config::{Config, ConfigKey, ConfigSource, LintConfig};
+use crate::config::{Config, ConfigKey, ConfigSource, LintConfig, OtlpEndpointProblem};
 use crate::error::ExitCode;
 use crate::explain::{Explainable, PlannedCommand};
 use crate::install::{self, InstalledSkills, PluginLayout};
@@ -138,6 +138,10 @@ pub struct StatusReport {
     /// Whether this binary was built with the `otlp` feature. A collector
     /// named in config is only reached when it was.
     pub exporter_built: bool,
+    /// Why the configured endpoint cannot be used, if it cannot.
+    pub otlp_endpoint_problem: Option<OtlpEndpointProblem>,
+    /// Where the retired `otlp_export` switch is still set to "off".
+    pub retired_otlp_export: Vec<ConfigSource>,
 }
 
 impl StatusReport {
@@ -222,21 +226,7 @@ impl StatusReport {
         }
         findings.extend(self.skill_findings());
 
-        if let Some(endpoint) = &self.config.otlp_endpoint.value
-            && !self.exporter_built
-        {
-            findings.push(Finding {
-                message: format!(
-                    "otlp_endpoint names {endpoint}, but this binary was built without \
-                     the otlp feature, so nothing is exported"
-                ),
-                fix: Some(
-                    "brew upgrade kaibo, or rebuild with `cargo build --release -p kaibo \
-                     --features otlp`"
-                        .to_string(),
-                ),
-            });
-        }
+        findings.extend(self.export_findings());
 
         if self.isolation == IsolationStatus::NameCollisionInDefaultIndex {
             findings.push(Finding {
@@ -246,6 +236,64 @@ impl StatusReport {
                     self.config.collection.value
                 ),
                 fix: None,
+            });
+        }
+
+        findings
+    }
+
+    /// The export half of [`StatusReport::findings`]: a collector that cannot
+    /// be reached from this binary or this value, and retired keys to remove.
+    fn export_findings(&self) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        let endpoint = &self.config.otlp_endpoint;
+
+        if let (Some(url), Some(problem)) = (&endpoint.value, &self.otlp_endpoint_problem) {
+            findings.push(Finding {
+                message: format!(
+                    "otlp_endpoint {url} cannot be used, so nothing is exported: {problem}"
+                ),
+                fix: Some(match endpoint.source {
+                    ConfigSource::Env => {
+                        "export KAIBO_OTLP_ENDPOINT=http://<collector-host>:<port>".to_string()
+                    }
+                    _ => "set `otlp_endpoint = \"http://<collector-host>:<port>\"` in \
+                          ~/.kaibo/config.toml"
+                        .to_string(),
+                }),
+            });
+        }
+
+        if let Some(url) = &endpoint.value
+            && !self.exporter_built
+        {
+            findings.push(Finding {
+                message: format!(
+                    "otlp_endpoint names {url}, but this binary was built without \
+                     the otlp feature, so nothing is exported"
+                ),
+                fix: Some(
+                    "upgrade to a release that includes the exporter (`brew upgrade kaibo`, \
+                     or re-run the installer), or rebuild with `cargo build --release -p \
+                     kaibo --features otlp`"
+                        .to_string(),
+                ),
+            });
+        }
+
+        for source in &self.retired_otlp_export {
+            findings.push(match source {
+                ConfigSource::Env => Finding {
+                    message: "KAIBO_OTLP_EXPORT is retired and has no effect".to_string(),
+                    fix: Some("unset KAIBO_OTLP_EXPORT".to_string()),
+                },
+                _ => Finding {
+                    message: "`otlp_export` in ~/.kaibo/config.toml is retired and has no effect"
+                        .to_string(),
+                    fix: Some(
+                        "delete the `otlp_export` line from ~/.kaibo/config.toml".to_string(),
+                    ),
+                },
             });
         }
 
@@ -510,6 +558,8 @@ fn gather(
         skills_root: PluginLayout::new(config).map(|layout| layout.root().to_path_buf()),
         skills: install::inspect(config),
         exporter_built: cfg!(feature = "otlp"),
+        otlp_endpoint_problem: config.otlp_endpoint_problem(),
+        retired_otlp_export: config.retired_otlp_export().to_vec(),
     }
 }
 
@@ -705,7 +755,11 @@ impl Render for StatusReport {
 
         lines.push(format!(
             "export: {}",
-            render_export(&self.config.otlp_endpoint, self.exporter_built)
+            render_export(
+                &self.config.otlp_endpoint,
+                self.otlp_endpoint_problem.is_some(),
+                self.exporter_built
+            )
         ));
 
         let lint = &self.config.lint;
@@ -840,6 +894,7 @@ impl Render for StatusReport {
                 },
             },
             "exporter_built": self.exporter_built,
+            "otlp_endpoint_problem": self.otlp_endpoint_problem.as_ref().map(ToString::to_string),
             "backend": match &self.backend {
                 BackendMode::Local => serde_json::json!({"mode": "local"}),
                 BackendMode::Api(url) => serde_json::json!({"mode": "api", "url": url}),
@@ -905,11 +960,18 @@ impl Render for StatusReport {
     }
 }
 
-fn render_export(endpoint: &ConfigValue<Option<String>>, exporter_built: bool) -> String {
-    match (&endpoint.value, exporter_built) {
-        (None, _) => format!("off ({})", endpoint.source),
-        (Some(url), true) => format!("{url} ({})", endpoint.source),
-        (Some(url), false) => format!("{url} ({}), not built into this binary", endpoint.source),
+fn render_export(
+    endpoint: &ConfigValue<Option<String>>,
+    unusable: bool,
+    exporter_built: bool,
+) -> String {
+    match (&endpoint.value, unusable, exporter_built) {
+        (None, _, _) => format!("off ({})", endpoint.source),
+        (Some(url), true, _) => format!("{url} ({}), unusable", endpoint.source),
+        (Some(url), false, true) => format!("{url} ({})", endpoint.source),
+        (Some(url), false, false) => {
+            format!("{url} ({}), not built into this binary", endpoint.source)
+        }
     }
 }
 
