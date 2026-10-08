@@ -86,12 +86,15 @@ impl Caller {
 pub struct Attributes {
     #[serde(rename = "kaibo.verb")]
     pub verb: &'static str,
-    /// The question, or the domain a `doctrine` load asked for.
+    /// The question, or the argument a `doctrine` load was given.
     #[serde(rename = "kaibo.subject")]
     pub subject: String,
-    /// `doctrine` has a domain by construction. `query` does not: it searches
-    /// corpus-wide, so query-side gaps have nothing to group by beyond their
-    /// text, and `kaibo.moc_domains` carries what the corpus did offer.
+    /// The domain a `doctrine` load found. Absent when the argument named no
+    /// domain, so the trail shows which wrong names agents pass, recorded in
+    /// `kaibo.subject`, apart from real gaps. `query` has none: it
+    /// searches corpus-wide, so query-side gaps have nothing to group by
+    /// beyond their text, and `kaibo.moc_domains` carries what the corpus did
+    /// offer.
     #[serde(rename = "kaibo.domain", skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
     #[serde(rename = "kaibo.outcome")]
@@ -255,13 +258,10 @@ impl Event {
         // `doctrine` reads the MOC and pages directly and never calls qmd, so
         // there is no census and no score to record - the Options stay None
         // rather than being filled with a misleading zero.
-        let (outcome, hit_count, moc_domains) = match &report.outcome {
-            DoctrineOutcome::Loaded { pages, .. } => (EventOutcome::Hit, pages.len(), None),
-            DoctrineOutcome::UnknownDomain { available_domains } => {
-                (EventOutcome::Gap, 0, Some(available_domains.clone()))
-            }
-            DoctrineOutcome::NoCurrentPages { .. } => (EventOutcome::Gap, 0, None),
-            _ => (EventOutcome::Error, 0, None),
+        let (outcome, hit_count) = match &report.outcome {
+            DoctrineOutcome::Loaded { pages, .. } => (EventOutcome::Hit, pages.len()),
+            DoctrineOutcome::NoCurrentPages { .. } => (EventOutcome::Gap, 0),
+            _ => (EventOutcome::Error, 0),
         };
 
         Event {
@@ -270,7 +270,7 @@ impl Event {
             attributes: Attributes {
                 verb: "doctrine",
                 subject: report.domain.clone(),
-                domain: Some(report.domain.clone()),
+                domain: report.outcome.section().map(|section| section.name.clone()),
                 outcome,
                 hit_count,
                 raw_hit_count: None,
@@ -280,7 +280,7 @@ impl Event {
                 unaddressable: None,
                 top_hit_path: None,
                 top_hit_score: None,
-                moc_domains,
+                moc_domains: None,
                 self_heal: self_heal_of(report.self_heal.as_ref()),
                 duration_ms,
                 caller,

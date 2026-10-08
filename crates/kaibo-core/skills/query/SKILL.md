@@ -1,6 +1,6 @@
 ---
 name: query
-description: Answer a question from the Kaibo knowledge backoffice. Semantic-searches the knowledge monorepo and returns a cited, synthesized answer; reports gaps honestly via the root MOC. TRIGGER on what the task IS, not on feeling short of knowledge - two occasions. (1) ENTERING A DOMAIN OF WORK: the first turn that commits you to observability, deployment, testing, agentic patterns, docs, or tooling, query that domain's doctrine before touching anything - "lets do observability" is the trigger, once per domain per session. (2) PROPOSING, PLANNING, OR DECIDING anything non-trivial: research what has been tried, what was rejected and why, and whether the org has a position at all - iterative, several queries. Also any explicit /kaibo:query. Having a repo open that seems to answer the question is NOT a reason to skip - but this skill is the FIRST step, not the whole answer: it reads only the knowledge corpus, so what it returns is an input the caller combines with the local project state, in whatever shape the request actually calls for. SKIP only for pure language/library/tool syntax with no team-specific angle.
+description: Answer a question from the Kaibo knowledge backoffice. Semantic-searches the knowledge monorepo and returns a cited, synthesized answer; reports gaps honestly via the root MOC. TRIGGER on what the task IS, not on feeling short of knowledge - two occasions. (1) ENTERING A DOMAIN OF WORK: the first turn that commits you to a kind of work such as observability, deployment, testing, agentic patterns, docs, or tooling, load the doctrine of the domain that work falls in before touching anything - "lets do observability" is the trigger, once per domain per session. (2) PROPOSING, PLANNING, OR DECIDING anything non-trivial: research what has been tried, what was rejected and why, and whether the org has a position at all - iterative, several queries. Also any explicit /kaibo:query. Having a repo open that seems to answer the question is NOT a reason to skip - but this skill is the FIRST step, not the whole answer: it reads only the knowledge corpus, so what it returns is an input the caller combines with the local project state, in whatever shape the request actually calls for. SKIP only for pure language/library/tool syntax with no team-specific angle.
 allowed-tools: Bash(kaibo query:*), Bash(kaibo doctrine:*), Bash(kaibo domains:*)
 ---
 
@@ -10,7 +10,7 @@ Answer **$ARGUMENTS**. You are the *read side*: retrieve, then synthesize with c
 
 ## Retrieve
 
-- Entering a domain of work (trigger 1): `kaibo doctrine <domain>` - loads that domain's doctrine in one call. Unsure of the domain name? `kaibo domains` lists the inventory.
+- Entering a domain of work (trigger 1): `kaibo doctrine <domain>` - loads that domain's doctrine in one call. The kinds of work in trigger 1 are not domain names: pass the domain the work falls in, and check `kaibo domains`, which lists each domain with its topics. A name that is not a domain exits 2 with the real names - that is a wrong name, not a knowledge gap, so pick one and re-run.
 - A question (trigger 2): `kaibo query "<question>"`.
 
 Add `--json` when you need to parse fields rather than read prose, `--full` for wide output, `--include-drafts` on `query` only if you deliberately want unreviewed pages surfaced (label them as drafts if you use one).
@@ -33,7 +33,7 @@ A proposal wearing a grounded answer's confidence is the failure mode. When in d
 
 ## No useful hits
 
-A gap exit from `kaibo query` or `kaibo doctrine` carries the nearest domain inventory already - report it, don't reinvent it. When `query` reports pages withheld as drafts, you may re-run the `--include-drafts` command it names - a draft is never a grounded answer, so label everything you take from one as a draft. Don't pad with model knowledge presented as backoffice knowledge.
+A gap exit from `kaibo query` carries the nearest domain inventory already, and one from `kaibo doctrine` the domain's own map entry - report it, don't reinvent it. When `query` reports pages withheld as drafts, you may re-run the `--include-drafts` command it names - a draft is never a grounded answer, so label everything you take from one as a draft. Don't pad with model knowledge presented as backoffice knowledge.
 
 ## Hand back for corroboration
 

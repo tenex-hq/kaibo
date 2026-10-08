@@ -74,7 +74,8 @@ kaibo domains
 
 `doctrine` loads a domain's own summary plus its current reference pages in
 one call - a load, not a question. `domains` lists the available domain
-names.
+names and their topics. A name that is not a domain exits 2 with the real
+names to choose from; it is a wrong name, not a knowledge gap.
 
 ## 5. Contribute
 

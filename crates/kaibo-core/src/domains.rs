@@ -1,7 +1,7 @@
 //! `kaibo domains`: the root MOC's domain inventory, as structured data.
 //!
 //! No arguments, no question - `kaibo query`'s gap report and `kaibo
-//! doctrine`'s unknown-domain gap both point a caller here to see what
+//! doctrine`'s unknown-domain error both point a caller here to see what
 //! actually exists. Each entry is exactly the shape [`crate::moc`] parses
 //! out of one `## ` section of the root MOC: `name` (what `kaibo doctrine
 //! <domain>` expects), `owner`, `topics`, `summary`.

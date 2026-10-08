@@ -1569,6 +1569,22 @@ fn doctrine_records_the_domain_it_was_asked_to_load() {
 }
 
 #[test]
+fn doctrine_given_a_topic_word_instead_of_a_domain_name_exits_usage_not_gap() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    let output = harness.run(&["doctrine", "testing"], &[]);
+
+    assert_eq!(output.status.code(), Some(2));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("next: `kaibo domains`"), "got: {stdout}");
+    let events = harness.trail();
+    assert_eq!(events[0]["attributes"]["kaibo.outcome"], "error");
+    assert_eq!(events[0]["attributes"]["process.exit.code"], 2);
+    assert_eq!(events[0]["attributes"]["kaibo.subject"], "testing");
+}
+
+#[test]
 fn a_second_invocation_appends_rather_than_replacing_the_first() {
     let harness = Harness::new();
     support::write_minimal_corpus(&harness.clone_dir());

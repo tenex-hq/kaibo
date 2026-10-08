@@ -16,15 +16,15 @@
 //! markdown directly - but it still depends on the clone being present and
 //! reasonably fresh, and on sync having completed at least once.
 //!
-//! **Unknown domain is a gap, not a failure.** A domain name that matches
-//! no heading in the root MOC exits with the gap signal
-//! ([`crate::error::ExitCode::NoHits`]), carrying the available domain
-//! inventory so a caller can report the gap honestly instead of kaibo
-//! inventing one. A domain that *is* known but has no `current` pages under
-//! its `reference/` folder is the same gap signal, for the same reason
-//! `query`'s "every hit was a draft" is: nothing useful came back. Neither
-//! is confused with a broken corpus: the root MOC itself being unreadable
-//! is reported as [`crate::error::ExitCode::Stale`] instead, since a broken
+//! **An unknown domain is a usage error, not a gap** (ADR 0019). A known
+//! domain with no `current` pages under its `reference/` folder is the gap
+//! signal ([`crate::error::ExitCode::NoHits`]), for the same reason
+//! `query`'s "every hit was a draft" is: nothing useful came back. A name
+//! matching no root-MOC heading is [`crate::error::ExitCode::Usage`]
+//! instead: the corpus was never asked about anything, and reporting a wrong
+//! name as "the org has no knowledge" is the confusion the exit-code
+//! contract forbids. The root MOC itself
+//! being unreadable is [`crate::error::ExitCode::Stale`], since a broken
 //! index or clone must never present as a knowledge gap.
 //!
 //! **The domain name is data from argv, not a path.** `<domain>` is a
@@ -94,7 +94,8 @@ pub enum DoctrineOutcome {
     /// ran) - a broken corpus, not a gap: this crate has no basis to say
     /// whether the requested domain exists at all.
     MocUnavailable { detail: String },
-    /// `domain` matched no heading in the root MOC. The gap signal.
+    /// `domain` matched no heading in the root MOC. A usage error, not a
+    /// gap: the corpus was never asked about anything.
     UnknownDomain { available_domains: Vec<String> },
     /// `domain` matched a heading, but no page under its `reference/`
     /// folder was both readable and admitted (verified, not a draft). The
@@ -117,16 +118,27 @@ pub struct DoctrineReport {
     pub outcome: DoctrineOutcome,
 }
 
+impl DoctrineOutcome {
+    /// The domain section the argument named, whether or not it had pages.
+    pub fn section(&self) -> Option<&DomainSection> {
+        match self {
+            DoctrineOutcome::NoCurrentPages { section }
+            | DoctrineOutcome::Loaded { section, .. } => Some(section),
+            _ => None,
+        }
+    }
+}
+
 impl DoctrineReport {
     /// `Usage`/`Stale` when self-heal was needed and sync itself failed;
-    /// `Stale` when the root MOC could not be read; `NoHits` for either
-    /// flavour of gap (unknown domain, or a known domain with nothing
-    /// current); `Success` otherwise.
+    /// `Stale` when the root MOC could not be read; `Usage` when the argument
+    /// names no domain; `NoHits` when the domain has nothing current;
+    /// `Success` otherwise.
     pub fn exit_code(&self) -> ExitCode {
         match &self.outcome {
             DoctrineOutcome::SelfHealFailed { exit_code, .. } => *exit_code,
             DoctrineOutcome::MocUnavailable { .. } => ExitCode::Stale,
-            DoctrineOutcome::UnknownDomain { .. } => ExitCode::NoHits,
+            DoctrineOutcome::UnknownDomain { .. } => ExitCode::Usage,
             DoctrineOutcome::NoCurrentPages { .. } => ExitCode::NoHits,
             DoctrineOutcome::Loaded { .. } => ExitCode::Success,
         }
@@ -140,9 +152,14 @@ impl DoctrineReport {
                 message: format!("root MOC could not be read: {detail}"),
                 fix: Some("re-run `kaibo sync`, then try `kaibo doctrine` again".to_string()),
             }],
-            DoctrineOutcome::UnknownDomain { .. }
-            | DoctrineOutcome::NoCurrentPages { .. }
-            | DoctrineOutcome::Loaded { .. } => Vec::new(),
+            DoctrineOutcome::UnknownDomain { .. } => vec![Finding {
+                message: format!(
+                    "no domain is named {:?}; a wrong name is not a knowledge gap",
+                    self.domain
+                ),
+                fix: Some("kaibo domains".to_string()),
+            }],
+            DoctrineOutcome::NoCurrentPages { .. } | DoctrineOutcome::Loaded { .. } => Vec::new(),
         }
     }
 }
@@ -401,6 +418,22 @@ fn render_section_lines(lines: &mut Vec<String>, section: &DomainSection) {
     ));
 }
 
+fn render_findings(lines: &mut Vec<String>, findings: &[Finding]) {
+    for finding in findings {
+        match &finding.fix {
+            Some(fix) => lines.push(format!("  - {} -> next: `{fix}`", finding.message)),
+            None => lines.push(format!("  - {}", finding.message)),
+        }
+    }
+}
+
+fn findings_json(findings: &[Finding]) -> Vec<Value> {
+    findings
+        .iter()
+        .map(|f| serde_json::json!({"message": f.message, "fix": f.fix}))
+        .collect()
+}
+
 fn section_json(section: &DomainSection) -> Value {
     serde_json::json!({
         "name": section.name,
@@ -423,26 +456,20 @@ impl Render for DoctrineReport {
         match &self.outcome {
             DoctrineOutcome::SelfHealFailed { findings, .. } => {
                 lines.push("result: self-heal failed".to_string());
-                for finding in findings {
-                    match &finding.fix {
-                        Some(fix) => {
-                            lines.push(format!("  - {} -> next: `{fix}`", finding.message))
-                        }
-                        None => lines.push(format!("  - {}", finding.message)),
-                    }
-                }
+                render_findings(&mut lines, findings);
             }
             DoctrineOutcome::MocUnavailable { detail } => {
                 lines.push(format!("result: moc unavailable ({detail})"));
                 lines.push("  - next: `kaibo sync`".to_string());
             }
             DoctrineOutcome::UnknownDomain { available_domains } => {
-                lines.push("result: gap, unknown domain".to_string());
+                lines.push("result: unknown domain".to_string());
                 if available_domains.is_empty() {
                     lines.push("known domains: none listed".to_string());
                 } else {
                     lines.push(format!("known domains: {}", available_domains.join(", ")));
                 }
+                render_findings(&mut lines, &self.findings());
             }
             DoctrineOutcome::NoCurrentPages { section } => {
                 lines.push("result: gap, no current pages".to_string());
@@ -480,7 +507,7 @@ impl Render for DoctrineReport {
         let outcome = match &self.outcome {
             DoctrineOutcome::SelfHealFailed { findings, .. } => serde_json::json!({
                 "state": "self_heal_failed",
-                "findings": findings.iter().map(|f| serde_json::json!({"message": f.message, "fix": f.fix})).collect::<Vec<_>>(),
+                "findings": findings_json(findings),
             }),
             DoctrineOutcome::MocUnavailable { detail } => serde_json::json!({
                 "state": "moc_unavailable",
@@ -489,6 +516,7 @@ impl Render for DoctrineReport {
             DoctrineOutcome::UnknownDomain { available_domains } => serde_json::json!({
                 "state": "unknown_domain",
                 "available_domains": available_domains,
+                "findings": findings_json(&self.findings()),
             }),
             DoctrineOutcome::NoCurrentPages { section } => serde_json::json!({
                 "state": "no_current_pages",

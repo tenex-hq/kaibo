@@ -37,7 +37,7 @@ pub struct DomainSection {
 }
 
 /// The root MOC could not be read at all - distinct from a domain simply
-/// not being one of its sections, which is a gap, not a broken read. See
+/// not being one of its sections, which is a usage error, not a broken read. See
 /// the module docs on `doctrine`/`domains` for why the two are reported
 /// with different exit codes.
 #[derive(Debug, Clone, PartialEq, Eq)]

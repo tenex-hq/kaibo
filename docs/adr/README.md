@@ -27,6 +27,7 @@ never editing the old one into agreement with today.
 | [0015](0015-the-paper-trail-measures-the-corpus-not-the-trigger.md) | The paper trail measures the corpus, not the trigger | Accepted, sink superseded by 0016 | A tool cannot record its own non-invocation, so the trail answers which gap recurs; activation is the eval suite's job |
 | [0016](0016-one-wide-event-per-invocation-over-otlp.md) | One wide event per invocation, over OTLP | Accepted | Wide OTel events instead of a bespoke record; JSONL always, OTLP behind a non-default feature and an explicit config key |
 | [0017](0017-the-conformance-schema-is-decidable-only.md) | The conformance schema is decidable only | Accepted, supersedes epic decision 10 | The rubric bought no recall on two model tiers at 2.6-3.3x; judgment is out of the schema, the gate and the hook |
+| [0019](0019-an-unknown-doctrine-domain-is-a-usage-error.md) | An unknown doctrine domain is a usage error, not a gap | Accepted | Exact names only, exit 2 naming the real domains and `kaibo domains`; topic matching rejected, the cause was the skill's wording |
 
 [parked.md](../decisions/parked.md) is the other half of the record: what was deliberately
 not built, and the observable trigger that would justify building it.

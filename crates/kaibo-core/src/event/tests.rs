@@ -249,8 +249,8 @@ fn a_doctrine_event_omits_the_census_rather_than_reporting_zeroes_it_never_count
     let report = DoctrineReport {
         domain: "observability".to_string(),
         self_heal: None,
-        outcome: DoctrineOutcome::UnknownDomain {
-            available_domains: vec!["kaibo".to_string()],
+        outcome: DoctrineOutcome::NoCurrentPages {
+            section: section("observability"),
         },
     };
     let json = parse(&Event::from_doctrine(&report, 1, 7, caller()));
@@ -258,8 +258,8 @@ fn a_doctrine_event_omits_the_census_rather_than_reporting_zeroes_it_never_count
 
     assert_eq!(attrs["kaibo.domain"], "observability");
     assert_eq!(attrs["kaibo.outcome"], "gap");
-    assert_eq!(attrs["kaibo.moc_domains"][0], "kaibo");
     for absent in [
+        "kaibo.moc_domains",
         "kaibo.raw_hit_count",
         "kaibo.withheld_draft",
         "kaibo.withheld_unverified",
@@ -271,6 +271,60 @@ fn a_doctrine_event_omits_the_census_rather_than_reporting_zeroes_it_never_count
             "`{absent}` has no meaning for doctrine, which never calls qmd"
         );
     }
+}
+
+fn section(name: &str) -> crate::moc::DomainSection {
+    crate::moc::DomainSection {
+        name: name.to_string(),
+        owner: None,
+        topics: Vec::new(),
+        summary: None,
+    }
+}
+
+#[test]
+fn a_loaded_doctrine_records_a_hit_with_its_page_count_and_domain() {
+    let page = crate::doctrine::DoctrinePage {
+        path: "kaibo/reference/a.md".to_string(),
+        title: "A".to_string(),
+        status: Some(Status::Current),
+        body: "Body.".to_string(),
+    };
+    let report = DoctrineReport {
+        domain: "kaibo".to_string(),
+        self_heal: None,
+        outcome: DoctrineOutcome::Loaded {
+            section: section("kaibo"),
+            pages: vec![page.clone(), page],
+        },
+    };
+    let json = parse(&Event::from_doctrine(&report, 1, 7, caller()));
+
+    assert_eq!(json["attributes"]["kaibo.outcome"], "hit");
+    assert_eq!(json["attributes"]["kaibo.hit_count"], 2);
+    assert_eq!(json["attributes"]["kaibo.domain"], "kaibo");
+    assert_eq!(json["attributes"]["process.exit.code"], 0);
+}
+
+// --- a domain name that names nothing -----------------------------------
+
+#[test]
+fn a_doctrine_argument_naming_no_domain_is_an_error_with_no_domain_recorded() {
+    let report = DoctrineReport {
+        domain: "deployment".to_string(),
+        self_heal: None,
+        outcome: DoctrineOutcome::UnknownDomain {
+            available_domains: vec!["kaibo".to_string()],
+        },
+    };
+    let json = parse(&Event::from_doctrine(&report, 1, 7, caller()));
+    let attrs = json["attributes"].as_object().unwrap();
+
+    assert_eq!(attrs["kaibo.subject"], "deployment");
+    assert_eq!(attrs["kaibo.outcome"], "error");
+    assert_eq!(attrs["process.exit.code"], 2);
+    assert!(!attrs.contains_key("kaibo.domain"));
+    assert!(!attrs.contains_key("kaibo.moc_domains"));
 }
 
 // --- caller facts ------------------------------------------------------
