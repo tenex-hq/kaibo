@@ -11,9 +11,9 @@ name = "kaibo_core"
 path = "src/lib.rs"
 
 [features]
-# Off by default: the OTLP stack measures roughly double the package count of
-# the whole rest of kaibo, and someone who wants `kaibo query` should not pay
-# for a collector they do not run. The JSONL trail is unconditional.
+# Off for `cargo build`, on for every release binary (dist-workspace.toml,
+# ADR 0018). Compiled in, it still sends nothing until `otlp_endpoint` names
+# a collector. The JSONL trail is unconditional.
 otlp = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp"]
 
 [dependencies]

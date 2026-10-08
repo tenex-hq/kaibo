@@ -385,11 +385,17 @@ fn every_spelling_of_yes_turns_the_trail_off_and_every_spelling_of_no_leaves_it_
 // --- the OTLP gate ----------------------------------------------------
 
 #[test]
-fn nothing_is_exported_until_kaibo_own_key_says_so() {
+fn nothing_is_exported_until_kaibo_own_key_names_a_collector() {
     let tmp = tempfile::tempdir().unwrap();
     let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()));
+    let config = Config::resolve_with(&env).unwrap();
 
-    assert_eq!(Config::resolve_with(&env).unwrap().otlp(), None);
+    assert_eq!(config.otlp(), None);
+    assert_eq!(config.otlp_endpoint(), None);
+    assert_eq!(
+        config.source(ConfigKey::OtlpEndpoint),
+        ConfigSource::Default
+    );
 }
 
 #[test]
@@ -413,30 +419,304 @@ fn an_endpoint_in_the_ambient_environment_does_not_by_itself_start_exporting() {
 }
 
 #[test]
-fn the_kaibo_key_alone_is_enough_to_switch_export_on() {
+fn naming_a_collector_in_the_environment_exports_to_its_logs_path() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var(ENV_OTLP_EXPORT, "1");
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
+        .with_var("KAIBO_OTLP_ENDPOINT", "http://localhost:4320");
     let config = Config::resolve_with(&env).unwrap();
 
-    assert!(config.otlp().is_some());
-    assert_eq!(config.source(ConfigKey::OtlpExport), ConfigSource::Env);
+    assert_eq!(
+        config.otlp(),
+        Some(OtlpTarget {
+            logs_endpoint: "http://localhost:4320/v1/logs".to_string(),
+            timeout: Duration::from_millis(2_000),
+        })
+    );
+    assert_eq!(config.otlp_endpoint(), Some("http://localhost:4320"));
+    assert_eq!(config.source(ConfigKey::OtlpEndpoint), ConfigSource::Env);
 }
 
 #[test]
-fn the_config_file_can_switch_export_on_without_an_environment_variable() {
+fn the_config_file_can_name_the_collector_without_an_environment_variable() {
     let tmp = tempfile::tempdir().unwrap();
-    write_config_file(tmp.path(), "otlp_export = true\n");
+    write_config_file(tmp.path(), "otlp_endpoint = \"http://localhost:4320\"\n");
     let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()));
     let config = Config::resolve_with(&env).unwrap();
 
-    assert!(config.otlp().is_some());
-    assert_eq!(config.source(ConfigKey::OtlpExport), ConfigSource::File);
+    assert_eq!(
+        config.otlp().map(|target| target.logs_endpoint),
+        Some("http://localhost:4320/v1/logs".to_string())
+    );
+    assert_eq!(config.source(ConfigKey::OtlpEndpoint), ConfigSource::File);
+}
+
+#[test]
+fn the_environment_names_a_different_collector_over_the_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_config_file(tmp.path(), "otlp_endpoint = \"http://localhost:4320\"\n");
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
+        .with_var("KAIBO_OTLP_ENDPOINT", "http://otel.example:4318");
+    let config = Config::resolve_with(&env).unwrap();
+
+    assert_eq!(
+        config.otlp().map(|target| target.logs_endpoint),
+        Some("http://otel.example:4318/v1/logs".to_string())
+    );
+    assert_eq!(config.source(ConfigKey::OtlpEndpoint), ConfigSource::Env);
+}
+
+#[test]
+fn kaibo_own_key_picks_the_collector_even_when_the_ambient_one_points_elsewhere() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
+        .with_var(
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "http://collector.internal:4318",
+        )
+        .with_var("KAIBO_OTLP_ENDPOINT", "http://localhost:4320");
+
+    assert_eq!(
+        Config::resolve_with(&env)
+            .unwrap()
+            .otlp()
+            .map(|target| target.logs_endpoint),
+        Some("http://localhost:4320/v1/logs".to_string())
+    );
+}
+
+#[test]
+fn the_logs_path_is_appended_to_the_base_the_way_the_otlp_specification_appends_it() {
+    // A trailing slash must not double up, and a base with a path of its own
+    // (a collector behind a reverse proxy) keeps that path.
+    let tmp = tempfile::tempdir().unwrap();
+    for (base, expected) in [
+        ("http://localhost:4320/", "http://localhost:4320/v1/logs"),
+        (
+            "http://otel.example/ingest",
+            "http://otel.example/ingest/v1/logs",
+        ),
+        (
+            "http://otel.example/ingest/",
+            "http://otel.example/ingest/v1/logs",
+        ),
+    ] {
+        let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
+            .with_var("KAIBO_OTLP_ENDPOINT", base);
+        assert_eq!(
+            Config::resolve_with(&env)
+                .unwrap()
+                .otlp()
+                .map(|target| target.logs_endpoint),
+            Some(expected.to_string()),
+            "base `{base}`"
+        );
+    }
+}
+
+#[test]
+fn an_empty_endpoint_counts_as_unset_at_every_layer() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_config_file(tmp.path(), "otlp_endpoint = \"http://localhost:4320\"\n");
+    let env =
+        FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var("KAIBO_OTLP_ENDPOINT", "");
+    let config = Config::resolve_with(&env).unwrap();
+    assert_eq!(config.otlp_endpoint(), Some("http://localhost:4320"));
+    assert_eq!(config.source(ConfigKey::OtlpEndpoint), ConfigSource::File);
+
+    write_config_file(tmp.path(), "otlp_endpoint = \"\"\n");
+    let config = Config::resolve_with(&env).unwrap();
+    assert_eq!(config.otlp(), None);
+    assert_eq!(
+        config.source(ConfigKey::OtlpEndpoint),
+        ConfigSource::Default
+    );
+}
+
+#[test]
+fn a_config_file_still_switching_export_on_the_retired_way_is_refused_with_the_replacement() {
+    // `otlp_export = true` once meant "send". Ignoring it now would leave
+    // someone believing they export while nothing leaves the machine, so the
+    // key is refused, and the refusal says what to write instead.
+    let tmp = tempfile::tempdir().unwrap();
+    for value in ["true", "\"false\"", "1"] {
+        write_config_file(tmp.path(), &format!("otlp_export = {value}\n"));
+        let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()));
+
+        let err = Config::resolve_with(&env).unwrap_err();
+
+        assert_eq!(err.exit_code(), ExitCode::Usage);
+        let message = err.to_string();
+        assert!(
+            message.contains("`otlp_export`")
+                && message.contains("otlp_endpoint = \"http://localhost:4318\"")
+                && message.contains("delete the line"),
+            "`otlp_export = {value}` must be refused with its replacement: {message}"
+        );
+        assert!(
+            message.contains(
+                &tmp.path()
+                    .join(".kaibo")
+                    .join("config.toml")
+                    .display()
+                    .to_string()
+            ),
+            "the refusal has to say which file: {message}"
+        );
+    }
+}
+
+#[test]
+fn a_config_file_switching_export_off_the_retired_way_is_accepted_as_a_no_op() {
+    // An explicit "off" cannot make anyone believe they export.
+    let tmp = tempfile::tempdir().unwrap();
+    write_config_file(tmp.path(), "otlp_export = false\n");
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()));
+
+    let config = Config::resolve_with(&env).unwrap();
+
+    assert_eq!(config.otlp(), None);
+    assert_eq!(config.retired_otlp_export(), &[ConfigSource::File]);
+}
+
+#[test]
+fn the_retired_environment_switch_saying_on_is_refused_with_the_replacement() {
+    let tmp = tempfile::tempdir().unwrap();
+    for on in ["1", "true", "yes", "maybe"] {
+        let env =
+            FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var("KAIBO_OTLP_EXPORT", on);
+
+        let err = Config::resolve_with(&env).unwrap_err();
+
+        assert_eq!(err.exit_code(), ExitCode::Usage);
+        assert_eq!(
+            err.to_string(),
+            "KAIBO_OTLP_EXPORT is no longer read: export is switched on by naming the \
+             collector. Use `export KAIBO_OTLP_ENDPOINT=http://localhost:4318` (your \
+             collector's OTLP/HTTP base URL), or `unset KAIBO_OTLP_EXPORT` to keep export off",
+            "`KAIBO_OTLP_EXPORT={on}`"
+        );
+    }
+}
+
+#[test]
+fn the_retired_environment_switch_saying_off_is_accepted_as_a_no_op() {
+    let tmp = tempfile::tempdir().unwrap();
+    for off in ["0", "false", "OFF", "no"] {
+        let env =
+            FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var("KAIBO_OTLP_EXPORT", off);
+
+        let config = Config::resolve_with(&env).unwrap();
+
+        assert_eq!(config.otlp(), None, "`KAIBO_OTLP_EXPORT={off}`");
+        assert_eq!(config.retired_otlp_export(), &[ConfigSource::Env]);
+    }
+}
+
+#[test]
+fn both_retired_switches_saying_off_are_both_reported() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_config_file(tmp.path(), "otlp_export = false\n");
+    let env =
+        FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var("KAIBO_OTLP_EXPORT", "0");
+
+    assert_eq!(
+        Config::resolve_with(&env).unwrap().retired_otlp_export(),
+        &[ConfigSource::Env, ConfigSource::File]
+    );
+}
+
+#[test]
+fn an_empty_retired_environment_switch_is_unset_rather_than_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env =
+        FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var("KAIBO_OTLP_EXPORT", "");
+
+    let config = Config::resolve_with(&env).unwrap();
+
+    assert_eq!(config.otlp(), None);
+    assert_eq!(config.retired_otlp_export(), &[] as &[ConfigSource]);
+}
+
+// --- an endpoint the exporter could not use ---------------------------------
+
+#[test]
+fn an_endpoint_the_exporter_cannot_use_builds_no_exporter_and_names_why() {
+    let tmp = tempfile::tempdir().unwrap();
+    for (endpoint, problem) in [
+        (
+            "https://otel.example:4318",
+            OtlpEndpointProblem::UnsupportedScheme("https".to_string()),
+        ),
+        (
+            "GRPC://localhost:4317",
+            OtlpEndpointProblem::UnsupportedScheme("grpc".to_string()),
+        ),
+        ("localhost:4320", OtlpEndpointProblem::MissingScheme),
+        ("http://", OtlpEndpointProblem::Malformed),
+        ("http://:4318", OtlpEndpointProblem::Malformed),
+        ("http://localhost:43a0", OtlpEndpointProblem::Malformed),
+        ("http://localhost:", OtlpEndpointProblem::Malformed),
+        ("http://localhost:99999", OtlpEndpointProblem::Malformed),
+        ("http://local host:4320", OtlpEndpointProblem::Malformed),
+    ] {
+        let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
+            .with_var("KAIBO_OTLP_ENDPOINT", endpoint);
+
+        let config = Config::resolve_with(&env).unwrap();
+
+        assert_eq!(config.otlp(), None, "`{endpoint}` built an exporter");
+        assert_eq!(config.otlp_endpoint(), Some(endpoint));
+        assert_eq!(
+            config.otlp_endpoint_problem(),
+            Some(problem),
+            "`{endpoint}`"
+        );
+    }
+}
+
+#[test]
+fn a_plain_http_endpoint_has_no_problem_whatever_its_host_looks_like() {
+    let tmp = tempfile::tempdir().unwrap();
+    for endpoint in [
+        "http://localhost:4320",
+        "http://localhost",
+        "HTTP://localhost:4320",
+        "http://[::1]:4318",
+        "http://[::1]",
+        "http://otel.example:4318/ingest?tenant=a",
+    ] {
+        let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
+            .with_var("KAIBO_OTLP_ENDPOINT", endpoint);
+
+        let config = Config::resolve_with(&env).unwrap();
+
+        assert_eq!(config.otlp_endpoint_problem(), None, "`{endpoint}`");
+        assert!(config.otlp().is_some(), "`{endpoint}` built no exporter");
+    }
+}
+
+#[test]
+fn each_endpoint_problem_reads_as_the_reason_a_person_would_fix() {
+    assert_eq!(
+        OtlpEndpointProblem::UnsupportedScheme("https".to_string()).to_string(),
+        "the `https://` scheme is not supported; this build exports over plain \
+         `http://` only, with no TLS"
+    );
+    assert_eq!(
+        OtlpEndpointProblem::MissingScheme.to_string(),
+        "it has no `http://` scheme"
+    );
+    assert_eq!(
+        OtlpEndpointProblem::Malformed.to_string(),
+        "it is not a host with an optional numeric port after `http://`"
+    );
 }
 
 #[test]
 fn export_waits_two_seconds_by_default_rather_than_the_specification_ten() {
     let tmp = tempfile::tempdir().unwrap();
-    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf())).with_var(ENV_OTLP_EXPORT, "1");
+    let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
+        .with_var("KAIBO_OTLP_ENDPOINT", "http://localhost:4320");
 
     assert_eq!(
         Config::resolve_with(&env).unwrap().otlp().unwrap().timeout,
@@ -450,8 +730,8 @@ fn export_waits_two_seconds_by_default_rather_than_the_specification_ten() {
 fn an_explicit_otel_timeout_still_wins_because_the_variable_is_the_standard_one() {
     let tmp = tempfile::tempdir().unwrap();
     let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
-        .with_var(ENV_OTLP_EXPORT, "1")
-        .with_var(ENV_OTEL_TIMEOUT, "350");
+        .with_var("KAIBO_OTLP_ENDPOINT", "http://localhost:4320")
+        .with_var("OTEL_EXPORTER_OTLP_TIMEOUT", "350");
 
     assert_eq!(
         Config::resolve_with(&env).unwrap().otlp().unwrap().timeout,
@@ -464,8 +744,8 @@ fn a_timeout_that_is_not_a_positive_number_falls_back_instead_of_blocking_foreve
     let tmp = tempfile::tempdir().unwrap();
     for nonsense in ["0", "-1", "soon", ""] {
         let env = FakeEnvironment::new(Some(tmp.path().to_path_buf()))
-            .with_var(ENV_OTLP_EXPORT, "1")
-            .with_var(ENV_OTEL_TIMEOUT, nonsense);
+            .with_var("KAIBO_OTLP_ENDPOINT", "http://localhost:4320")
+            .with_var("OTEL_EXPORTER_OTLP_TIMEOUT", nonsense);
         assert_eq!(
             Config::resolve_with(&env).unwrap().otlp().unwrap().timeout,
             Duration::from_millis(2_000),

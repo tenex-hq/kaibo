@@ -14,10 +14,11 @@
 //!   under a second. A batch processor's background thread can fail to flush
 //!   before the process goes away, and drops the record silently. One event
 //!   per invocation makes synchronous export correct by construction.
-//! - **The endpoint is the SDK's to resolve**, from the standard
-//!   `OTEL_EXPORTER_OTLP_*` variables. kaibo decides only whether an exporter
-//!   is built at all - see [`crate::config::Config::otlp`] for why that gate
-//!   is deliberately not the environment's to open.
+//! - **The endpoint is kaibo's own `otlp_endpoint`**, handed to the exporter
+//!   explicitly so that no `OTEL_EXPORTER_OTLP_*ENDPOINT` variable can
+//!   redirect it - see [`crate::config::Config::otlp`] for why that gate is
+//!   deliberately not the environment's to open. Headers still come from the
+//!   standard variables.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -45,6 +46,7 @@ pub fn export(target: &OtlpTarget, event: &Event) -> TrailWrite {
     let exporter = match LogExporter::builder()
         .with_http()
         .with_protocol(Protocol::HttpBinary)
+        .with_endpoint(target.logs_endpoint.as_str())
         .with_timeout(target.timeout)
         .build()
     {
@@ -88,8 +90,9 @@ pub fn export(target: &OtlpTarget, event: &Event) -> TrailWrite {
 fn failed(detail: String) -> TrailWrite {
     TrailWrite::Failed {
         detail: format!(
-            "{detail}; the local trail was written regardless, and \
-             `otlp_export = false` in ~/.kaibo/config.toml stops trying"
+            "{detail}; the local trail was written regardless, and removing \
+             `otlp_endpoint` from ~/.kaibo/config.toml (or unsetting \
+             KAIBO_OTLP_ENDPOINT) stops trying"
         ),
     }
 }

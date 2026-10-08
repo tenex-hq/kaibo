@@ -13,7 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 
 use crate::clock::Clock;
-use crate::config::{Config, ConfigKey, ConfigSource, LintConfig};
+use crate::config::{Config, ConfigKey, ConfigSource, LintConfig, OtlpEndpointProblem};
 use crate::error::ExitCode;
 use crate::explain::{Explainable, PlannedCommand};
 use crate::install::{self, InstalledSkills, PluginLayout};
@@ -47,6 +47,7 @@ pub struct ConfigSummary {
     pub index: ConfigValue<String>,
     pub collection: ConfigValue<String>,
     pub api_url: ConfigValue<Option<String>>,
+    pub otlp_endpoint: ConfigValue<Option<String>>,
     pub lint: LintConfigSummary,
 }
 
@@ -134,6 +135,13 @@ pub struct StatusReport {
     /// binary carries is drift worth naming.
     pub skills_root: Option<PathBuf>,
     pub skills: InstalledSkills,
+    /// Whether this binary was built with the `otlp` feature. A collector
+    /// named in config is only reached when it was.
+    pub exporter_built: bool,
+    /// Why the configured endpoint cannot be used, if it cannot.
+    pub otlp_endpoint_problem: Option<OtlpEndpointProblem>,
+    /// Where the retired `otlp_export` switch is still set to "off".
+    pub retired_otlp_export: Vec<ConfigSource>,
 }
 
 impl StatusReport {
@@ -218,6 +226,8 @@ impl StatusReport {
         }
         findings.extend(self.skill_findings());
 
+        findings.extend(self.export_findings());
+
         if self.isolation == IsolationStatus::NameCollisionInDefaultIndex {
             findings.push(Finding {
                 message: format!(
@@ -226,6 +236,64 @@ impl StatusReport {
                     self.config.collection.value
                 ),
                 fix: None,
+            });
+        }
+
+        findings
+    }
+
+    /// The export half of [`StatusReport::findings`]: a collector that cannot
+    /// be reached from this binary or this value, and retired keys to remove.
+    fn export_findings(&self) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        let endpoint = &self.config.otlp_endpoint;
+
+        if let (Some(url), Some(problem)) = (&endpoint.value, &self.otlp_endpoint_problem) {
+            findings.push(Finding {
+                message: format!(
+                    "otlp_endpoint {url} cannot be used, so nothing is exported: {problem}"
+                ),
+                fix: Some(match endpoint.source {
+                    ConfigSource::Env => {
+                        "export KAIBO_OTLP_ENDPOINT=http://<collector-host>:<port>".to_string()
+                    }
+                    _ => "set `otlp_endpoint = \"http://<collector-host>:<port>\"` in \
+                          ~/.kaibo/config.toml"
+                        .to_string(),
+                }),
+            });
+        }
+
+        if let Some(url) = &endpoint.value
+            && !self.exporter_built
+        {
+            findings.push(Finding {
+                message: format!(
+                    "otlp_endpoint names {url}, but this binary was built without \
+                     the otlp feature, so nothing is exported"
+                ),
+                fix: Some(
+                    "upgrade to a release that includes the exporter (`brew upgrade kaibo`, \
+                     or re-run the installer), or rebuild with `cargo build --release -p \
+                     kaibo --features otlp`"
+                        .to_string(),
+                ),
+            });
+        }
+
+        for source in &self.retired_otlp_export {
+            findings.push(match source {
+                ConfigSource::Env => Finding {
+                    message: "KAIBO_OTLP_EXPORT is retired and has no effect".to_string(),
+                    fix: Some("unset KAIBO_OTLP_EXPORT".to_string()),
+                },
+                _ => Finding {
+                    message: "`otlp_export` in ~/.kaibo/config.toml is retired and has no effect"
+                        .to_string(),
+                    fix: Some(
+                        "delete the `otlp_export` line from ~/.kaibo/config.toml".to_string(),
+                    ),
+                },
             });
         }
 
@@ -378,6 +446,10 @@ pub(crate) fn config_summary(config: &Config) -> ConfigSummary {
             value: config.api_url().map(str::to_string),
             source: config.source(ConfigKey::ApiUrl),
         },
+        otlp_endpoint: ConfigValue {
+            value: config.otlp_endpoint().map(str::to_string),
+            source: config.source(ConfigKey::OtlpEndpoint),
+        },
         lint: lint_config_summary(config.lint(), config),
     }
 }
@@ -485,6 +557,9 @@ fn gather(
         isolation,
         skills_root: PluginLayout::new(config).map(|layout| layout.root().to_path_buf()),
         skills: install::inspect(config),
+        exporter_built: cfg!(feature = "otlp"),
+        otlp_endpoint_problem: config.otlp_endpoint_problem(),
+        retired_otlp_export: config.retired_otlp_export().to_vec(),
     }
 }
 
@@ -678,6 +753,15 @@ impl Render for StatusReport {
             render_backend(&self.backend),
         ));
 
+        lines.push(format!(
+            "export: {}",
+            render_export(
+                &self.config.otlp_endpoint,
+                self.otlp_endpoint_problem.is_some(),
+                self.exporter_built
+            )
+        ));
+
         let lint = &self.config.lint;
         lines.push(format!(
             "lint: disabled_rules={:?} ({}), required_frontmatter_keys={:?} ({}), \
@@ -800,6 +884,7 @@ impl Render for StatusReport {
                 "index": {"value": self.config.index.value, "source": self.config.index.source.to_string()},
                 "collection": {"value": self.config.collection.value, "source": self.config.collection.source.to_string()},
                 "api_url": {"value": self.config.api_url.value, "source": self.config.api_url.source.to_string()},
+                "otlp_endpoint": {"value": self.config.otlp_endpoint.value, "source": self.config.otlp_endpoint.source.to_string()},
                 "lint": {
                     "disabled_rules": {"value": self.config.lint.disabled_rules.value, "source": self.config.lint.disabled_rules.source.to_string()},
                     "required_frontmatter_keys": {"value": self.config.lint.required_frontmatter_keys.value, "source": self.config.lint.required_frontmatter_keys.source.to_string()},
@@ -808,6 +893,8 @@ impl Render for StatusReport {
                     "tag_pattern": {"value": self.config.lint.tag_pattern.value, "source": self.config.lint.tag_pattern.source.to_string()},
                 },
             },
+            "exporter_built": self.exporter_built,
+            "otlp_endpoint_problem": self.otlp_endpoint_problem.as_ref().map(ToString::to_string),
             "backend": match &self.backend {
                 BackendMode::Local => serde_json::json!({"mode": "local"}),
                 BackendMode::Api(url) => serde_json::json!({"mode": "api", "url": url}),
@@ -870,6 +957,21 @@ impl Render for StatusReport {
             "findings": self.findings().iter().map(|f| serde_json::json!({"message": f.message, "fix": f.fix})).collect::<Vec<_>>(),
             "exit_code": self.exit_code().code(),
         })
+    }
+}
+
+fn render_export(
+    endpoint: &ConfigValue<Option<String>>,
+    unusable: bool,
+    exporter_built: bool,
+) -> String {
+    match (&endpoint.value, unusable, exporter_built) {
+        (None, _, _) => format!("off ({})", endpoint.source),
+        (Some(url), true, _) => format!("{url} ({}), unusable", endpoint.source),
+        (Some(url), false, true) => format!("{url} ({})", endpoint.source),
+        (Some(url), false, false) => {
+            format!("{url} ({}), not built into this binary", endpoint.source)
+        }
     }
 }
 

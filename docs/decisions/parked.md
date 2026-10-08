@@ -43,7 +43,8 @@ the agent never holds the write capability - has shipped: the binary now
 writes an append-only local trail of `query` and `doctrine` invocations, with
 OTLP export as an opt-in second sink
 ([0015](../adr/0015-the-paper-trail-measures-the-corpus-not-the-trigger.md),
-[0016](../adr/0016-one-wide-event-per-invocation-over-otlp.md)).
+[0016](../adr/0016-one-wide-event-per-invocation-over-otlp.md),
+[0018](../adr/0018-release-binaries-export-to-a-named-collector.md)).
 
 What remains parked is the **verdict** in its original sense: a felt
 would-I-have-asked-a-human, which a tool cannot supply because it cannot

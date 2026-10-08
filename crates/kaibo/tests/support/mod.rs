@@ -659,8 +659,8 @@ impl FakeCollector {
         }
     }
 
-    /// What the child process should be handed as
-    /// `OTEL_EXPORTER_OTLP_ENDPOINT`. The SDK appends the signal path.
+    /// The collector's base URL, as `otlp_endpoint` or any
+    /// `OTEL_EXPORTER_OTLP_ENDPOINT` takes it: the signal path is appended.
     pub fn endpoint(&self) -> String {
         format!("http://127.0.0.1:{}", self.port)
     }

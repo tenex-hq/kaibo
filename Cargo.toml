@@ -18,9 +18,10 @@ serde_yaml_ng = "0.10"
 thiserror = "2"
 regex = "1"
 
-# Optional, and behind the `otlp` feature: see ADR 0016 and issue #69. The
-# blocking HTTP path is chosen deliberately over `grpc-tonic`, which would
-# pull tonic and tokio in explicitly; `main` stays synchronous either way.
+# Optional, and behind the `otlp` feature that release builds enable: see
+# ADRs 0016 and 0018. The blocking HTTP path is chosen deliberately over
+# `grpc-tonic`, which would pull tonic and tokio in explicitly; `main` stays
+# synchronous either way.
 opentelemetry = { version = "0.33", default-features = false, features = ["logs"] }
 opentelemetry_sdk = { version = "0.33", default-features = false, features = ["logs"] }
 opentelemetry-otlp = { version = "0.33", default-features = false, features = [

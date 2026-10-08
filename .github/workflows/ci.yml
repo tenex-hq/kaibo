@@ -32,10 +32,10 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --locked
 
-      # ADR 0016 makes OTLP export opt-in so that someone who wants
-      # `kaibo query` does not pay for a collector they do not run. That only
-      # holds while the default build stays free of the async and HTTP stack,
-      # which nothing in the source can assert - only the resolved tree can.
+      # ADR 0018 keeps the OTLP stack out of the default `cargo build` (release
+      # binaries opt in through dist-workspace.toml). That only holds while
+      # the default build stays free of the async and HTTP stack, which
+      # nothing in the source can assert - only the resolved tree can.
       # Kept in step with the `deps-stay-lean` recipe in the justfile, which
       # is the local equivalent; `just` is not installed on the runner.
       - name: the default build carries no collector

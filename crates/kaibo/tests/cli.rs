@@ -1704,6 +1704,94 @@ fn explain_writes_no_trail_because_the_verb_never_ran() {
     );
 }
 
+// --- OTLP export: the config surface, in every build -----------------------
+
+#[test]
+fn a_config_file_still_carrying_the_retired_export_switch_stops_with_the_replacement() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    let config_dir = harness.home_dir().join(".kaibo");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(config_dir.join("config.toml"), "otlp_export = true\n").unwrap();
+
+    let output = harness.run(&["query", "a question"], &[]);
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("`otlp_export`")
+            && stderr.contains("otlp_endpoint = \"http://localhost:4318\""),
+        "the refusal has to name the replacement key: {stderr}"
+    );
+    assert!(
+        harness.calls().is_empty(),
+        "a refused config must stop before any command runs"
+    );
+}
+
+#[test]
+fn a_retired_export_switch_left_saying_off_runs_the_verb_and_status_points_it_out() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    let config_dir = harness.home_dir().join(".kaibo");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(config_dir.join("config.toml"), "otlp_export = false\n").unwrap();
+
+    let query = harness.run(&["query", "a question with no answer"], &[]);
+    let status = harness.run(&["--json", "status"], &[]);
+
+    assert_eq!(query.status.code(), Some(3), "the gap belongs to the query");
+    let findings = parse_json(&status.stdout)["findings"].clone();
+    assert!(
+        findings.as_array().unwrap().iter().any(|finding| finding
+            == &serde_json::json!({
+                "message": "`otlp_export` in ~/.kaibo/config.toml is retired and has no effect",
+                "fix": "delete the `otlp_export` line from ~/.kaibo/config.toml",
+            })),
+        "{findings}"
+    );
+}
+
+#[test]
+fn an_https_endpoint_runs_the_verb_and_status_says_why_nothing_is_exported() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+    let endpoint = ("KAIBO_OTLP_ENDPOINT", "https://otel.example:4318");
+
+    let query = harness.run(&["query", "a question with no answer"], &[endpoint]);
+    let status = harness.run(&["--json", "status"], &[endpoint]);
+
+    assert_eq!(query.status.code(), Some(3), "the gap belongs to the query");
+    assert_eq!(
+        String::from_utf8_lossy(&query.stderr),
+        "",
+        "no exporter may be built, so nothing can fail"
+    );
+    assert_eq!(
+        parse_json(&status.stdout)["otlp_endpoint_problem"],
+        "the `https://` scheme is not supported; this build exports over plain \
+         `http://` only, with no TLS"
+    );
+}
+
+#[test]
+fn status_reports_the_collector_named_in_the_environment() {
+    let harness = Harness::new();
+    support::write_minimal_corpus(&harness.clone_dir());
+
+    let output = harness.run(
+        &["--json", "status"],
+        &[("KAIBO_OTLP_ENDPOINT", "http://localhost:4320")],
+    );
+
+    let json = parse_json(&output.stdout);
+    assert_eq!(
+        json["config"]["otlp_endpoint"],
+        serde_json::json!({"value": "http://localhost:4320", "source": "env"})
+    );
+    assert_eq!(json["exporter_built"], cfg!(feature = "otlp"));
+}
+
 // --- OTLP export (feature `otlp`) -----------------------------------------
 //
 // Compiled only when the feature is on, because the exporter does not exist
@@ -1718,17 +1806,14 @@ mod otlp {
     use support::{FakeCollector, refused_endpoint};
 
     #[test]
-    fn one_event_reaches_the_collector_when_the_feature_and_the_key_are_both_on() {
+    fn one_event_reaches_the_collector_kaibo_config_names() {
         let harness = Harness::new();
         support::write_minimal_corpus(&harness.clone_dir());
         let collector = FakeCollector::start();
 
         let output = harness.run(
             &["query", "a question about the fixture"],
-            &[
-                ("KAIBO_OTLP_EXPORT", "1"),
-                ("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.endpoint()),
-            ],
+            &[("KAIBO_OTLP_ENDPOINT", &collector.endpoint())],
         );
 
         assert_eq!(output.status.code(), Some(3));
@@ -1743,7 +1828,54 @@ mod otlp {
     }
 
     #[test]
-    fn an_endpoint_in_the_environment_exports_nothing_while_the_key_is_off() {
+    fn the_config_file_alone_is_enough_to_reach_the_collector() {
+        let harness = Harness::new();
+        support::write_minimal_corpus(&harness.clone_dir());
+        let collector = FakeCollector::start();
+        let config_dir = harness.home_dir().join(".kaibo");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(
+            config_dir.join("config.toml"),
+            format!("otlp_endpoint = \"{}\"\n", collector.endpoint()),
+        )
+        .unwrap();
+
+        harness.run(&["query", "a question"], &[]);
+
+        let requests = collector.requests();
+        assert_eq!(requests.len(), 1, "expected exactly one export");
+        assert_eq!(requests[0].path, "/v1/logs");
+    }
+
+    #[test]
+    fn kaibo_own_endpoint_wins_over_every_ambient_one() {
+        // A harness exporting its own OTEL_* variables to child processes
+        // must not redirect kaibo's event to wherever the harness reports.
+        let harness = Harness::new();
+        support::write_minimal_corpus(&harness.clone_dir());
+        let named = FakeCollector::start();
+        let ambient = FakeCollector::start();
+        let ambient_logs = format!("{}/v1/logs", ambient.endpoint());
+
+        harness.run(
+            &["query", "a question"],
+            &[
+                ("KAIBO_OTLP_ENDPOINT", &named.endpoint()),
+                ("OTEL_EXPORTER_OTLP_ENDPOINT", &ambient.endpoint()),
+                ("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", &ambient_logs),
+            ],
+        );
+
+        assert_eq!(named.requests().len(), 1, "the named collector got nothing");
+        assert!(
+            ambient.nothing_arrived_within(Duration::from_millis(300)),
+            "the ambient endpoint received the event: {:?}",
+            ambient.requests()
+        );
+    }
+
+    #[test]
+    fn an_endpoint_in_the_environment_exports_nothing_while_kaibo_names_none() {
         let harness = Harness::new();
         support::write_minimal_corpus(&harness.clone_dir());
         let collector = FakeCollector::start();
@@ -1777,10 +1909,7 @@ mod otlp {
 
         harness.run(
             &["--no-log", "query", "a question"],
-            &[
-                ("KAIBO_OTLP_EXPORT", "1"),
-                ("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.endpoint()),
-            ],
+            &[("KAIBO_OTLP_ENDPOINT", &collector.endpoint())],
         );
 
         assert!(
@@ -1794,14 +1923,10 @@ mod otlp {
     fn a_collector_refusing_connections_neither_changes_the_exit_code_nor_costs_the_local_trail() {
         let harness = Harness::new();
         support::write_minimal_corpus(&harness.clone_dir());
-        let refused = refused_endpoint();
 
         let output = harness.run(
             &["--json", "query", "a question with no answer"],
-            &[
-                ("KAIBO_OTLP_EXPORT", "1"),
-                ("OTEL_EXPORTER_OTLP_ENDPOINT", &refused),
-            ],
+            &[("KAIBO_OTLP_ENDPOINT", &refused_endpoint())],
         );
 
         assert_eq!(
@@ -1828,19 +1953,11 @@ mod otlp {
 
         let exported = harness.run(
             &["--json", "query", "a question about the fixture"],
-            &[
-                qmd,
-                ("KAIBO_OTLP_EXPORT", "1"),
-                ("OTEL_EXPORTER_OTLP_ENDPOINT", &collector.endpoint()),
-            ],
+            &[qmd, ("KAIBO_OTLP_ENDPOINT", &collector.endpoint())],
         );
         let unreachable = harness.run(
             &["--json", "query", "a question about the fixture"],
-            &[
-                qmd,
-                ("KAIBO_OTLP_EXPORT", "1"),
-                ("OTEL_EXPORTER_OTLP_ENDPOINT", &refused_endpoint()),
-            ],
+            &[qmd, ("KAIBO_OTLP_ENDPOINT", &refused_endpoint())],
         );
 
         assert_eq!(exported.stdout, unreachable.stdout);
