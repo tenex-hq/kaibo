@@ -4,6 +4,41 @@ All notable changes to kaibo are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-10-08
+
+### Bug Fixes
+
+- Word the draft-label task so the stub routes it to the draft page
+- Serve the stub corpus through kaibo query's contract
+- Grade the workspace build of kaibo, not an installed release
+- Write the stub root MOC in the format kaibo parses
+- Refuse to grade a stale workspace build
+- Exit 2, not 3, when the domain name is unknown **[breaking]**
+- Tolerate a retired switch saying off, check the endpoint
+
+### Build
+
+- Ship the OTLP exporter in release binaries
+
+### Documentation
+
+- Record the behaviour rerun against working stub tools
+- Move run results to dated records, keep the README a guide
+- Record that zero-shot Laya does not earn a query prompt gate
+- Release binaries export, to a collector kaibo's config names
+- Record which retired switches and endpoints kaibo refuses
+
+### Features
+
+- Stop before branching when the written page has a dangling reference
+- Say when a draft was withheld and name the command that surfaces it
+- Name the OTLP collector with `otlp_endpoint` **[breaking]**
+- Record the agent session that issued each invocation
+
+### Tests
+
+- Hold the exit, environment, error-typing and toolchain invariants in sweeps
+
 ## [0.2.0] - 2026-09-21
 
 ### Bug Fixes
@@ -17,6 +52,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ### Chores
 
 - Tag this repo's telemetry, and stop tracking agent scratch (#62)
+- V0.2.0
 
 ### Documentation
 
