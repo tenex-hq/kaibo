@@ -151,6 +151,7 @@ One line each; the rationale is in the record, and
 - Rust, not Go - [0011](docs/adr/0011-rust-not-go.md)
 - The skills ship embedded in the binary - [0013](docs/adr/0013-ship-the-skills-inside-the-binary.md)
 - The conformance schema is decidable only - [0017](docs/adr/0017-the-conformance-schema-is-decidable-only.md)
+- An unknown `doctrine` domain is exit 2, never a gap; names are matched exactly - [0019](docs/adr/0019-an-unknown-doctrine-domain-is-a-usage-error.md)
 
 ## Principles
 

@@ -55,10 +55,10 @@ fn simple_moc(domain: &str) -> String {
     )
 }
 
-// --- unknown domain: gap, not a broken read ----------------------------
+// --- unknown domain: a usage error, not a gap ---------------------------
 
 #[test]
-fn unknown_domain_exits_3_and_carries_the_available_domain_inventory() {
+fn an_unknown_domain_exits_usage_not_gap_and_names_the_inventory_command() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("clone");
     git_dir(&clone);
@@ -72,7 +72,7 @@ fn unknown_domain_exits_3_and_carries_the_available_domain_inventory() {
 
     let report = DoctrineVerb::new(&config, "bogus-domain").gather(&runner, &clock);
 
-    assert_eq!(report.exit_code(), ExitCode::NoHits);
+    assert_eq!(report.exit_code(), ExitCode::Usage);
     match &report.outcome {
         DoctrineOutcome::UnknownDomain { available_domains } => {
             assert_eq!(
@@ -82,6 +82,60 @@ fn unknown_domain_exits_3_and_carries_the_available_domain_inventory() {
         }
         other => panic!("expected UnknownDomain, got {other:?}"),
     }
+    assert_eq!(
+        report.findings(),
+        vec![Finding {
+            message: "no domain is named \"bogus-domain\"; a wrong name is not a knowledge gap"
+                .to_string(),
+            fix: Some("kaibo domains".to_string()),
+        }]
+    );
+    assert_eq!(
+        report.render_text(&crate::output::RenderOptions::default()),
+        "kaibo doctrine \"bogus-domain\"\n\
+         self-heal: not needed\n\
+         result: unknown domain\n\
+         known domains: kaibo, observability\n\
+         \x20 - no domain is named \"bogus-domain\"; a wrong name is not a knowledge gap -> next: `kaibo domains`"
+    );
+}
+
+/// A topic is what a domain covers, not another name for it: the word an
+/// agent reaches for when entering a kind of work is not resolved, it is
+/// refused with the names to choose from.
+#[test]
+fn a_word_one_domain_lists_as_a_topic_is_not_a_domain_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_moc(
+        &clone,
+        "---\ntype: index\n---\n\n## engineering-practices\n\n- **topics:** testing, test pyramid\n",
+    );
+    write_page(
+        &clone,
+        "engineering-practices/reference/page.md",
+        "status: current\ntitle: Page",
+        "Body.",
+    );
+    let runner = healthy_fixture(&clone, &config);
+    let clock = FixedClock(now());
+
+    let report = DoctrineVerb::new(&config, "testing").gather(&runner, &clock);
+
+    assert_eq!(report.exit_code(), ExitCode::Usage);
+    assert_eq!(
+        report.render_json()["outcome"],
+        serde_json::json!({
+            "state": "unknown_domain",
+            "available_domains": ["engineering-practices"],
+            "findings": [{
+                "message": "no domain is named \"testing\"; a wrong name is not a knowledge gap",
+                "fix": "kaibo domains",
+            }],
+        })
+    );
 }
 
 // --- known domain, no current pages: still a gap -----------------------
