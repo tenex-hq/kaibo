@@ -67,6 +67,13 @@ const DEFAULT_LINT_TAG_PATTERN: &str = "[a-z0-9]+(-[a-z0-9]+)*";
 /// a plugin installed into a path nothing reads.
 const ENV_CLAUDE_CONFIG_DIR: &str = "CLAUDE_CONFIG_DIR";
 
+/// Which agent session issued the invocation, for the trail's `session.id`.
+/// kaibo's own variable first, so a harness other than Claude Code can name
+/// its session; Claude Code exports its id to every shell it spawns, and it
+/// is the same value as `session.id` on Claude Code's own telemetry.
+const ENV_SESSION_ID: &str = "KAIBO_SESSION_ID";
+const ENV_CLAUDE_CODE_SESSION_ID: &str = "CLAUDE_CODE_SESSION_ID";
+
 const DEFAULT_INDEX: &str = "kaibo";
 const DEFAULT_COLLECTION: &str = "knowledge";
 
@@ -322,6 +329,7 @@ pub struct Config {
     retired_otlp_export: Vec<ConfigSource>,
     skills_dir: Option<PathBuf>,
     lint: LintConfig,
+    session_id: Option<String>,
     sources: HashMap<ConfigKey, ConfigSource>,
 }
 
@@ -350,6 +358,10 @@ impl Config {
                     ConfigSource::Default,
                 ),
             };
+
+        let session_id = [ENV_SESSION_ID, ENV_CLAUDE_CODE_SESSION_ID]
+            .into_iter()
+            .find_map(|key| env.var(key).filter(|v| !v.is_empty()));
 
         let (no_log, no_log_source) =
             resolve_bool(env, ENV_NO_LOG, file.as_ref().and_then(|f| f.no_log));
@@ -498,6 +510,7 @@ impl Config {
             retired_otlp_export,
             skills_dir,
             lint,
+            session_id,
             sources,
         })
     }
@@ -585,6 +598,12 @@ impl Config {
     /// only `kaibo install` has to care about.
     pub fn skills_dir(&self) -> Option<&Path> {
         self.skills_dir.as_deref()
+    }
+
+    /// The agent session that issued this invocation, if the environment
+    /// names one. Recorded on the trail, never used to decide anything.
+    pub fn session_id(&self) -> Option<&str> {
+        self.session_id.as_deref()
     }
 
     /// Parameters for the compiled lint rules. See [`LintConfig`] and
@@ -746,6 +765,7 @@ pub(crate) mod testing {
         retired_otlp_export: Vec<ConfigSource>,
         skills_dir: Option<PathBuf>,
         lint: LintConfig,
+        session_id: Option<String>,
         sources: HashMap<ConfigKey, ConfigSource>,
     }
 
@@ -788,6 +808,7 @@ pub(crate) mod testing {
                 otlp_timeout: Duration::from_millis(DEFAULT_OTLP_TIMEOUT_MS),
                 retired_otlp_export: Vec::new(),
                 lint: LintConfig::default(),
+                session_id: None,
                 sources,
             }
         }
@@ -895,6 +916,7 @@ pub(crate) mod testing {
                 retired_otlp_export: self.retired_otlp_export,
                 skills_dir: self.skills_dir,
                 lint: self.lint,
+                session_id: self.session_id,
                 sources: self.sources,
             }
         }

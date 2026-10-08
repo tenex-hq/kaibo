@@ -22,6 +22,7 @@ fn event(question: &str) -> Event {
         Caller {
             build_profile: "release",
             stdout_tty: false,
+            session_id: None,
         },
     )
 }

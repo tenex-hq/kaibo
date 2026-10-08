@@ -250,8 +250,11 @@ fn main() -> ExitCode {
 
 /// Facts the process can see about itself. ADR 0015: never a label someone
 /// declared, because anything settable is settable by a test harness.
-fn observed() -> Caller {
-    Caller::observed(std::io::stdout().is_terminal())
+fn observed(config: &Config) -> Caller {
+    Caller::observed(
+        std::io::stdout().is_terminal(),
+        config.session_id().map(str::to_string),
+    )
 }
 
 /// When the invocation started, in Unix milliseconds, and how long the verb
@@ -366,7 +369,7 @@ fn run_query(config: &Config, cli: &Cli, question: &str, include_drafts: bool) -
     record(
         config,
         cli,
-        &Event::from_query(&report, at, took, observed()),
+        &Event::from_query(&report, at, took, observed(config)),
     );
 
     if cli.json {
@@ -396,7 +399,7 @@ fn run_doctrine(config: &Config, cli: &Cli, domain: &str) -> ExitCode {
     record(
         config,
         cli,
-        &Event::from_doctrine(&report, at, took, observed()),
+        &Event::from_doctrine(&report, at, took, observed(config)),
     );
 
     if cli.json {
