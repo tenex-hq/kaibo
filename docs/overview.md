@@ -135,8 +135,9 @@ or do not happen at all.
 Each invocation appends one wide event to a local paper trail, so corpus gaps
 become a measured property of the system rather than an archaeology exercise.
 The binary writes it, never the agent, so a read path never holds a write
-capability. An optional OTLP exporter ships the same event to any OpenTelemetry
-backend.
+capability. Name a collector with `otlp_endpoint` in `~/.kaibo/config.toml`
+and the same event is also shipped over OTLP to any OpenTelemetry backend;
+without it, nothing leaves the machine.
 
 ### Agent skills in the box
 

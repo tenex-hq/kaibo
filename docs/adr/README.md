@@ -25,8 +25,9 @@ never editing the old one into agreement with today.
 | [0013](0013-ship-the-skills-inside-the-binary.md) | The skills ship embedded in the binary | Accepted | `kaibo install` writes them out, so prose and mechanism cannot version apart |
 | [0014](0014-three-layers-and-where-kaibo-invests.md) | Three layers, and where kaibo invests | Accepted | Retrieval is commodity and stays boring; corpus quality and the consumption trigger are the funded halves, and L3 work waits on measurement |
 | [0015](0015-the-paper-trail-measures-the-corpus-not-the-trigger.md) | The paper trail measures the corpus, not the trigger | Accepted, sink superseded by 0016 | A tool cannot record its own non-invocation, so the trail answers which gap recurs; activation is the eval suite's job |
-| [0016](0016-one-wide-event-per-invocation-over-otlp.md) | One wide event per invocation, over OTLP | Accepted | Wide OTel events instead of a bespoke record; JSONL always, OTLP behind a non-default feature and an explicit config key |
+| [0016](0016-one-wide-event-per-invocation-over-otlp.md) | One wide event per invocation, over OTLP | Accepted, export gating amended by 0018 | Wide OTel events instead of a bespoke record; JSONL always, OTLP behind a non-default feature and an explicit config key |
 | [0017](0017-the-conformance-schema-is-decidable-only.md) | The conformance schema is decidable only | Accepted, supersedes epic decision 10 | The rubric bought no recall on two model tiers at 2.6-3.3x; judgment is out of the schema, the gate and the hook |
+| [0018](0018-release-binaries-export-to-a-named-collector.md) | Release binaries export, to a collector kaibo's config names | Accepted, amends 0016 | Release builds carry the exporter; `otlp_endpoint` is both switch and target, and ambient `OTEL_*` never steers it |
 | [0019](0019-an-unknown-doctrine-domain-is-a-usage-error.md) | An unknown doctrine domain is a usage error, not a gap | Accepted | Exact names only, exit 2 naming the real domains and `kaibo domains`; topic matching rejected, the cause was the skill's wording |
 
 [parked.md](../decisions/parked.md) is the other half of the record: what was deliberately

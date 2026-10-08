@@ -6,6 +6,10 @@ status: accepted
 
 **Decided** 2026-09-19
 
+Export gating amended by
+[0018](0018-release-binaries-export-to-a-named-collector.md): release binaries
+carry the exporter, and a collector URL in kaibo's own config is the one gate.
+
 Supersedes points 4 and 5 of
 [0015](0015-the-paper-trail-measures-the-corpus-not-the-trigger.md), which
 chose a bespoke local record with no transport. The central finding of 0015

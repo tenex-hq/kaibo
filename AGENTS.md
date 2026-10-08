@@ -29,11 +29,11 @@ ship embedded in the binary.
   and tests with the `otlp` feature on; it builds roughly three times the
   dependency closure, so it is a separate recipe. Together the two mirror
   [CI](.github/workflows/ci.yml).
-- The `otlp` feature adds the OTLP exporter and nothing else. It is off by
-  default because enabling it triples the dependency count
-  ([0016](docs/adr/0016-one-wide-event-per-invocation-over-otlp.md)), and
+- The `otlp` feature adds the OTLP exporter and nothing else. Release builds
+  enable it through `dist-workspace.toml`; a plain `cargo build` does not, and
   `just deps-stay-lean` fails if the default build ever grows an async or
-  HTTP dependency.
+  HTTP dependency. Compiled in, it sends nothing until `otlp_endpoint` names a
+  collector ([0018](docs/adr/0018-release-binaries-export-to-a-named-collector.md)).
 - The toolchain is pinned in [`rust-toolchain.toml`](rust-toolchain.toml) and CI
   installs the same pin. A `Cargo.lock` that has drifted from `Cargo.toml` is a
   CI failure, so commit the lockfile with any dependency change.
@@ -151,6 +151,7 @@ One line each; the rationale is in the record, and
 - Rust, not Go - [0011](docs/adr/0011-rust-not-go.md)
 - The skills ship embedded in the binary - [0013](docs/adr/0013-ship-the-skills-inside-the-binary.md)
 - The conformance schema is decidable only - [0017](docs/adr/0017-the-conformance-schema-is-decidable-only.md)
+- One wide OTel event per invocation; it leaves the machine only for the collector `otlp_endpoint` names - [0016](docs/adr/0016-one-wide-event-per-invocation-over-otlp.md), [0018](docs/adr/0018-release-binaries-export-to-a-named-collector.md)
 - An unknown `doctrine` domain is exit 2, never a gap; names are matched exactly - [0019](docs/adr/0019-an-unknown-doctrine-domain-is-a-usage-error.md)
 
 ## Principles
