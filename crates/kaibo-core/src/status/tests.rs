@@ -797,3 +797,108 @@ fn the_json_report_carries_the_installed_version_and_what_drifted() {
     assert_eq!(json["skills"]["missing"], serde_json::json!([]));
     assert_eq!(json["skills"]["root"], layout.root().display().to_string());
 }
+
+// --- where the trail is exported -----------------------------------------
+
+/// A healthy report for a config naming `endpoint` from the file, with the
+/// build fact pinned rather than taken from however this test binary was
+/// compiled.
+fn export_report(clone: &Path, endpoint: Option<&str>, exporter_built: bool) -> StatusReport {
+    let builder =
+        ConfigBuilder::new(clone).skills_dir(clone.join("home").join(".claude").join("skills"));
+    let config = match endpoint {
+        Some(url) => builder.otlp_endpoint(url, ConfigSource::File),
+        None => builder,
+    }
+    .build();
+    InstallVerb::new(&config, CLI_VERSION, InstallMode::Install).apply();
+    let mut report = skills_report(clone, &config, CLI_VERSION);
+    report.exporter_built = exporter_built;
+    report
+}
+
+#[test]
+fn status_names_the_collector_the_trail_is_exported_to_and_where_that_came_from() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+
+    let report = export_report(tmp.path(), Some("http://localhost:4320"), true);
+
+    let text = report.render_text(&RenderOptions::default());
+    assert!(
+        text.lines()
+            .any(|line| line == "export: http://localhost:4320 (file)"),
+        "{text}"
+    );
+    assert_eq!(report.findings(), Vec::new());
+    let json = report.render_json();
+    assert_eq!(
+        json["config"]["otlp_endpoint"],
+        serde_json::json!({"value": "http://localhost:4320", "source": "file"})
+    );
+    assert_eq!(json["exporter_built"], true);
+}
+
+#[test]
+fn status_says_export_is_off_when_no_collector_is_named() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+
+    let report = export_report(tmp.path(), None, false);
+
+    let text = report.render_text(&RenderOptions::default());
+    assert!(
+        text.lines().any(|line| line == "export: off (default)"),
+        "{text}"
+    );
+    assert_eq!(report.findings(), Vec::new());
+    assert_eq!(
+        report.render_json()["config"]["otlp_endpoint"],
+        serde_json::json!({"value": null, "source": "default"})
+    );
+}
+
+#[test]
+fn a_collector_named_for_a_binary_that_cannot_export_is_a_finding_with_the_fix() {
+    // Without the feature the key is read and nothing is sent. Saying so is
+    // the difference between a quiet collector and a known one.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+
+    let report = export_report(tmp.path(), Some("http://localhost:4320"), false);
+
+    assert_eq!(
+        only_finding(&report),
+        Finding {
+            message: "otlp_endpoint names http://localhost:4320, but this binary was built \
+                      without the otlp feature, so nothing is exported"
+                .to_string(),
+            fix: Some(
+                "brew upgrade kaibo, or rebuild with `cargo build --release -p kaibo \
+                 --features otlp`"
+                    .to_string()
+            ),
+        }
+    );
+    let text = report.render_text(&RenderOptions::default());
+    assert!(
+        text.lines()
+            .any(|line| line == "export: http://localhost:4320 (file), not built into this binary"),
+        "{text}"
+    );
+    assert_eq!(report.render_json()["exporter_built"], false);
+}
+
+#[test]
+fn status_reports_whether_this_build_carries_the_exporter() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let config = healthy_config(tmp.path());
+
+    let report = skills_report(tmp.path(), &config, CLI_VERSION);
+
+    #[cfg(feature = "otlp")]
+    assert!(report.exporter_built);
+    #[cfg(not(feature = "otlp"))]
+    assert!(!report.exporter_built);
+}

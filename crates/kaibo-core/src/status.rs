@@ -47,6 +47,7 @@ pub struct ConfigSummary {
     pub index: ConfigValue<String>,
     pub collection: ConfigValue<String>,
     pub api_url: ConfigValue<Option<String>>,
+    pub otlp_endpoint: ConfigValue<Option<String>>,
     pub lint: LintConfigSummary,
 }
 
@@ -134,6 +135,9 @@ pub struct StatusReport {
     /// binary carries is drift worth naming.
     pub skills_root: Option<PathBuf>,
     pub skills: InstalledSkills,
+    /// Whether this binary was built with the `otlp` feature. A collector
+    /// named in config is only reached when it was.
+    pub exporter_built: bool,
 }
 
 impl StatusReport {
@@ -217,6 +221,22 @@ impl StatusReport {
             });
         }
         findings.extend(self.skill_findings());
+
+        if let Some(endpoint) = &self.config.otlp_endpoint.value
+            && !self.exporter_built
+        {
+            findings.push(Finding {
+                message: format!(
+                    "otlp_endpoint names {endpoint}, but this binary was built without \
+                     the otlp feature, so nothing is exported"
+                ),
+                fix: Some(
+                    "brew upgrade kaibo, or rebuild with `cargo build --release -p kaibo \
+                     --features otlp`"
+                        .to_string(),
+                ),
+            });
+        }
 
         if self.isolation == IsolationStatus::NameCollisionInDefaultIndex {
             findings.push(Finding {
@@ -378,6 +398,10 @@ pub(crate) fn config_summary(config: &Config) -> ConfigSummary {
             value: config.api_url().map(str::to_string),
             source: config.source(ConfigKey::ApiUrl),
         },
+        otlp_endpoint: ConfigValue {
+            value: config.otlp_endpoint().map(str::to_string),
+            source: config.source(ConfigKey::OtlpEndpoint),
+        },
         lint: lint_config_summary(config.lint(), config),
     }
 }
@@ -485,6 +509,7 @@ fn gather(
         isolation,
         skills_root: PluginLayout::new(config).map(|layout| layout.root().to_path_buf()),
         skills: install::inspect(config),
+        exporter_built: cfg!(feature = "otlp"),
     }
 }
 
@@ -678,6 +703,11 @@ impl Render for StatusReport {
             render_backend(&self.backend),
         ));
 
+        lines.push(format!(
+            "export: {}",
+            render_export(&self.config.otlp_endpoint, self.exporter_built)
+        ));
+
         let lint = &self.config.lint;
         lines.push(format!(
             "lint: disabled_rules={:?} ({}), required_frontmatter_keys={:?} ({}), \
@@ -800,6 +830,7 @@ impl Render for StatusReport {
                 "index": {"value": self.config.index.value, "source": self.config.index.source.to_string()},
                 "collection": {"value": self.config.collection.value, "source": self.config.collection.source.to_string()},
                 "api_url": {"value": self.config.api_url.value, "source": self.config.api_url.source.to_string()},
+                "otlp_endpoint": {"value": self.config.otlp_endpoint.value, "source": self.config.otlp_endpoint.source.to_string()},
                 "lint": {
                     "disabled_rules": {"value": self.config.lint.disabled_rules.value, "source": self.config.lint.disabled_rules.source.to_string()},
                     "required_frontmatter_keys": {"value": self.config.lint.required_frontmatter_keys.value, "source": self.config.lint.required_frontmatter_keys.source.to_string()},
@@ -808,6 +839,7 @@ impl Render for StatusReport {
                     "tag_pattern": {"value": self.config.lint.tag_pattern.value, "source": self.config.lint.tag_pattern.source.to_string()},
                 },
             },
+            "exporter_built": self.exporter_built,
             "backend": match &self.backend {
                 BackendMode::Local => serde_json::json!({"mode": "local"}),
                 BackendMode::Api(url) => serde_json::json!({"mode": "api", "url": url}),
@@ -870,6 +902,14 @@ impl Render for StatusReport {
             "findings": self.findings().iter().map(|f| serde_json::json!({"message": f.message, "fix": f.fix})).collect::<Vec<_>>(),
             "exit_code": self.exit_code().code(),
         })
+    }
+}
+
+fn render_export(endpoint: &ConfigValue<Option<String>>, exporter_built: bool) -> String {
+    match (&endpoint.value, exporter_built) {
+        (None, _) => format!("off ({})", endpoint.source),
+        (Some(url), true) => format!("{url} ({})", endpoint.source),
+        (Some(url), false) => format!("{url} ({}), not built into this binary", endpoint.source),
     }
 }
 

@@ -134,7 +134,7 @@ fn a_failed_export_names_the_switch_that_stops_it_trying() {
 
     assert!(detail.contains("connection refused"));
     assert!(
-        detail.contains("otlp_export = false"),
+        detail.contains("removing `otlp_endpoint` from ~/.kaibo/config.toml"),
         "the warning has to name the way out: {detail}"
     );
     assert!(

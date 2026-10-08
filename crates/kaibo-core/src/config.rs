@@ -27,7 +27,8 @@ const ENV_INDEX: &str = "KAIBO_INDEX";
 const ENV_COLLECTION: &str = "KAIBO_COLLECTION";
 const ENV_API_URL: &str = "KAIBO_API_URL";
 const ENV_NO_LOG: &str = "KAIBO_NO_LOG";
-const ENV_OTLP_EXPORT: &str = "KAIBO_OTLP_EXPORT";
+const ENV_OTLP_ENDPOINT: &str = "KAIBO_OTLP_ENDPOINT";
+const ENV_RETIRED_OTLP_EXPORT: &str = "KAIBO_OTLP_EXPORT";
 
 /// The OTLP export timeout, read from the standard variable but defaulted
 /// low. The specification's own default is 10 seconds, which is the right
@@ -36,6 +37,10 @@ const ENV_OTLP_EXPORT: &str = "KAIBO_OTLP_EXPORT";
 /// `kaibo query`. An explicit `OTEL_EXPORTER_OTLP_TIMEOUT` still wins.
 const ENV_OTEL_TIMEOUT: &str = "OTEL_EXPORTER_OTLP_TIMEOUT";
 const DEFAULT_OTLP_TIMEOUT_MS: u64 = 2_000;
+
+/// The OTLP/HTTP logs signal path, appended to the configured base URL the
+/// way the specification appends it to `OTEL_EXPORTER_OTLP_ENDPOINT`.
+const OTLP_LOGS_PATH: &str = "v1/logs";
 
 /// Where the paper trail is appended, under the `~/.kaibo/` workspace
 /// ADR 0005 fixes. Not configurable: the trail is written by the binary for
@@ -93,7 +98,7 @@ pub enum ConfigKey {
     Collection,
     ApiUrl,
     NoLog,
-    OtlpExport,
+    OtlpEndpoint,
     SkillsDir,
     LintDisabledRules,
     LintRequiredFrontmatterKeys,
@@ -127,6 +132,22 @@ pub enum ConfigError {
         #[source]
         source: Box<toml::de::Error>,
     },
+
+    // Silently ignoring a retired switch would leave someone believing they
+    // export while nothing leaves the machine. ADR 0018.
+    #[error(
+        "`otlp_export` in {path} is no longer read: export is switched on by naming the \
+         collector. Replace it with `otlp_endpoint = \"http://localhost:4318\"` (your \
+         collector's OTLP/HTTP base URL), or delete the line to keep export off"
+    )]
+    RetiredOtlpExportKey { path: PathBuf },
+
+    #[error(
+        "KAIBO_OTLP_EXPORT is no longer read: export is switched on by naming the \
+         collector. Use `export KAIBO_OTLP_ENDPOINT=http://localhost:4318` (your \
+         collector's OTLP/HTTP base URL), or `unset KAIBO_OTLP_EXPORT` to keep export off"
+    )]
+    RetiredOtlpExportEnv,
 }
 
 impl ExitCoded for ConfigError {
@@ -147,7 +168,9 @@ struct ConfigFile {
     collection: Option<String>,
     api_url: Option<String>,
     no_log: Option<bool>,
-    otlp_export: Option<bool>,
+    otlp_endpoint: Option<String>,
+    /// Read only so that its presence can be refused, never for its value.
+    otlp_export: Option<toml::Value>,
     lint: Option<LintConfigFile>,
 }
 
@@ -243,15 +266,15 @@ impl Environment for ProcessEnvironment {
     }
 }
 
-/// Where the wide event goes after the file, once export is switched on.
+/// Where the wide event goes after the file, once a collector is named.
 ///
-/// Carries no endpoint on purpose. Endpoint resolution is the OTel SDK's,
-/// straight from `OTEL_EXPORTER_OTLP_ENDPOINT` and its signal-specific
-/// sibling, so kaibo does not reimplement a spec it would only get subtly
-/// wrong. What kaibo decides is *whether* to build an exporter at all, and
-/// how long it may block.
+/// `logs_endpoint` is the full URL the record is POSTed to. The exporter is
+/// handed it explicitly, which in the OTel SDK outranks every
+/// `OTEL_EXPORTER_OTLP_*ENDPOINT` variable: the collector kaibo's own config
+/// names is the one that receives the event.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OtlpTarget {
+    pub logs_endpoint: String,
     pub timeout: Duration,
 }
 
@@ -266,7 +289,7 @@ pub struct Config {
     api_url: Option<String>,
     no_log: bool,
     trail: Option<PathBuf>,
-    otlp_export: bool,
+    otlp_endpoint: Option<String>,
     otlp_timeout: Duration,
     skills_dir: Option<PathBuf>,
     lint: LintConfig,
@@ -309,10 +332,16 @@ impl Config {
         // have to survive.
         let trail = home.as_ref().map(|h| h.join(".kaibo").join(TRAIL_FILE));
 
-        let (otlp_export, otlp_export_source) = resolve_bool(
+        if env
+            .var(ENV_RETIRED_OTLP_EXPORT)
+            .is_some_and(|v| !v.is_empty())
+        {
+            return Err(ConfigError::RetiredOtlpExportEnv);
+        }
+        let (otlp_endpoint, otlp_endpoint_source) = resolve_optional(
             env,
-            ENV_OTLP_EXPORT,
-            file.as_ref().and_then(|f| f.otlp_export),
+            ENV_OTLP_ENDPOINT,
+            file.as_ref().and_then(|f| f.otlp_endpoint.clone()),
         );
         let otlp_timeout = Duration::from_millis(
             env.var(ENV_OTEL_TIMEOUT)
@@ -407,7 +436,7 @@ impl Config {
         sources.insert(ConfigKey::Collection, collection_source);
         sources.insert(ConfigKey::ApiUrl, api_url_source);
         sources.insert(ConfigKey::NoLog, no_log_source);
-        sources.insert(ConfigKey::OtlpExport, otlp_export_source);
+        sources.insert(ConfigKey::OtlpEndpoint, otlp_endpoint_source);
         sources.insert(ConfigKey::SkillsDir, skills_dir_source);
         sources.insert(ConfigKey::LintDisabledRules, disabled_rules_source);
         sources.insert(
@@ -429,7 +458,7 @@ impl Config {
             api_url,
             no_log,
             trail,
-            otlp_export,
+            otlp_endpoint,
             otlp_timeout,
             skills_dir,
             lint,
@@ -481,19 +510,23 @@ impl Config {
     /// Where to push the same event after the JSONL line is written, or
     /// `None` when nothing should leave the machine.
     ///
-    /// The gate is kaibo's own key and nothing else. `OTEL_EXPORTER_OTLP_*`
-    /// is honoured for conformance once export is on, but an endpoint in the
-    /// ambient environment must never by itself start sending: that variable
-    /// is commonly exported machine-wide, and the event carries the question
-    /// someone asked. Inheriting a network target ambiently is exactly what
-    /// resolving config in one place exists to prevent.
+    /// The gate is kaibo's own `otlp_endpoint` and nothing else. An endpoint
+    /// in the ambient environment must never by itself start sending: that
+    /// variable is commonly exported machine-wide, and the event carries the
+    /// question someone asked. Inheriting a network target ambiently is
+    /// exactly what resolving config in one place exists to prevent.
     pub fn otlp(&self) -> Option<OtlpTarget> {
-        if !self.otlp_export {
-            return None;
-        }
+        let base = self.otlp_endpoint.as_deref()?;
         Some(OtlpTarget {
+            logs_endpoint: format!("{}/{OTLP_LOGS_PATH}", base.trim_end_matches('/')),
             timeout: self.otlp_timeout,
         })
+    }
+
+    /// The collector's OTLP/HTTP base URL as configured, before the signal
+    /// path is appended. `None` means export is off.
+    pub fn otlp_endpoint(&self) -> Option<&str> {
+        self.otlp_endpoint.as_deref()
     }
 
     /// The directory Claude Code discovers plugins in:
@@ -533,10 +566,13 @@ fn load_config_file(home: Option<&Path>) -> Result<Option<ConfigFile>, ConfigErr
         path: path.clone(),
         source,
     })?;
-    let file = toml::from_str(&contents).map_err(|source| ConfigError::ParseFile {
-        path,
+    let file: ConfigFile = toml::from_str(&contents).map_err(|source| ConfigError::ParseFile {
+        path: path.clone(),
         source: Box::new(source),
     })?;
+    if file.otlp_export.is_some() {
+        return Err(ConfigError::RetiredOtlpExportKey { path });
+    }
     Ok(Some(file))
 }
 
@@ -625,7 +661,7 @@ pub(crate) mod testing {
         api_url: Option<String>,
         no_log: bool,
         trail: Option<PathBuf>,
-        otlp_export: bool,
+        otlp_endpoint: Option<String>,
         otlp_timeout: Duration,
         skills_dir: Option<PathBuf>,
         lint: LintConfig,
@@ -642,7 +678,7 @@ pub(crate) mod testing {
                 ConfigKey::Collection,
                 ConfigKey::ApiUrl,
                 ConfigKey::NoLog,
-                ConfigKey::OtlpExport,
+                ConfigKey::OtlpEndpoint,
                 ConfigKey::SkillsDir,
                 ConfigKey::LintDisabledRules,
                 ConfigKey::LintRequiredFrontmatterKeys,
@@ -667,7 +703,7 @@ pub(crate) mod testing {
                 // would be writing during every other module's tests.
                 no_log: false,
                 trail: None,
-                otlp_export: false,
+                otlp_endpoint: None,
                 otlp_timeout: Duration::from_millis(DEFAULT_OTLP_TIMEOUT_MS),
                 lint: LintConfig::default(),
                 sources,
@@ -701,6 +737,12 @@ pub(crate) mod testing {
         pub(crate) fn api_url(mut self, value: &str, source: ConfigSource) -> Self {
             self.api_url = Some(value.to_string());
             self.sources.insert(ConfigKey::ApiUrl, source);
+            self
+        }
+
+        pub(crate) fn otlp_endpoint(mut self, value: &str, source: ConfigSource) -> Self {
+            self.otlp_endpoint = Some(value.to_string());
+            self.sources.insert(ConfigKey::OtlpEndpoint, source);
             self
         }
 
@@ -761,7 +803,7 @@ pub(crate) mod testing {
                 api_url: self.api_url,
                 no_log: self.no_log,
                 trail: self.trail,
-                otlp_export: self.otlp_export,
+                otlp_endpoint: self.otlp_endpoint,
                 otlp_timeout: self.otlp_timeout,
                 skills_dir: self.skills_dir,
                 lint: self.lint,

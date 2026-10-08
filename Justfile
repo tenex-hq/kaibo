@@ -96,9 +96,9 @@ check-otlp:
     cargo clippy --workspace --all-targets --features kaibo/otlp --locked -- -D warnings
     cargo test --workspace --features kaibo/otlp --locked
 
-# The default build must pull in no part of the async and HTTP stack: the
-# whole point of making OTLP export a feature is that not enabling it costs
-# nothing. Names, not a package count, so a routine dependency bump does not
+# The default build must pull in no part of the async and HTTP stack: release
+# binaries opt into the `otlp` feature through dist-workspace.toml, and a
+# plain `cargo build` should not pay for it. Names, not a package count, so a routine dependency bump does not
 # fail a check about something else entirely.
 deps-stay-lean:
     #!/usr/bin/env bash
