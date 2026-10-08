@@ -57,11 +57,19 @@ starts export, as 0016 requires. The export timeout keeps kaibo's two-second
 default and `OTEL_EXPORTER_OTLP_TIMEOUT`; headers still come from the standard
 `OTEL_EXPORTER_OTLP_HEADERS`.
 
-**The retired switch is refused, not ignored.** A config file carrying
-`otlp_export`, or a non-empty `KAIBO_OTLP_EXPORT`, stops resolution with an
-error naming the replacement. Ignoring it would leave someone believing they
-export while nothing leaves the machine, which is the failure this record
-exists to end.
+**The retired switch is refused when it says "on", not ignored.**
+`otlp_export` in the config file set to anything but `false`, or a
+`KAIBO_OTLP_EXPORT` that is not an explicit no (`0`, `false`, `no`, `off`),
+stops resolution with an error naming the replacement. Ignoring it would leave
+someone believing they export while nothing leaves the machine, which is the
+failure this record exists to end. An explicit "off" cannot cause that belief,
+so it is accepted as a no-op and `kaibo status` lists it as a key to remove.
+
+**An endpoint the exporter cannot use builds no exporter.** `otlp_endpoint`
+must be a plain `http://` URL with a host and, optionally, a numeric port. Any
+other scheme, `https://` included, or a malformed value leaves export off
+rather than building an exporter that only looks like it works. The verbs are
+unaffected and `kaibo status` names the reason and the fix.
 
 **`kaibo status` reports the target and its source**, and names a configured
 endpoint on a binary built without the feature as a finding with its fix.
@@ -93,3 +101,10 @@ endpoint on a binary built without the feature as a finding with its fix.
   decided must not steer where the event goes.
 - **Silently ignoring `otlp_export`.** Quietly turning export off for anyone
   who had it on is worse than one error that says what to write instead.
+- **Refusing `otlp_export = false` too.** It stops every verb over a line
+  that already says what kaibo now does by default. A status finding is
+  enough.
+- **Failing resolution on an unusable `otlp_endpoint`.** The endpoint only
+  feeds the second sink, and an unreachable collector already must not change
+  a verb's result. A bad value is the same kind of fault, reported the same
+  quiet way.
