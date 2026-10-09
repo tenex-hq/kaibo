@@ -4,6 +4,17 @@ All notable changes to kaibo are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-10-09
+
+### Bug Fixes
+
+- Check the page before it reaches the clone
+- Refuse to create over a page that already exists
+
+### Refactor
+
+- Stop apply at the opened PR
+
 ## [0.3.0] - 2026-10-08
 
 ### Bug Fixes
@@ -19,6 +30,10 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ### Build
 
 - Ship the OTLP exporter in release binaries
+
+### Chores
+
+- V0.3.0
 
 ### Documentation
 
