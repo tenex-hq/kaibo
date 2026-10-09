@@ -9,14 +9,19 @@
 
 ## In one line
 
-**Your team's hard-won knowledge, as markdown in a git repo, that coding agents
-can query with citations and contribute to by pull request.**
+**Your team's engineering doctrine, kept in one reviewed place, that coding
+agents load when they start a kind of work, cite when they answer, and extend by
+pull request.**
 
 ## The problem
 
-The knowledge that decides whether work goes well is mostly not written down. It
-is in a handful of people's heads, in closed Slack threads, and behind their
-calendars. Coding agents cannot reach any of it, so they answer from general
+Every team has a way it builds things: how tests are tiered, what a base image is
+pinned to, what a pull request has to show. The part that decides whether work
+goes well is mostly not written down. It is in a handful of people's heads, in
+closed Slack threads, and behind their calendars. What does get written down is
+pasted into each repo's `AGENTS.md`, and the copies drift.
+
+Coding agents see none of the agreed version, so they answer from general
 training and from whatever repo happens to be open. They produce something
 plausible, locally consistent, and quietly at odds with how the organisation
 decided to do things.
@@ -65,7 +70,7 @@ what keeps the corpus usable when the AI layer is unavailable.
 | | |
 |---|---|
 | **`kaibo contribute plan`** | Surface placement candidates for a piece of knowledge: which domain, which existing page to append to, or a new page. Read-only; it never writes and never decides for you. |
-| **`kaibo contribute apply`** | Lint-gate the page and check its references with reflock when installed, then write it, branch, commit, push (directly or via a verified fork), and open the PR; CI and review happen there. One command, the whole round trip. |
+| **`kaibo contribute apply`** | Lint-gate the page and check its references with reflock when installed, refuse to create over an existing page, then write it, branch, commit, push (directly or via a verified fork), and open the PR. It stops at the opened PR; CI and review happen there. |
 
 Contribution needs read access to the knowledge repo, not write access. The
 fork route is the default for contributors who do not have the commit bit.
@@ -99,6 +104,7 @@ Exit codes make that state machine-readable:
 | code | meaning |
 |---|---|
 | `0` | answered |
+| `1` | internal error |
 | `2` | usage error |
 | `3` | **gap** - the corpus has no position on this |
 | `4` | corpus unsynced, or stale past the threshold |
@@ -197,7 +203,10 @@ a different product.
 
 ## What it needs
 
+- `kaibo` itself: `brew install tenex-hq/tap/kaibo`, or the shell installer
+  on the [releases page](https://github.com/tenex-hq/kaibo/releases/latest).
 - A git repository for the corpus, public or private.
+  [Getting Started](getting-started.md#2-start-a-knowledge-repo) shows the shape.
 - [`gh`](https://cli.github.com/), authenticated with read access to it.
 - [`qmd`](https://github.com/tobi/qmd), at the version the
   [contract](qmd-contract.md) is verified against.
@@ -216,6 +225,8 @@ agent in one command.
 
 ## Status
 
-In development, no release yet. Follow along in the
-[decision records](adr/README.md), which also record what was deliberately not
-built and why.
+Early release, used internally. Releases are tagged on GitHub and published to
+the Homebrew tap; breaking changes are marked in the [changelog](../CHANGELOG.md).
+The [decision records](adr/README.md) say why things are the way they are, and
+[parked.md](decisions/parked.md) what was deliberately not built and what would
+change that.
