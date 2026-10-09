@@ -961,7 +961,7 @@ fn contribute_apply_stops_on_a_dirty_clone_without_branching_or_writing() {
 }
 
 #[test]
-fn contribute_apply_stops_on_a_lint_failure_and_leaves_the_write_in_place() {
+fn contribute_apply_stops_on_a_lint_failure_before_the_page_reaches_the_clone() {
     let harness = Harness::new();
     support::write_minimal_corpus(&harness.clone_dir());
 
@@ -984,9 +984,17 @@ fn contribute_apply_stops_on_a_lint_failure_and_leaves_the_write_in_place() {
     );
 
     assert_eq!(output.status.code(), Some(2));
-    let written = std::fs::read_to_string(harness.clone_dir().join("docs/how-to/a-new-page.md"))
-        .expect("the write is left in place, stop-and-report never discards it");
-    assert!(written.contains("NotKebabCase"));
+    assert!(
+        !harness.clone_dir().join("docs/how-to").exists(),
+        "a stopped run left its page behind for the re-run to trip over"
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(
+            "-> next: `fix the reported violation(s) in what you pass, then re-run `kaibo contribute apply``"
+        ),
+        "{stdout}"
+    );
     assert!(
         harness.calls().iter().all(|c| !c.contains("checkout -b")),
         "a lint failure must stop before any branch is created: {:?}",

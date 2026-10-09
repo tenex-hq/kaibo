@@ -95,8 +95,9 @@ kaibo contribute apply \
   --tag example
 ```
 
-`apply` writes the page, lints it, branches, commits, pushes (directly or via
-a verified fork), opens a PR against the configured repo, and watches CI.
+`apply` lints the page and checks its references, then writes it, branches,
+commits, pushes (directly or via a verified fork), opens a PR against the
+configured repo, and watches CI.
 
 ## Keeping fresh
 

@@ -4,13 +4,14 @@
 //! calling agent. `plan` surfaces placement candidates and never mutates
 //! anything or prompts interactively - see [`ContributePlanVerb`]. `apply`
 //! takes an already-resolved placement and does the git/gh ceremony:
-//! write, lint-gate, reference-check, branch, commit, push (direct or via a
+//! lint-gate, reference-check, write, branch, commit, push (direct or via a
 //! verified fork), open a PR, and watch CI - see [`ContributeApplyVerb`].
 //!
-//! **Stop and report, never discard**: a dirty clone, a branch-name
-//! collision, a lint failure, or a dangling reference all stop `apply` before it
-//! mutates the clone's branch state further. Nothing here ever runs `git
-//! reset --hard`, `git checkout -f`, or deletes the clone.
+//! **Stop and report, never discard**: a dirty clone, a lint failure, a
+//! dangling reference, or a branch-name collision all stop `apply` before
+//! the page reaches the clone, so a stop leaves nothing behind to discard.
+//! Nothing here ever runs `git reset --hard`, `git checkout -f`, or deletes
+//! the clone.
 //!
 //! **The write target is verified, not assumed.** The push route comes
 //! from the caller's own permission on `config.repo()`; when that caller
@@ -36,7 +37,7 @@ use crate::config::Config;
 use crate::error::ExitCode;
 use crate::explain::{Explainable, PlannedCommand};
 use crate::frontmatter::{self, Date, Document, Frontmatter, Status};
-use crate::lint::{LintOutcome, LintVerb, Violation};
+use crate::lint::{self, Violation};
 use crate::moc::{self, DomainSection};
 use crate::normative;
 use crate::output::{Render, RenderOptions};
@@ -243,29 +244,29 @@ fn gh_pr_checks(repo: &str, pr_url_or_number: &str) -> PlannedCommand {
     )
 }
 
-/// `reflock check` on the one page `apply` wrote, addressed by `--root`
-/// because a [`PlannedCommand`] carries no working directory. reflock only
-/// reads: it lists files through `git ls-files` and `git check-ignore`,
-/// neither of which runs a hook, and treats `.reflockignore` as data.
-fn reflock_check(clone_path: &Path, repo_relative_path: &str) -> PlannedCommand {
+/// `reflock check` on the one page `apply` is about to write, placed in the
+/// tree under `root` and addressed by `--root` because a [`PlannedCommand`]
+/// carries no working directory. reflock resolves links only against files
+/// inside the tree it indexes, so the page has to sit in a copy of the
+/// corpus rather than in a lone temp file. reflock only reads: it lists files
+/// through `git ls-files` and `git check-ignore`, neither of which runs a
+/// hook, and treats `.reflockignore` as data.
+fn reflock_check(root: &Path, repo_relative_path: &str) -> PlannedCommand {
     PlannedCommand::new(
         "reflock",
         [
             "--root".to_string(),
-            clone_path.to_string_lossy().into_owned(),
+            root.to_string_lossy().into_owned(),
             "check".to_string(),
             "--format".to_string(),
             "json".to_string(),
-            clone_path
-                .join(repo_relative_path)
-                .to_string_lossy()
-                .into_owned(),
+            root.join(repo_relative_path).to_string_lossy().into_owned(),
         ],
     )
 }
 
 /// Reduce reflock's JSON report to the one question `apply` asks: does the
-/// written page reference something that does not exist? A report kaibo
+/// page reference something that does not exist? A report kaibo
 /// cannot read is a stop, not a pass, because the check exists to withhold.
 /// Findings other than `DANGLING` are about targets that changed elsewhere
 /// and are left to the knowledge repo's CI.
@@ -604,7 +605,7 @@ pub struct PushRoute {
     pub owner: Option<String>,
 }
 
-/// A reference on the written page that resolves to nothing, as reflock
+/// A reference on the page that resolves to nothing, as reflock
 /// reported it. `target` and `detail` are corpus text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DanglingReference {
@@ -613,7 +614,7 @@ pub struct DanglingReference {
     pub detail: String,
 }
 
-/// Whether the written page's references were checked before the PR opened.
+/// Whether the page's references were checked before the PR opened.
 /// reflock is optional: without it the run goes on, because the knowledge
 /// repo's CI is the gate that holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -642,6 +643,7 @@ pub enum ApplyStop {
     AppendTargetUnreadable { path: String },
     WriteFailed { detail: String },
     LintFailed { violations: Vec<Violation> },
+    ScratchCheckoutFailed { detail: String },
     DanglingReferences { references: Vec<DanglingReference> },
     ReferencesUncheckable { detail: String },
     BranchCollision { branch: String },
@@ -668,7 +670,7 @@ impl ApplyStop {
         }
     }
 
-    fn finding(&self, clone_display: &str, path: &str) -> (String, Option<String>) {
+    fn finding(&self, clone_display: &str) -> (String, Option<String>) {
         match self {
             ApplyStop::RepoNotConfigured => (
                 "no corpus repo configured".to_string(),
@@ -703,15 +705,21 @@ impl ApplyStop {
                 None,
             ),
             ApplyStop::LintFailed { violations } => (
-                format!("`kaibo lint` found {} violation(s) on the written page", violations.len()),
+                format!("`kaibo lint` found {} violation(s) on the page", violations.len()),
+                Some("fix the reported violation(s) in what you pass, then re-run `kaibo contribute apply`".to_string()),
+            ),
+            ApplyStop::ScratchCheckoutFailed { detail } => (
+                format!(
+                    "could not make a scratch checkout of {clone_display} to check the page's references in: {}",
+                    trust::strip_control_chars(detail)
+                ),
                 Some(format!(
-                    "fix the reported violation(s) in {clone_display}, or revert the write with \
-                     `git -C {clone_display} checkout -- <path>`, then re-run `kaibo contribute apply`"
+                    "check that `git clone --shared {clone_display} <dir>` works, then re-run `kaibo contribute apply`"
                 )),
             ),
             ApplyStop::DanglingReferences { references } => (
                 format!(
-                    "reflock found {} dangling reference(s) on the written page: {}",
+                    "reflock found {} dangling reference(s) on the page: {}",
                     references.len(),
                     references
                         .iter()
@@ -724,10 +732,7 @@ impl ApplyStop {
                         .collect::<Vec<_>>()
                         .join("; ")
                 ),
-                Some(format!(
-                    "fix the reference(s) in the body you pass, discard the unfinished write at \
-                     {clone_display}/{path}, then re-run `kaibo contribute apply`"
-                )),
+                Some("fix the reference(s) in the body you pass, then re-run `kaibo contribute apply`".to_string()),
             ),
             ApplyStop::ReferencesUncheckable { detail } => (
                 format!(
@@ -735,8 +740,7 @@ impl ApplyStop {
                     trust::strip_control_chars(detail)
                 ),
                 Some(format!(
-                    "run `reflock --root {clone_display} check {clone_display}/{path}` to see why, \
-                     discard the unfinished write at {clone_display}/{path}, then re-run \
+                    "run `reflock --root {clone_display} check --format json` to see why, then re-run \
                      `kaibo contribute apply`"
                 )),
             ),
@@ -823,7 +827,7 @@ impl ApplyReport {
         let clone_display = self.clone_display.as_str();
         let mut findings = Vec::new();
         if let ApplyOutcome::Stopped(stop) = &self.outcome {
-            findings.push(stop.finding(clone_display, &self.path));
+            findings.push(stop.finding(clone_display));
         }
         if self.references == Some(ReferenceCheck::ReflockMissing) {
             findings.push((
@@ -873,8 +877,57 @@ impl<'a> ContributeApplyVerb<'a> {
     }
 
     pub fn apply(&self, runner: &dyn CommandRunner, clock: &dyn Clock) -> ApplyReport {
-        apply(self.config, &self.input, runner, clock)
+        let scratch = tempfile::Builder::new()
+            .prefix("kaibo-contribute-")
+            .tempdir();
+        let scratch_checkout = match &scratch {
+            Ok(dir) => Ok(dir.path().join("corpus")),
+            Err(err) => Err(err.to_string()),
+        };
+        apply(
+            self.config,
+            &self.input,
+            runner,
+            clock,
+            scratch_checkout.as_deref().map_err(String::as_str),
+        )
     }
+
+    #[cfg(test)]
+    pub(crate) fn apply_in(
+        &self,
+        runner: &dyn CommandRunner,
+        clock: &dyn Clock,
+        scratch_checkout: &Path,
+    ) -> ApplyReport {
+        apply(
+            self.config,
+            &self.input,
+            runner,
+            clock,
+            Ok(scratch_checkout),
+        )
+    }
+}
+
+/// A throwaway checkout of the clone, outside it, for reflock to read the
+/// unwritten page against the corpus it will land in. `--shared` borrows
+/// the clone's objects through an alternates file in the new repository, so
+/// nothing is written to the clone itself, not even under `.git`.
+fn git_clone_scratch(clone_path: &Path, scratch_checkout: &Path) -> PlannedCommand {
+    PlannedCommand::new(
+        "git",
+        [
+            "-c".to_string(),
+            "core.hooksPath=/dev/null".to_string(),
+            "clone".to_string(),
+            "--shared".to_string(),
+            "--quiet".to_string(),
+            "--".to_string(),
+            clone_path.to_string_lossy().into_owned(),
+            scratch_checkout.to_string_lossy().into_owned(),
+        ],
+    )
 }
 
 impl Explainable for ContributeApplyVerb<'_> {
@@ -896,9 +949,11 @@ fn planned_apply_commands(config: &Config, input: &ApplyInput) -> Vec<PlannedCom
     let title = trust::strip_control_chars(&input.title);
     let body = pr_body(input);
 
+    let scratch_checkout = Path::new("<scratch>");
     let commands = vec![
         git_status_porcelain(clone_path),
-        reflock_check(clone_path, &path),
+        git_clone_scratch(clone_path, scratch_checkout),
+        reflock_check(scratch_checkout, &path),
         git_branch_list(clone_path, &branch),
         git_checkout_new_branch(clone_path, &branch),
         git_add(clone_path, &path),
@@ -971,6 +1026,7 @@ fn apply(
     input: &ApplyInput,
     runner: &dyn CommandRunner,
     clock: &dyn Clock,
+    scratch_checkout: Result<&Path, &str>,
 ) -> ApplyReport {
     let path = target_path(input);
     let branch = format!("contribute/{}", slugify(&input.title));
@@ -1095,36 +1151,38 @@ fn apply(
         }
     };
 
-    if let Placement::Create = &input.placement
-        && let Some(parent) = full_path.parent()
-        && let Err(err) = std::fs::create_dir_all(parent)
-    {
-        stop!(ApplyStop::WriteFailed {
-            detail: err.to_string()
-        });
-    }
-    if let Err(err) = std::fs::write(&full_path, &new_contents) {
-        stop!(ApplyStop::WriteFailed {
-            detail: err.to_string()
-        });
+    // Every check runs before the page reaches the clone, so a stop leaves
+    // nothing behind for the contributor to discard, and nothing that would
+    // read as uncommitted work on the re-run.
+    match lint::check_page(config, &path, &new_contents) {
+        Ok(violations) if !violations.is_empty() => stop!(ApplyStop::LintFailed { violations }),
+        Ok(_) => {}
+        Err(detail) => stop!(ApplyStop::WriteFailed {
+            detail: format!("kaibo lint could not check the page: {detail}"),
+        }),
     }
 
-    let lint_report = LintVerb::new(config, vec![path.clone()]).gather();
-    if let LintOutcome::Finished { violations, .. } = &lint_report.outcome {
-        // Every violation `kaibo lint` can produce gates the run, so any
-        // violation at all is grounds to stop.
-        if !violations.is_empty() {
-            stop!(ApplyStop::LintFailed {
-                violations: violations.clone()
-            });
-        }
-    } else if !matches!(lint_report.outcome, LintOutcome::NoFilesFound) {
-        stop!(ApplyStop::WriteFailed {
-            detail: "kaibo lint could not check the written page".to_string(),
+    let scratch_checkout = match scratch_checkout {
+        Ok(dir) => dir,
+        Err(detail) => stop!(ApplyStop::ScratchCheckoutFailed {
+            detail: detail.to_string(),
+        }),
+    };
+    match runner.run(&git_clone_scratch(clone_path, scratch_checkout)) {
+        Ok(output) if output.success() => {}
+        Ok(output) => stop!(ApplyStop::ScratchCheckoutFailed {
+            detail: output.stderr.trim().to_string(),
+        }),
+        Err(err) => stop!(ApplyStop::ScratchCheckoutFailed {
+            detail: err.to_string(),
+        }),
+    }
+    if let Err(err) = write_page(&scratch_checkout.join(&path), &new_contents) {
+        stop!(ApplyStop::ScratchCheckoutFailed {
+            detail: err.to_string(),
         });
     }
-
-    match runner.run(&reflock_check(clone_path, &path)) {
+    match runner.run(&reflock_check(scratch_checkout, &path)) {
         Ok(output) => {
             if let Err(stop) = judge_references(&output) {
                 stop!(stop);
@@ -1146,6 +1204,12 @@ fn apply(
     if !branch_list_output.stdout.trim().is_empty() {
         stop!(ApplyStop::BranchCollision {
             branch: branch.clone()
+        });
+    }
+
+    if let Err(err) = write_page(&full_path, &new_contents) {
+        stop!(ApplyStop::WriteFailed {
+            detail: err.to_string()
         });
     }
 
@@ -1381,6 +1445,13 @@ fn resolve_push_route(
         },
         format!("{login}:{branch}"),
     ))
+}
+
+fn write_page(full_path: &Path, contents: &str) -> std::io::Result<()> {
+    if let Some(parent) = full_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(full_path, contents)
 }
 
 fn today(clock: &dyn Clock) -> Date {

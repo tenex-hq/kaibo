@@ -114,7 +114,7 @@ enum ContributeCommands {
     /// Surface placement candidates for a piece of knowledge. Read-only:
     /// never writes, never prompts, never decides content type or domain.
     Plan(ContributePlanArgs),
-    /// Write, lint-gate, reference-check, branch, commit, push (direct or via
+    /// Lint-gate, reference-check, write, branch, commit, push (direct or via
     /// a verified fork), open a PR against the configured repo, and watch CI.
     Apply(ContributeApplyArgs),
 }
