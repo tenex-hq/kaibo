@@ -1018,6 +1018,55 @@ fn a_branch_name_that_already_exists_stops_apply_without_creating_it_or_writing_
     assert_eq!(snapshot(&clone), committed, "the stop changed the clone");
 }
 
+#[test]
+fn creating_a_page_whose_path_is_already_taken_stops_apply_and_leaves_the_existing_page_as_it_was()
+{
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = clone_with_an_existing_page(&tmp);
+    let committed = snapshot(&clone);
+    let scratch = tmp.path().join("scratch");
+    let config = config_with_repo(&clone);
+    let clock = FixedClock(now());
+    let mut input = valid_input();
+    input.title = "Existing".to_string();
+    let taken = "kaibo/how-to/existing.md";
+    let status = porcelain(&committed, &snapshot(&clone));
+    let runner = completing_runner(&clone, &scratch, &input, taken, status);
+
+    let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
+
+    assert_eq!(
+        report.outcome,
+        ApplyOutcome::Stopped(ApplyStop::PathTaken {
+            path: taken.to_string()
+        })
+    );
+    assert_eq!(report.exit_code(), ExitCode::Usage);
+    assert_eq!(
+        report.findings(),
+        [(
+            "kaibo/how-to/existing.md already exists in the clone".to_string(),
+            Some(
+                "append to it with `--append kaibo/how-to/existing.md`, or choose a different \
+                 title, then re-run `kaibo contribute apply`"
+                    .to_string()
+            ),
+        )]
+    );
+    assert_eq!(
+        std::fs::read_to_string(clone.join(taken)).unwrap(),
+        EXISTING_PAGE
+    );
+    assert_eq!(snapshot(&clone), committed, "the stop changed the clone");
+    let publishing = runner.calls().into_iter().any(|c| {
+        c.program == "gh"
+            || c.args
+                .iter()
+                .any(|arg| ["add", "commit", "push", "checkout"].contains(&arg.as_str()))
+    });
+    assert!(!publishing, "{:?}", runner.calls());
+}
+
 // --- `apply`: sanitisation of caller-supplied text -------------------------
 
 #[test]
