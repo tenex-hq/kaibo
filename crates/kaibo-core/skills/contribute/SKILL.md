@@ -62,7 +62,7 @@ kaibo contribute apply --type <type> --domain <domain> \
   --title "<title>" --tag <kebab-case-tag> --body "<markdown body>"
 ```
 
-Appending instead of creating: add `--append <repo-relative-path>` from the candidate you picked.
+Appending instead of creating: add `--append <repo-relative-path>` from the candidate you picked. Creating a page whose path is already taken stops `apply` and leaves the existing page alone: append to it, or choose a different title.
 
 Filing a binding standard: add `--binding --severity <must|should>` and one `--action <kind>` per action, plus `--applies-to-tag <tag>` for each narrowing tag. All of them together or none of them: half a standard is a page that looks binding and is not, and `apply` refuses it rather than writing it. A binding standard cannot be appended to an existing page, for the same one-claim reason.
 

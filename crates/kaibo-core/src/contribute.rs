@@ -641,6 +641,7 @@ pub enum ApplyStop {
     InvalidField { field: &'static str, value: String },
     BindingOnAppend { path: String },
     AppendTargetUnreadable { path: String },
+    PathTaken { path: String },
     WriteFailed { detail: String },
     LintFailed { violations: Vec<Violation> },
     ScratchCheckoutFailed { detail: String },
@@ -699,6 +700,13 @@ impl ApplyStop {
             ApplyStop::AppendTargetUnreadable { path } => (
                 format!("append target {path} is not a readable file contained in the clone"),
                 Some("pass an existing repo-relative path returned by `kaibo contribute plan`".to_string()),
+            ),
+            ApplyStop::PathTaken { path } => (
+                format!("{path} already exists in the clone"),
+                Some(format!(
+                    "append to it with `--append {path}`, or choose a different title, then re-run \
+                     `kaibo contribute apply`"
+                )),
             ),
             ApplyStop::WriteFailed { detail } => (
                 format!("failed to write the page: {detail}"),
@@ -1103,7 +1111,13 @@ fn apply(
                 }),
             }
         }
-        Placement::Create => clone_path.join(&path),
+        Placement::Create => {
+            let full = clone_path.join(&path);
+            if full.exists() {
+                stop!(ApplyStop::PathTaken { path: path.clone() });
+            }
+            full
+        }
     };
 
     let today = today(clock);
