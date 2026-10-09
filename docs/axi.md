@@ -75,7 +75,7 @@ The cut line between prompt and binary:
 | pick the domain | status filtering (draft, deprecated) |
 | append vs create, given candidates | dedup probe |
 | synthesis | frontmatter contract, kebab tags, prose lint, wikilink resolution |
-| grounded vs proposal labelling | branch, commit, push route, fork parent check, PR, CI watch, return to main |
+| grounded vs proposal labelling | branch, commit, push route, fork parent check, PR, return to main |
 | combining doctrine with local state | staleness detection and self-healing |
 
 ### 3. Contract: epistemics are fields, not adjectives

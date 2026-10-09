@@ -22,9 +22,9 @@
 //! at all: it reads whatever is already on disk. `contribute plan` and
 //! `contribute apply` are the write side: `plan` surfaces placement
 //! candidates and never mutates anything, `apply` writes, lints, branches,
-//! commits, pushes (directly or via a verified fork), opens a PR and
-//! watches CI. None of these verbs will ever accept a flag that names a
-//! repo, a clone path, or an index: that is what `Config` is for.
+//! commits, pushes (directly or via a verified fork) and opens a PR, where
+//! CI and review take over. None of these verbs will ever accept a flag that
+//! names a repo, a clone path, or an index: that is what `Config` is for.
 
 use std::io::IsTerminal;
 use std::process::ExitCode;
@@ -115,7 +115,8 @@ enum ContributeCommands {
     /// never writes, never prompts, never decides content type or domain.
     Plan(ContributePlanArgs),
     /// Lint-gate, reference-check, write, branch, commit, push (direct or via
-    /// a verified fork), open a PR against the configured repo, and watch CI.
+    /// a verified fork), and open a PR against the configured repo. CI and
+    /// review happen on the PR.
     Apply(ContributeApplyArgs),
 }
 

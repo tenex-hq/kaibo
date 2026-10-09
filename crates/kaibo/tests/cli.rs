@@ -1082,6 +1082,13 @@ fn contribute_apply_completes_a_direct_push_contribution_and_opens_a_pr() {
             .exists()
     );
     assert!(harness.calls().iter().any(|c| c.contains("checkout main")));
+    assert!(
+        harness.calls().iter().all(|c| !c.contains("pr checks")),
+        "apply must end at the PR, not watch CI: {:?}",
+        harness.calls()
+    );
+    assert_eq!(json["outcome"]["note"], "CI and review happen on the PR");
+    assert!(json["outcome"].get("ci").is_none());
 }
 
 /// `--append` is the flag that changes `contribute apply` from a page

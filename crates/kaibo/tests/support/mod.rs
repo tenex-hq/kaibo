@@ -97,7 +97,7 @@ fi
 /// known to build (see `contribute.rs`). Every canned answer is
 /// overridable through an env var, same convention as [`QMD_STUB`], so a
 /// test scripts one specific response (a denied permission check, a
-/// mismatched fork parent, a failing CI check) without a second copy of
+/// mismatched fork parent) without a second copy of
 /// this script.
 const GH_STUB: &str = r#"#!/usr/bin/env bash
 set -eu
@@ -132,8 +132,6 @@ elif [ "${1:-}" = "repo" ] && has_arg "fork" "$@"; then
 elif [ "${1:-}" = "pr" ] && has_arg "create" "$@"; then
   printf '%s\n' "${KAIBO_TEST_GH_PR_URL:-https://github.com/org/knowledge/pull/1}"
   exit "${KAIBO_TEST_GH_PR_CREATE_EXIT:-0}"
-elif [ "${1:-}" = "pr" ] && has_arg "checks" "$@"; then
-  exit "${KAIBO_TEST_GH_PR_CHECKS_EXIT:-0}"
 fi
 
 printf 'stub gh: unrecognized invocation: %s\n' "$*" >&2

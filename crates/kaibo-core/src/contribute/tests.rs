@@ -382,10 +382,6 @@ fn apply_with_reflock(
             ),
             ok("https://github.com/org/knowledge/pull/7\n"),
         )
-        .on(
-            gh_pr_checks("org/knowledge", "https://github.com/org/knowledge/pull/7"),
-            ok(""),
-        )
         .on(git_checkout_main(&clone), ok(""));
 
     let report =
@@ -662,10 +658,6 @@ fn completing_runner(
                 &pr_body(input),
             ),
             ok("https://github.com/org/knowledge/pull/3\n"),
-        )
-        .on(
-            gh_pr_checks("org/knowledge", "https://github.com/org/knowledge/pull/3"),
-            ok(""),
         )
         .on(git_checkout_main(clone), ok(""))
 }
@@ -1069,10 +1061,6 @@ fn a_title_with_a_newline_and_shell_metacharacters_never_reaches_the_commit_mess
             gh_pr_create("org/knowledge", "main", &branch, &title, &body),
             ok("https://github.com/org/knowledge/pull/1\n"),
         )
-        .on(
-            gh_pr_checks("org/knowledge", "https://github.com/org/knowledge/pull/1"),
-            ok(""),
-        )
         .on(git_checkout_main(&clone), ok(""));
     let clock = FixedClock(now());
     let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
@@ -1178,7 +1166,42 @@ fn apply_returns_the_clone_to_main_even_when_the_push_itself_fails() {
 // --- `apply`: happy paths ----------------------------------------------------
 
 #[test]
-fn a_direct_push_contribution_writes_a_draft_page_opens_a_pr_and_reports_ci() {
+fn apply_opens_the_pr_and_finishes_without_waiting_on_ci() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("corpus");
+    let scratch = tmp.path().join("scratch");
+    std::fs::create_dir_all(&clone).unwrap();
+    let config = config_with_repo(&clone);
+    let input = valid_input();
+    let path = target_path(&input);
+    let runner = completing_runner(&clone, &scratch, &input, &path, String::new());
+
+    let report =
+        ContributeApplyVerb::new(&config, input).apply_in(&runner, &FixedClock(now()), &scratch);
+
+    assert!(
+        runner
+            .calls()
+            .iter()
+            .all(|c| !(c.program == "gh" && c.args.starts_with(&["pr".into(), "checks".into()]))),
+        "apply must not watch CI: {:?}",
+        runner.calls()
+    );
+    assert_eq!(report.exit_code(), ExitCode::Success);
+    let text = report.render_text(&RenderOptions::default());
+    assert!(
+        text.contains("pr: https://github.com/org/knowledge/pull/3"),
+        "{text}"
+    );
+    assert!(
+        text.contains("note: CI and review happen on the PR"),
+        "{text}"
+    );
+    assert_eq!(report.returned_to_main, Some(true));
+}
+
+#[test]
+fn a_direct_push_contribution_writes_a_draft_page_and_opens_a_pr() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("corpus");
     let scratch = tmp.path().join("scratch");
@@ -1204,24 +1227,15 @@ fn a_direct_push_contribution_writes_a_draft_page_opens_a_pr_and_reports_ci() {
             gh_pr_create("org/knowledge", "main", &branch, &title, &body),
             ok("creating pull request\nhttps://github.com/org/knowledge/pull/42\n"),
         )
-        .on(
-            gh_pr_checks("org/knowledge", "https://github.com/org/knowledge/pull/42"),
-            ok("All checks passed\n"),
-        )
         .on(git_checkout_main(&clone), ok(""));
     let clock = FixedClock(now());
 
     let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
 
     match &report.outcome {
-        ApplyOutcome::Completed {
-            push_route,
-            pr_url,
-            ci,
-        } => {
+        ApplyOutcome::Completed { push_route, pr_url } => {
             assert_eq!(push_route.kind, PushRouteKind::Direct);
             assert_eq!(pr_url, "https://github.com/org/knowledge/pull/42");
-            assert_eq!(*ci, CiVerdict::Passed);
         }
         other => panic!("expected Completed, got {other:?}"),
     }
@@ -1277,75 +1291,19 @@ fn a_caller_without_push_access_forks_verifies_the_parent_and_pushes_there() {
             gh_pr_create("org/knowledge", "main", &head, &title, &body),
             ok("https://github.com/org/knowledge/pull/7\n"),
         )
-        .on(
-            gh_pr_checks("org/knowledge", "https://github.com/org/knowledge/pull/7"),
-            ok(""),
-        )
         .on(git_checkout_main(&clone), ok(""));
     let clock = FixedClock(now());
 
     let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
 
     match &report.outcome {
-        ApplyOutcome::Completed {
-            push_route, pr_url, ..
-        } => {
+        ApplyOutcome::Completed { push_route, pr_url } => {
             assert_eq!(push_route.kind, PushRouteKind::Fork);
             assert_eq!(push_route.owner.as_deref(), Some("contributor"));
             assert_eq!(pr_url, "https://github.com/org/knowledge/pull/7");
         }
         other => panic!("expected Completed via fork, got {other:?}"),
     }
-}
-
-#[test]
-fn a_red_pr_is_reported_as_a_failed_ci_verdict_and_a_non_success_exit_code() {
-    let tmp = tempfile::tempdir().unwrap();
-    let clone = tmp.path().join("corpus");
-    let scratch = tmp.path().join("scratch");
-    std::fs::create_dir_all(&clone).unwrap();
-    let config = config_with_repo(&clone);
-    let input = valid_input();
-    let branch = format!("contribute/{}", slugify(&input.title));
-    let path = target_path(&input);
-    let title = trust::strip_control_chars(&input.title);
-    let body = pr_body(&input);
-
-    let runner = FakeCommandRunner::new()
-        .on(git_status_porcelain(&clone), ok(""))
-        .on(git_clone_scratch(&clone, &scratch), ok(""))
-        .on(reflock_check(&scratch, &path), reflock_clean())
-        .on(git_branch_list(&clone, &branch), ok(""))
-        .on(git_checkout_new_branch(&clone, &branch), ok(""))
-        .on(git_add(&clone, &path), ok(""))
-        .on(git_commit(&clone, &commit_message(&input)), ok(""))
-        .on(gh_permission_check("org/knowledge"), ok("true\n"))
-        .on(git_push(&clone, "origin", &branch), ok(""))
-        .on(
-            gh_pr_create("org/knowledge", "main", &branch, &title, &body),
-            ok("https://github.com/org/knowledge/pull/9\n"),
-        )
-        .on(
-            gh_pr_checks("org/knowledge", "https://github.com/org/knowledge/pull/9"),
-            failed("2 checks failing"),
-        )
-        .on(git_checkout_main(&clone), ok(""));
-    let clock = FixedClock(now());
-
-    let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
-
-    match &report.outcome {
-        ApplyOutcome::Completed {
-            ci: CiVerdict::Failed { .. },
-            ..
-        } => {}
-        other => panic!("expected a failed CI verdict, got {other:?}"),
-    }
-    assert_eq!(
-        report.exit_code(),
-        ExitCode::Usage,
-        "a red PR is not a finished contribution"
-    );
 }
 
 // --- `apply`: append mode ----------------------------------------------------
@@ -1388,10 +1346,6 @@ fn appending_bumps_updated_and_preserves_the_existing_title_and_tags() {
                 &pr_body(&input),
             ),
             ok("https://github.com/org/knowledge/pull/1\n"),
-        )
-        .on(
-            gh_pr_checks("org/knowledge", "https://github.com/org/knowledge/pull/1"),
-            ok(""),
         )
         .on(git_checkout_main(&clone), ok(""));
     let clock = FixedClock(now());
@@ -1529,7 +1483,6 @@ fn a_report_that_did_return_to_main_carries_no_return_to_main_finding() {
                 owner: None,
             },
             pr_url: "https://github.com/org/knowledge/pull/1".to_string(),
-            ci: CiVerdict::Passed,
         },
     };
 
@@ -1550,7 +1503,6 @@ fn a_failed_return_to_main_is_reported_as_its_own_finding() {
                 owner: None,
             },
             pr_url: "https://github.com/org/knowledge/pull/1".to_string(),
-            ci: CiVerdict::Passed,
         },
     };
 
@@ -1712,7 +1664,6 @@ fn apply_render_json_carries_the_pr_url_and_push_route_on_completion() {
                 owner: Some("contributor".to_string()),
             },
             pr_url: "https://github.com/org/knowledge/pull/1".to_string(),
-            ci: CiVerdict::Passed,
         },
     };
 
@@ -1724,7 +1675,8 @@ fn apply_render_json_carries_the_pr_url_and_push_route_on_completion() {
         json["outcome"]["pr_url"],
         "https://github.com/org/knowledge/pull/1"
     );
-    assert_eq!(json["outcome"]["ci"]["passed"], true);
+    assert_eq!(json["outcome"]["note"], "CI and review happen on the PR");
+    assert!(json["outcome"].get("ci").is_none());
 }
 
 // --- binding standards ---------------------------------------------------
