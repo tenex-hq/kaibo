@@ -243,23 +243,7 @@ fn gather(config: &Config, paths: &[String]) -> LintReport {
         };
 
         files_checked += 1;
-
-        let linted = match frontmatter::parse(&contents) {
-            Ok(doc) => rules::LintedFile {
-                repo_relative_path: trust::strip_control_chars(&repo_relative),
-                frontmatter: Ok(doc.frontmatter),
-                body: doc.body,
-            },
-            Err(err) => rules::LintedFile {
-                repo_relative_path: trust::strip_control_chars(&repo_relative),
-                frontmatter: Err(err.to_string()),
-                body: String::new(),
-            },
-        };
-
-        for rule in &registry {
-            violations.extend(rule.check(&linted));
-        }
+        violations.extend(check_with(&registry, &repo_relative, &contents));
     }
 
     if files_checked == 0 {
@@ -276,6 +260,41 @@ fn gather(config: &Config, paths: &[String]) -> LintReport {
             violations,
         },
     }
+}
+
+/// Lint a page that is not on disk, as if it lived at `repo_relative_path`,
+/// with the same rules and parameters a `kaibo lint` run would apply to it
+/// there. `Err` is a lint configuration that builds no registry.
+pub(crate) fn check_page(
+    config: &Config,
+    repo_relative_path: &str,
+    contents: &str,
+) -> Result<Vec<Violation>, String> {
+    let registry = rules::registry(config.lint())?;
+    Ok(check_with(&registry, repo_relative_path, contents))
+}
+
+fn check_with(
+    registry: &[Box<dyn rules::Rule>],
+    repo_relative_path: &str,
+    contents: &str,
+) -> Vec<Violation> {
+    let linted = match frontmatter::parse(contents) {
+        Ok(doc) => rules::LintedFile {
+            repo_relative_path: trust::strip_control_chars(repo_relative_path),
+            frontmatter: Ok(doc.frontmatter),
+            body: doc.body,
+        },
+        Err(err) => rules::LintedFile {
+            repo_relative_path: trust::strip_control_chars(repo_relative_path),
+            frontmatter: Err(err.to_string()),
+            body: String::new(),
+        },
+    };
+    registry
+        .iter()
+        .flat_map(|rule| rule.check(&linted))
+        .collect()
 }
 
 /// Recursively collect every `.md` file under `dir` that also matches

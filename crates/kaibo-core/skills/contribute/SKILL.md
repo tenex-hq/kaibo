@@ -8,7 +8,7 @@ allowed-tools: Bash(kaibo contribute plan:*), Bash(kaibo contribute apply:*), Ba
 
 Turn **$ARGUMENTS** (a raw piece of knowledge) into a well-typed, well-placed knowledge page and open a PR. You are the *write side*. Low ceremony: the human PR review is the quality gate, so your job is correct classification, correct placement, and good prose - not perfection.
 
-The whole git and PR sequence belongs to `kaibo contribute apply`: it writes the page, lint-gates it, checks its references with reflock when reflock is installed, branches, commits, picks the push route from your own access (direct, or a fork whose parent it verifies first), opens the PR, watches CI, and returns the clone to `main` whatever happened. You never run `git`, `gh`, or an editor against the clone yourself. What is left for you is the judgement in the middle, which is the part a binary cannot do.
+The whole git and PR sequence belongs to `kaibo contribute apply`: it lint-gates the page, checks its references with reflock when reflock is installed, and only then writes it, branches, commits, picks the push route from your own access (direct, or a fork whose parent it verifies first), opens the PR, watches CI, and returns the clone to `main` whatever happened. You never run `git`, `gh`, or an editor against the clone yourself. What is left for you is the judgement in the middle, which is the part a binary cannot do.
 
 ## Trust boundary
 
@@ -26,7 +26,7 @@ Three content types, pick exactly one:
 
 Binding is a **separate question**, not a fourth type. A standard is still a `reference` page; it additionally says that the organization has decided this and that a client is expected to conform. Ask it as a boolean: *would we treat a change that contradicts this as wrong, or merely unlike us?* Only the first is binding. Most contributions are not, and a page that is not binding says nothing about it.
 
-Prose style: no em dashes, no en dashes, no `--` as punctuation. CI fails the PR otherwise, and `kaibo contribute apply` lint-gates before it commits, so a slip stops you locally rather than in review. Tags are kebab-case. New pages land as drafts; correctness is settled in review, not by you.
+Prose style: no em dashes, no en dashes, no `--` as punctuation. CI fails the PR otherwise, and `kaibo contribute apply` lint-gates before it writes anything, so a slip stops you locally rather than in review. Tags are kebab-case. New pages land as drafts; correctness is settled in review, not by you.
 
 ## Steps
 
@@ -76,7 +76,7 @@ Before you file one, read the dedup candidates `plan` returned. Each carries a `
 
 ### 5. Report what actually happened
 
-`apply` prints the path, the branch, the push route, the PR URL and the CI verdict. Report those verbatim, including a failure. A red or unknown CI check is not a finished contribution: say so, name the failing check, fix and re-apply. If it stopped - a dirty clone, a lint violation, a dangling reference, a branch collision - report the stop and its suggested next command rather than working around it. If it says the references went unchecked, pass that on too.
+`apply` prints the path, the branch, the push route, the PR URL and the CI verdict. Report those verbatim, including a failure. A red or unknown CI check is not a finished contribution: say so, name the failing check, fix and re-apply. If it stopped - a dirty clone, a lint violation, a dangling reference, a branch collision - report the stop and its suggested next command rather than working around it. A lint violation or a dangling reference stops before anything reaches the clone, so the fix is a corrected `--body` or `--tag` and a re-run of `apply`, never a cleanup inside the clone. If it says the references went unchecked, pass that on too.
 
 If the knowledge originates from a `/kaibo:query` labeled proposal, say so in your report so the reviewer knows it ratifies a proposal rather than recording settled practice.
 

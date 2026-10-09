@@ -317,35 +317,6 @@ fn an_invalid_domain_segment_stops_apply_before_touching_the_clone() {
     assert!(runner.calls().is_empty());
 }
 
-#[test]
-fn a_page_that_fails_lint_stops_apply_and_leaves_the_write_in_place() {
-    let tmp = tempfile::tempdir().unwrap();
-    let clone = tmp.path().join("corpus");
-    std::fs::create_dir_all(&clone).unwrap();
-    let config = config_with_repo(&clone);
-    let runner = FakeCommandRunner::new().on(git_status_porcelain(&clone), ok(""));
-    let clock = FixedClock(now());
-    let mut input = valid_input();
-    // Not kebab-case: the `tags-kebab-case` rule must fire.
-    input.tags = vec!["NotKebabCase".to_string()];
-
-    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);
-
-    match &report.outcome {
-        ApplyOutcome::Stopped(ApplyStop::LintFailed { violations }) => {
-            assert!(violations.iter().any(|v| v.rule_id == "tags-kebab-case"));
-        }
-        other => panic!("expected LintFailed, got {other:?}"),
-    }
-    // Stop-and-report, never discard: the write stays on disk uncommitted.
-    assert!(clone.join("kaibo/how-to/write-a-good-query.md").exists());
-    assert_eq!(report.returned_to_main, None);
-    // No branch was ever created.
-    assert!(runner.calls().iter().all(|c| !(c.program == "git"
-        && c.args.contains(&"checkout".to_string())
-        && c.args.contains(&"-b".to_string()))));
-}
-
 // --- `apply`: reference integrity -------------------------------------------
 
 const CREATED_PATH: &str = "kaibo/how-to/write-a-good-query.md";
@@ -382,14 +353,17 @@ fn apply_with_reflock(
 ) -> (tempfile::TempDir, ApplyReport, FakeCommandRunner) {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("corpus");
+    let scratch = tmp.path().join("scratch");
     std::fs::create_dir_all(&clone).unwrap();
     let config = config_with_repo(&clone);
     let input = valid_input();
     let branch = "contribute/write-a-good-query";
-    let runner = FakeCommandRunner::new().on(git_status_porcelain(&clone), ok(""));
+    let runner = FakeCommandRunner::new()
+        .on(git_status_porcelain(&clone), ok(""))
+        .on(git_clone_scratch(&clone, &scratch), ok(""));
     let runner = match reflock {
-        Some(output) => runner.on(reflock_check(&clone, CREATED_PATH), output),
-        None => runner.on_missing(reflock_check(&clone, CREATED_PATH)),
+        Some(output) => runner.on(reflock_check(&scratch, CREATED_PATH), output),
+        None => runner.on_missing(reflock_check(&scratch, CREATED_PATH)),
     };
     let runner = runner
         .on(git_branch_list(&clone, branch), ok(""))
@@ -414,7 +388,8 @@ fn apply_with_reflock(
         )
         .on(git_checkout_main(&clone), ok(""));
 
-    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &FixedClock(now()));
+    let report =
+        ContributeApplyVerb::new(&config, input).apply_in(&runner, &FixedClock(now()), &scratch);
     (tmp, report, runner)
 }
 
@@ -479,18 +454,16 @@ fn a_page_with_a_dangling_reference_stops_apply_before_anything_is_branched() {
     assert_eq!(
         report.findings(),
         [(
-            "reflock found 2 dangling reference(s) on the written page: line 5 `../reference/missing.md` \
+            "reflock found 2 dangling reference(s) on the page: line 5 `../reference/missing.md` \
              (no such file: kaibo/reference/missing.md); line 9 `gone-page` (no such file: gone-page)"
                 .to_string(),
-            Some(format!(
-                "fix the reference(s) in the body you pass, discard the unfinished write at {}/{CREATED_PATH}, \
-                 then re-run `kaibo contribute apply`",
-                clone.display()
-            )),
+            Some(
+                "fix the reference(s) in the body you pass, then re-run `kaibo contribute apply`"
+                    .to_string()
+            ),
         )]
     );
-    // Stop and report, never discard: the write stays on disk, unbranched.
-    assert!(clone.join(CREATED_PATH).exists());
+    assert!(!clone.join(CREATED_PATH).exists());
     assert!(!branched(&runner));
     assert_eq!(report.returned_to_main, None);
 }
@@ -509,7 +482,7 @@ fn a_dangling_target_reaches_the_finding_stripped_of_control_characters() {
     let (message, _) = &report.findings()[0];
     assert_eq!(
         message,
-        "reflock found 1 dangling reference(s) on the written page: line 1 `evil[2J.md` (no such file: evil[2J.md)"
+        "reflock found 1 dangling reference(s) on the page: line 1 `evil[2J.md` (no such file: evil[2J.md)"
     );
 }
 
@@ -610,14 +583,393 @@ fn a_reflock_report_kaibo_cannot_read_stops_apply_rather_than_passing_the_page()
             [(
                 format!("could not read reflock's reference check: {expected_detail}"),
                 Some(format!(
-                    "run `reflock --root {clone} check {clone}/{CREATED_PATH}` to see why, discard the unfinished \
-                     write at {clone}/{CREATED_PATH}, then re-run `kaibo contribute apply`"
+                    "run `reflock --root {clone} check --format json` to see why, then re-run \
+                     `kaibo contribute apply`"
                 )),
             )],
             "{situation}"
         );
         assert!(!branched(&runner), "{situation}");
     }
+}
+
+// --- `apply`: a stopped check leaves the clone as it was ---------------------
+
+type Snapshot = std::collections::BTreeMap<std::path::PathBuf, Option<String>>;
+
+/// Every directory and file under `root`, files with their contents.
+fn snapshot(root: &std::path::Path) -> Snapshot {
+    let mut entries = Snapshot::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            let relative = path.strip_prefix(root).unwrap().to_path_buf();
+            if path.is_dir() {
+                entries.insert(relative, None);
+                pending.push(path);
+            } else {
+                entries.insert(relative, Some(std::fs::read_to_string(&path).unwrap()));
+            }
+        }
+    }
+    entries
+}
+
+/// What `git status --porcelain` prints for a clone whose last commit
+/// looked like `committed` and whose working tree now looks like `now`.
+fn porcelain(committed: &Snapshot, now: &Snapshot) -> String {
+    let mut lines = String::new();
+    for (path, contents) in now {
+        let Some(contents) = contents else { continue };
+        match committed.get(path) {
+            None => lines.push_str(&format!("?? {}\n", path.display())),
+            Some(before) if before.as_ref() != Some(contents) => {
+                lines.push_str(&format!(" M {}\n", path.display()))
+            }
+            Some(_) => {}
+        }
+    }
+    lines
+}
+
+/// A runner scripted for a run that passes every check and opens its PR,
+/// answering `git status` with `status`.
+fn completing_runner(
+    clone: &std::path::Path,
+    scratch: &std::path::Path,
+    input: &ApplyInput,
+    path: &str,
+    status: String,
+) -> FakeCommandRunner {
+    let branch = format!("contribute/{}", slugify(&input.title));
+    FakeCommandRunner::new()
+        .on(git_status_porcelain(clone), ok(status))
+        .on(git_clone_scratch(clone, scratch), ok(""))
+        .on(reflock_check(scratch, path), reflock_clean())
+        .on(git_branch_list(clone, &branch), ok(""))
+        .on(git_checkout_new_branch(clone, &branch), ok(""))
+        .on(git_add(clone, path), ok(""))
+        .on(git_commit(clone, &commit_message(input)), ok(""))
+        .on(gh_permission_check("org/knowledge"), ok("true\n"))
+        .on(git_push(clone, "origin", &branch), ok(""))
+        .on(
+            gh_pr_create(
+                "org/knowledge",
+                "main",
+                &branch,
+                &trust::strip_control_chars(&input.title),
+                &pr_body(input),
+            ),
+            ok("https://github.com/org/knowledge/pull/3\n"),
+        )
+        .on(
+            gh_pr_checks("org/knowledge", "https://github.com/org/knowledge/pull/3"),
+            ok(""),
+        )
+        .on(git_checkout_main(clone), ok(""))
+}
+
+const EXISTING_PAGE: &str = "---\ntitle: Existing page\ntype: how-to\ntags:\n  - existing-tag\nstatus: current\nupdated: 2020-01-01\n---\nOriginal body.\n";
+
+/// A clone holding one committed page, `kaibo/how-to/existing.md`.
+fn clone_with_an_existing_page(tmp: &tempfile::TempDir) -> std::path::PathBuf {
+    let clone = tmp.path().join("corpus");
+    std::fs::create_dir_all(clone.join("kaibo/how-to")).unwrap();
+    std::fs::write(clone.join("kaibo/how-to/existing.md"), EXISTING_PAGE).unwrap();
+    clone
+}
+
+#[test]
+fn a_dangling_reference_stops_apply_with_the_clone_as_it_was_and_the_fixed_rerun_opens_the_pr() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = clone_with_an_existing_page(&tmp);
+    let committed = snapshot(&clone);
+    let config = config_with_repo(&clone);
+    let clock = FixedClock(now());
+    let mut input = valid_input();
+    input.body = "See [[missing-page]].".to_string();
+
+    let scratch = tmp.path().join("scratch-1");
+    let runner = FakeCommandRunner::new()
+        .on(
+            git_status_porcelain(&clone),
+            ok(porcelain(&committed, &snapshot(&clone))),
+        )
+        .on(git_clone_scratch(&clone, &scratch), ok(""))
+        .on(
+            reflock_check(&scratch, CREATED_PATH),
+            reflock_findings(serde_json::json!([dangling(
+                7,
+                "missing-page",
+                "no such file: missing-page"
+            )])),
+        );
+    let report =
+        ContributeApplyVerb::new(&config, input.clone()).apply_in(&runner, &clock, &scratch);
+
+    assert!(
+        matches!(
+            report.outcome,
+            ApplyOutcome::Stopped(ApplyStop::DanglingReferences { .. })
+        ),
+        "{:?}",
+        report.outcome
+    );
+    assert!(
+        std::fs::read_to_string(scratch.join(CREATED_PATH))
+            .unwrap()
+            .contains("See [[missing-page]]."),
+        "reflock must find the page where it was told to look"
+    );
+    assert_eq!(snapshot(&clone), committed, "the stop changed the clone");
+    assert_eq!(
+        report.findings()[0].1.as_deref(),
+        Some("fix the reference(s) in the body you pass, then re-run `kaibo contribute apply`")
+    );
+
+    input.body = "See [[existing]].".to_string();
+    let scratch = tmp.path().join("scratch-2");
+    let status = porcelain(&committed, &snapshot(&clone));
+    let rerun = completing_runner(&clone, &scratch, &input, CREATED_PATH, status);
+    let report = ContributeApplyVerb::new(&config, input).apply_in(&rerun, &clock, &scratch);
+
+    assert!(
+        matches!(report.outcome, ApplyOutcome::Completed { .. }),
+        "{:?}",
+        report.findings()
+    );
+    assert!(
+        std::fs::read_to_string(clone.join(CREATED_PATH))
+            .unwrap()
+            .contains("See [[existing]].")
+    );
+}
+
+#[test]
+fn a_lint_violation_stops_apply_with_the_clone_as_it_was_and_the_fixed_rerun_opens_the_pr() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = clone_with_an_existing_page(&tmp);
+    let committed = snapshot(&clone);
+    let config = config_with_repo(&clone);
+    let clock = FixedClock(now());
+    let mut input = valid_input();
+    input.tags = vec!["NotKebabCase".to_string()];
+
+    let scratch = tmp.path().join("scratch-1");
+    let runner = FakeCommandRunner::new().on(
+        git_status_porcelain(&clone),
+        ok(porcelain(&committed, &snapshot(&clone))),
+    );
+    let report =
+        ContributeApplyVerb::new(&config, input.clone()).apply_in(&runner, &clock, &scratch);
+
+    match &report.outcome {
+        ApplyOutcome::Stopped(ApplyStop::LintFailed { violations }) => {
+            assert!(violations.iter().any(|v| v.rule_id == "tags-kebab-case"));
+        }
+        other => panic!("expected LintFailed, got {other:?}"),
+    }
+    assert_eq!(snapshot(&clone), committed, "the stop changed the clone");
+    assert_eq!(
+        report.findings()[0].1.as_deref(),
+        Some(
+            "fix the reported violation(s) in what you pass, then re-run `kaibo contribute apply`"
+        )
+    );
+
+    input.tags = vec!["good-tag".to_string()];
+    let scratch = tmp.path().join("scratch-2");
+    let status = porcelain(&committed, &snapshot(&clone));
+    let rerun = completing_runner(&clone, &scratch, &input, CREATED_PATH, status);
+    let report = ContributeApplyVerb::new(&config, input).apply_in(&rerun, &clock, &scratch);
+
+    assert!(
+        matches!(report.outcome, ApplyOutcome::Completed { .. }),
+        "{:?}",
+        report.findings()
+    );
+    assert!(clone.join(CREATED_PATH).is_file());
+}
+
+#[test]
+fn a_stopped_append_leaves_the_existing_page_unmodified_and_the_fixed_rerun_opens_the_pr() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = clone_with_an_existing_page(&tmp);
+    let committed = snapshot(&clone);
+    let config = config_with_repo(&clone);
+    let clock = FixedClock(now());
+    let appended = "kaibo/how-to/existing.md";
+    let mut input = valid_input();
+    input.placement = Placement::Append {
+        path: appended.to_string(),
+    };
+    input.body = "See [[missing-page]].".to_string();
+
+    let scratch = tmp.path().join("scratch-1");
+    let runner = FakeCommandRunner::new()
+        .on(
+            git_status_porcelain(&clone),
+            ok(porcelain(&committed, &snapshot(&clone))),
+        )
+        .on(git_clone_scratch(&clone, &scratch), ok(""))
+        .on(
+            reflock_check(&scratch, appended),
+            reflock_findings(serde_json::json!([dangling(
+                12,
+                "missing-page",
+                "no such file: missing-page"
+            )])),
+        );
+    let report =
+        ContributeApplyVerb::new(&config, input.clone()).apply_in(&runner, &clock, &scratch);
+
+    assert!(
+        matches!(
+            report.outcome,
+            ApplyOutcome::Stopped(ApplyStop::DanglingReferences { .. })
+        ),
+        "{:?}",
+        report.outcome
+    );
+    assert_eq!(snapshot(&clone), committed, "the stop changed the clone");
+
+    input.body = "See [[write-a-good-query]].".to_string();
+    let scratch = tmp.path().join("scratch-2");
+    let status = porcelain(&committed, &snapshot(&clone));
+    let rerun = completing_runner(&clone, &scratch, &input, appended, status);
+    let report = ContributeApplyVerb::new(&config, input).apply_in(&rerun, &clock, &scratch);
+
+    assert!(
+        matches!(report.outcome, ApplyOutcome::Completed { .. }),
+        "{:?}",
+        report.findings()
+    );
+    let written = std::fs::read_to_string(clone.join(appended)).unwrap();
+    assert!(written.contains("Original body."));
+    assert!(written.contains("See [[write-a-good-query]]."));
+}
+
+/// The reference check withholds a broken page, so a check that cannot run
+/// withholds it too: without a scratch checkout there is nowhere to run it.
+#[test]
+fn a_scratch_checkout_that_cannot_be_made_stops_apply_with_the_clone_as_it_was() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = clone_with_an_existing_page(&tmp);
+    let committed = snapshot(&clone);
+    let config = config_with_repo(&clone);
+    let clock = FixedClock(now());
+    let input = valid_input();
+    let scratch = tmp.path().join("scratch");
+    let under_a_file = clone.join("kaibo/how-to/existing.md").join("scratch");
+
+    let situations: [(
+        &str,
+        FakeCommandRunner,
+        Result<&std::path::Path, &str>,
+        &str,
+    ); 4] = [
+        (
+            "no temp dir",
+            FakeCommandRunner::new().on(git_status_porcelain(&clone), ok("")),
+            Err("No space left on device"),
+            "No space left on device",
+        ),
+        (
+            "git refuses the copy",
+            FakeCommandRunner::new()
+                .on(git_status_porcelain(&clone), ok(""))
+                .on(
+                    git_clone_scratch(&clone, &scratch),
+                    failed("fatal: destination path already exists\n"),
+                ),
+            Ok(&scratch),
+            "fatal: destination path already exists",
+        ),
+        (
+            "git cannot be run",
+            FakeCommandRunner::new()
+                .on(git_status_porcelain(&clone), ok(""))
+                .on_missing(git_clone_scratch(&clone, &scratch)),
+            Ok(&scratch),
+            "failed to run `git`: entity not found",
+        ),
+        (
+            "the page cannot be placed in the copy",
+            FakeCommandRunner::new()
+                .on(git_status_porcelain(&clone), ok(""))
+                .on(git_clone_scratch(&clone, &under_a_file), ok("")),
+            Ok(&under_a_file),
+            "Not a directory (os error 20)",
+        ),
+    ];
+
+    for (situation, runner, scratch_checkout, detail) in situations {
+        let report = apply(&config, &input, &runner, &clock, scratch_checkout);
+
+        assert_eq!(
+            report.outcome,
+            ApplyOutcome::Stopped(ApplyStop::ScratchCheckoutFailed {
+                detail: detail.to_string()
+            }),
+            "{situation}"
+        );
+        assert_eq!(report.references, None, "{situation}");
+        assert!(!branched(&runner), "{situation}");
+        assert_eq!(snapshot(&clone), committed, "{situation}");
+    }
+
+    let runner = FakeCommandRunner::new().on(git_status_porcelain(&clone), ok(""));
+    let report = apply(
+        &config,
+        &input,
+        &runner,
+        &clock,
+        Err("No space left on device"),
+    );
+    assert_eq!(
+        report.findings(),
+        [(
+            format!(
+                "could not make a scratch checkout of {} to check the page's references in: No space left on device",
+                clone.display()
+            ),
+            Some(format!(
+                "check that `git clone --shared {} <dir>` works, then re-run `kaibo contribute apply`",
+                clone.display()
+            )),
+        )]
+    );
+}
+
+/// A lint configuration that builds no rules cannot vouch for a page.
+#[test]
+fn a_lint_configuration_that_builds_no_rules_stops_apply_before_the_page_is_written() {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = clone_with_an_existing_page(&tmp);
+    let committed = snapshot(&clone);
+    let config = ConfigBuilder::new(&clone)
+        .repo("org/knowledge", ConfigSource::File)
+        .lint_tag_pattern("(", ConfigSource::File)
+        .build();
+    let runner = FakeCommandRunner::new().on(git_status_porcelain(&clone), ok(""));
+
+    let report = ContributeApplyVerb::new(&config, valid_input()).apply_in(
+        &runner,
+        &FixedClock(now()),
+        &tmp.path().join("scratch"),
+    );
+
+    match &report.outcome {
+        ApplyOutcome::Stopped(ApplyStop::WriteFailed { detail }) => assert!(
+            detail.starts_with(
+                "kaibo lint could not check the page: lint.tags_kebab_case.pattern \"(\""
+            ),
+            "{detail}"
+        ),
+        other => panic!("expected WriteFailed, got {other:?}"),
+    }
+    assert_eq!(snapshot(&clone), committed);
 }
 
 #[test]
@@ -635,16 +987,18 @@ fn a_run_that_stops_before_the_reference_check_reports_no_reference_verdict() {
 }
 
 #[test]
-fn a_branch_name_that_already_exists_stops_apply_without_creating_it() {
+fn a_branch_name_that_already_exists_stops_apply_without_creating_it_or_writing_the_page() {
     let tmp = tempfile::tempdir().unwrap();
-    let clone = tmp.path().join("corpus");
-    std::fs::create_dir_all(&clone).unwrap();
+    let clone = clone_with_an_existing_page(&tmp);
+    let committed = snapshot(&clone);
+    let scratch = tmp.path().join("scratch");
     let config = config_with_repo(&clone);
     let branch = "contribute/write-a-good-query";
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
+        .on(git_clone_scratch(&clone, &scratch), ok(""))
         .on(
-            reflock_check(&clone, "kaibo/how-to/write-a-good-query.md"),
+            reflock_check(&scratch, "kaibo/how-to/write-a-good-query.md"),
             reflock_clean(),
         )
         .on(
@@ -653,13 +1007,15 @@ fn a_branch_name_that_already_exists_stops_apply_without_creating_it() {
         );
     let clock = FixedClock(now());
 
-    let report = ContributeApplyVerb::new(&config, valid_input()).apply(&runner, &clock);
+    let report =
+        ContributeApplyVerb::new(&config, valid_input()).apply_in(&runner, &clock, &scratch);
 
     assert!(matches!(
         report.outcome,
         ApplyOutcome::Stopped(ApplyStop::BranchCollision { .. })
     ));
     assert_eq!(report.returned_to_main, None);
+    assert_eq!(snapshot(&clone), committed, "the stop changed the clone");
 }
 
 // --- `apply`: sanitisation of caller-supplied text -------------------------
@@ -668,6 +1024,7 @@ fn a_branch_name_that_already_exists_stops_apply_without_creating_it() {
 fn a_title_with_a_newline_and_shell_metacharacters_never_reaches_the_commit_message_raw() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("corpus");
+    let scratch = tmp.path().join("scratch");
     std::fs::create_dir_all(&clone).unwrap();
     let config = config_with_repo(&clone);
     let mut input = valid_input();
@@ -700,7 +1057,8 @@ fn a_title_with_a_newline_and_shell_metacharacters_never_reaches_the_commit_mess
     let body = pr_body(&input);
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
-        .on(reflock_check(&clone, &path), reflock_clean())
+        .on(git_clone_scratch(&clone, &scratch), ok(""))
+        .on(reflock_check(&scratch, &path), reflock_clean())
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, &path), ok(""))
@@ -717,7 +1075,7 @@ fn a_title_with_a_newline_and_shell_metacharacters_never_reaches_the_commit_mess
         )
         .on(git_checkout_main(&clone), ok(""));
     let clock = FixedClock(now());
-    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);
+    let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
     // Sanity: this input is otherwise well-formed, so it completes,
     // proving the sanitised values above are exactly what a real run
     // uses rather than the input being rejected first for some other
@@ -731,6 +1089,7 @@ fn a_title_with_a_newline_and_shell_metacharacters_never_reaches_the_commit_mess
 fn a_fork_whose_parent_is_not_the_configured_repo_stops_apply_and_never_pushes_to_it() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("corpus");
+    let scratch = tmp.path().join("scratch");
     std::fs::create_dir_all(&clone).unwrap();
     let config = config_with_repo(&clone);
     let input = valid_input();
@@ -739,7 +1098,8 @@ fn a_fork_whose_parent_is_not_the_configured_repo_stops_apply_and_never_pushes_t
 
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
-        .on(reflock_check(&clone, &path), reflock_clean())
+        .on(git_clone_scratch(&clone, &scratch), ok(""))
+        .on(reflock_check(&scratch, &path), reflock_clean())
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, &path), ok(""))
@@ -756,7 +1116,7 @@ fn a_fork_whose_parent_is_not_the_configured_repo_stops_apply_and_never_pushes_t
         .on(git_checkout_main(&clone), ok(""));
     let clock = FixedClock(now());
 
-    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);
+    let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
 
     match &report.outcome {
         ApplyOutcome::Stopped(ApplyStop::ForkParentMismatch { expected, actual }) => {
@@ -782,6 +1142,7 @@ fn a_fork_whose_parent_is_not_the_configured_repo_stops_apply_and_never_pushes_t
 fn apply_returns_the_clone_to_main_even_when_the_push_itself_fails() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("corpus");
+    let scratch = tmp.path().join("scratch");
     std::fs::create_dir_all(&clone).unwrap();
     let config = config_with_repo(&clone);
     let input = valid_input();
@@ -790,7 +1151,8 @@ fn apply_returns_the_clone_to_main_even_when_the_push_itself_fails() {
 
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
-        .on(reflock_check(&clone, &path), reflock_clean())
+        .on(git_clone_scratch(&clone, &scratch), ok(""))
+        .on(reflock_check(&scratch, &path), reflock_clean())
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, &path), ok(""))
@@ -803,7 +1165,7 @@ fn apply_returns_the_clone_to_main_even_when_the_push_itself_fails() {
         .on(git_checkout_main(&clone), ok("Switched to branch 'main'\n"));
     let clock = FixedClock(now());
 
-    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);
+    let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
 
     assert!(matches!(
         report.outcome,
@@ -819,6 +1181,7 @@ fn apply_returns_the_clone_to_main_even_when_the_push_itself_fails() {
 fn a_direct_push_contribution_writes_a_draft_page_opens_a_pr_and_reports_ci() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("corpus");
+    let scratch = tmp.path().join("scratch");
     std::fs::create_dir_all(&clone).unwrap();
     let config = config_with_repo(&clone);
     let input = valid_input();
@@ -829,7 +1192,8 @@ fn a_direct_push_contribution_writes_a_draft_page_opens_a_pr_and_reports_ci() {
 
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
-        .on(reflock_check(&clone, &path), reflock_clean())
+        .on(git_clone_scratch(&clone, &scratch), ok(""))
+        .on(reflock_check(&scratch, &path), reflock_clean())
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, &path), ok(""))
@@ -847,7 +1211,7 @@ fn a_direct_push_contribution_writes_a_draft_page_opens_a_pr_and_reports_ci() {
         .on(git_checkout_main(&clone), ok(""));
     let clock = FixedClock(now());
 
-    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);
+    let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
 
     match &report.outcome {
         ApplyOutcome::Completed {
@@ -875,6 +1239,7 @@ fn a_direct_push_contribution_writes_a_draft_page_opens_a_pr_and_reports_ci() {
 fn a_caller_without_push_access_forks_verifies_the_parent_and_pushes_there() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("corpus");
+    let scratch = tmp.path().join("scratch");
     std::fs::create_dir_all(&clone).unwrap();
     let config = config_with_repo(&clone);
     let input = valid_input();
@@ -886,7 +1251,8 @@ fn a_caller_without_push_access_forks_verifies_the_parent_and_pushes_there() {
 
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
-        .on(reflock_check(&clone, &path), reflock_clean())
+        .on(git_clone_scratch(&clone, &scratch), ok(""))
+        .on(reflock_check(&scratch, &path), reflock_clean())
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, &path), ok(""))
@@ -918,7 +1284,7 @@ fn a_caller_without_push_access_forks_verifies_the_parent_and_pushes_there() {
         .on(git_checkout_main(&clone), ok(""));
     let clock = FixedClock(now());
 
-    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);
+    let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
 
     match &report.outcome {
         ApplyOutcome::Completed {
@@ -936,6 +1302,7 @@ fn a_caller_without_push_access_forks_verifies_the_parent_and_pushes_there() {
 fn a_red_pr_is_reported_as_a_failed_ci_verdict_and_a_non_success_exit_code() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("corpus");
+    let scratch = tmp.path().join("scratch");
     std::fs::create_dir_all(&clone).unwrap();
     let config = config_with_repo(&clone);
     let input = valid_input();
@@ -946,7 +1313,8 @@ fn a_red_pr_is_reported_as_a_failed_ci_verdict_and_a_non_success_exit_code() {
 
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
-        .on(reflock_check(&clone, &path), reflock_clean())
+        .on(git_clone_scratch(&clone, &scratch), ok(""))
+        .on(reflock_check(&scratch, &path), reflock_clean())
         .on(git_branch_list(&clone, &branch), ok(""))
         .on(git_checkout_new_branch(&clone, &branch), ok(""))
         .on(git_add(&clone, &path), ok(""))
@@ -964,7 +1332,7 @@ fn a_red_pr_is_reported_as_a_failed_ci_verdict_and_a_non_success_exit_code() {
         .on(git_checkout_main(&clone), ok(""));
     let clock = FixedClock(now());
 
-    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);
+    let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
 
     match &report.outcome {
         ApplyOutcome::Completed {
@@ -986,6 +1354,7 @@ fn a_red_pr_is_reported_as_a_failed_ci_verdict_and_a_non_success_exit_code() {
 fn appending_bumps_updated_and_preserves_the_existing_title_and_tags() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("corpus");
+    let scratch = tmp.path().join("scratch");
     std::fs::create_dir_all(clone.join("kaibo/how-to")).unwrap();
     let existing = "---\ntitle: Existing page\ntype: how-to\ntags:\n  - existing-tag\nstatus: current\nupdated: 2020-01-01\n---\nOriginal body.\n";
     std::fs::write(clone.join("kaibo/how-to/existing.md"), existing).unwrap();
@@ -999,8 +1368,9 @@ fn appending_bumps_updated_and_preserves_the_existing_title_and_tags() {
 
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
+        .on(git_clone_scratch(&clone, &scratch), ok(""))
         .on(
-            reflock_check(&clone, "kaibo/how-to/existing.md"),
+            reflock_check(&scratch, "kaibo/how-to/existing.md"),
             reflock_clean(),
         )
         .on(git_branch_list(&clone, &branch), ok(""))
@@ -1026,7 +1396,7 @@ fn appending_bumps_updated_and_preserves_the_existing_title_and_tags() {
         .on(git_checkout_main(&clone), ok(""));
     let clock = FixedClock(now());
 
-    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);
+    let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
 
     assert!(matches!(report.outcome, ApplyOutcome::Completed { .. }));
     let written = std::fs::read_to_string(clone.join("kaibo/how-to/existing.md")).unwrap();
@@ -1079,7 +1449,14 @@ fn apply_explain_is_non_empty_and_names_no_command_runner_to_call() {
     assert!(commands.len() >= 8);
     assert!(commands.iter().any(|c| c.program == "git"));
     assert!(commands.iter().any(|c| c.program == "gh"));
-    assert!(commands.contains(&reflock_check(&clone, CREATED_PATH)));
+    let scratch = std::path::Path::new("<scratch>");
+    let copy_at = commands
+        .iter()
+        .position(|c| c == &git_clone_scratch(&clone, scratch));
+    let check_at = commands
+        .iter()
+        .position(|c| c == &reflock_check(scratch, CREATED_PATH));
+    assert!(copy_at.is_some() && copy_at < check_at, "{commands:?}");
 }
 
 // --- exit codes --------------------------------------------------------------
@@ -1118,33 +1495,6 @@ fn a_missing_clone_is_a_stale_error_not_a_usage_error() {
         ApplyOutcome::Stopped(ApplyStop::CloneMissing)
     ));
     assert_eq!(report.exit_code(), ExitCode::Stale);
-}
-
-// --- rendering ---------------------------------------------------------------
-
-#[test]
-fn a_lint_failure_finding_names_the_real_clone_path_not_the_branch_name() {
-    let tmp = tempfile::tempdir().unwrap();
-    let clone = tmp.path().join("corpus");
-    std::fs::create_dir_all(&clone).unwrap();
-    let config = config_with_repo(&clone);
-    let runner = FakeCommandRunner::new().on(git_status_porcelain(&clone), ok(""));
-    let clock = FixedClock(now());
-    let mut input = valid_input();
-    input.tags = vec!["NotKebabCase".to_string()];
-
-    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);
-
-    let text = report.render_text(&RenderOptions::default());
-    let clone_display = clone.display().to_string();
-    assert!(
-        text.contains(&clone_display),
-        "the fix instruction must name the real clone path, got: {text}"
-    );
-    assert!(
-        !text.contains("contribute/write-a-good-query checkout"),
-        "the fix instruction must not name the branch as if it were a path, got: {text}"
-    );
 }
 
 // --- targeted mutation-gap coverage -----------------------------------------
@@ -1259,14 +1609,16 @@ fn appending_to_a_directory_is_rejected_as_an_unreadable_target() {
 fn a_failing_branch_list_command_stops_apply_as_checkout_failed_not_a_collision() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("corpus");
+    let scratch = tmp.path().join("scratch");
     std::fs::create_dir_all(&clone).unwrap();
     let config = config_with_repo(&clone);
     let input = valid_input();
     let branch = format!("contribute/{}", slugify(&input.title));
     let runner = FakeCommandRunner::new()
         .on(git_status_porcelain(&clone), ok(""))
+        .on(git_clone_scratch(&clone, &scratch), ok(""))
         .on(
-            reflock_check(&clone, "kaibo/how-to/write-a-good-query.md"),
+            reflock_check(&scratch, "kaibo/how-to/write-a-good-query.md"),
             reflock_clean(),
         )
         .on(
@@ -1275,7 +1627,7 @@ fn a_failing_branch_list_command_stops_apply_as_checkout_failed_not_a_collision(
         );
     let clock = FixedClock(now());
 
-    let report = ContributeApplyVerb::new(&config, input).apply(&runner, &clock);
+    let report = ContributeApplyVerb::new(&config, input).apply_in(&runner, &clock, &scratch);
 
     match &report.outcome {
         ApplyOutcome::Stopped(ApplyStop::CheckoutFailed { detail }) => {
