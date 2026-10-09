@@ -97,7 +97,7 @@ kaibo contribute apply \
 
 `apply` lints the page and checks its references, then writes it, branches,
 commits, pushes (directly or via a verified fork), opens a PR against the
-configured repo, and watches CI.
+configured repo. CI and review happen on the PR.
 
 ## Keeping fresh
 

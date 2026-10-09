@@ -5,7 +5,7 @@
 //! anything or prompts interactively - see [`ContributePlanVerb`]. `apply`
 //! takes an already-resolved placement and does the git/gh ceremony:
 //! lint-gate, reference-check, write, branch, commit, push (direct or via a
-//! verified fork), open a PR, and watch CI - see [`ContributeApplyVerb`].
+//! verified fork), and open a PR - see [`ContributeApplyVerb`].
 //!
 //! **Stop and report, never discard**: a dirty clone, a lint failure, a
 //! dangling reference, or a branch-name collision all stop `apply` before
@@ -234,13 +234,6 @@ fn gh_pr_create(repo: &str, base: &str, head: &str, title: &str, body: &str) -> 
             "pr", "create", "--repo", repo, "--base", base, "--head", head, "--title", title,
             "--body", body,
         ],
-    )
-}
-
-fn gh_pr_checks(repo: &str, pr_url_or_number: &str) -> PlannedCommand {
-    PlannedCommand::new(
-        "gh",
-        ["pr", "checks", pr_url_or_number, "--repo", repo, "--watch"],
     )
 }
 
@@ -623,12 +616,6 @@ pub enum ReferenceCheck {
     ReflockMissing,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CiVerdict {
-    Passed,
-    Failed { detail: String },
-}
-
 /// Why `apply` stopped, or a step it could not complete. Every variant
 /// reports with a message naming the exact next command, via
 /// [`ApplyReport::findings`].
@@ -797,7 +784,6 @@ pub enum ApplyOutcome {
     Completed {
         push_route: PushRoute,
         pr_url: String,
-        ci: CiVerdict,
     },
 }
 
@@ -823,10 +809,6 @@ impl ApplyReport {
     pub fn exit_code(&self) -> ExitCode {
         match &self.outcome {
             ApplyOutcome::Stopped(stop) => stop.exit_code(),
-            ApplyOutcome::Completed {
-                ci: CiVerdict::Failed { .. },
-                ..
-            } => ExitCode::Usage,
             ApplyOutcome::Completed { .. } => ExitCode::Success,
         }
     }
@@ -846,20 +828,6 @@ impl ApplyReport {
                     "install reflock, or put it on PATH, to catch a broken reference before the PR opens"
                         .to_string(),
                 ),
-            ));
-        }
-        if let ApplyOutcome::Completed {
-            ci: CiVerdict::Failed { detail },
-            pr_url,
-            ..
-        } = &self.outcome
-        {
-            findings.push((
-                format!("CI failed on {pr_url}: {detail}"),
-                Some(format!(
-                    "inspect {pr_url}, push a fix to {}, and re-check",
-                    self.branch
-                )),
             ));
         }
         if self.returned_to_main == Some(false) {
@@ -989,7 +957,6 @@ fn planned_apply_commands(config: &Config, input: &ApplyInput) -> Vec<PlannedCom
             &title,
             &body,
         ),
-        gh_pr_checks(&repo, "<pr-url>"),
         git_checkout_main(clone_path),
     ];
     // The write itself is a plain file write, not a shelled-out command,
@@ -1234,17 +1201,13 @@ fn apply(
     let returned_to_main = Some(matches!(&checkout_back, Ok(output) if output.success()));
 
     match result {
-        Ok((push_route, pr_url, ci)) => ApplyReport {
+        Ok((push_route, pr_url)) => ApplyReport {
             path,
             branch,
             clone_display,
             returned_to_main,
             references,
-            outcome: ApplyOutcome::Completed {
-                push_route,
-                pr_url,
-                ci,
-            },
+            outcome: ApplyOutcome::Completed { push_route, pr_url },
         },
         Err(stop) => ApplyReport {
             path,
@@ -1264,7 +1227,7 @@ fn run_from_branch(
     path: &str,
     branch: &str,
     runner: &dyn CommandRunner,
-) -> Result<(PushRoute, String, CiVerdict), ApplyStop> {
+) -> Result<(PushRoute, String), ApplyStop> {
     let clone_path = config.clone_path();
 
     let checkout = runner
@@ -1322,21 +1285,7 @@ fn run_from_branch(
         .trim()
         .to_string();
 
-    let ci_output =
-        runner
-            .run(&gh_pr_checks(repo, &pr_url))
-            .map_err(|err| ApplyStop::PrCreateFailed {
-                detail: err.to_string(),
-            })?;
-    let ci = if ci_output.success() {
-        CiVerdict::Passed
-    } else {
-        CiVerdict::Failed {
-            detail: ci_output.stderr.trim().to_string(),
-        }
-    };
-
-    Ok((push_route, pr_url, ci))
+    Ok((push_route, pr_url))
 }
 
 /// Resolve where `apply` pushes, from the caller's own permission on
@@ -1599,6 +1548,9 @@ impl Render for PlanReport {
     }
 }
 
+/// `apply` ends at the opened PR: CI and the human review run there.
+const AFTER_THE_PR: &str = "CI and review happen on the PR";
+
 impl Render for ApplyReport {
     fn render_text(&self, options: &RenderOptions) -> String {
         let mut lines = vec!["kaibo contribute apply".to_string()];
@@ -1607,11 +1559,7 @@ impl Render for ApplyReport {
 
         match &self.outcome {
             ApplyOutcome::Stopped(_) => lines.push("result: stopped".to_string()),
-            ApplyOutcome::Completed {
-                push_route,
-                pr_url,
-                ci,
-            } => {
+            ApplyOutcome::Completed { push_route, pr_url } => {
                 lines.push(format!(
                     "push route: {}",
                     match push_route.kind {
@@ -1623,13 +1571,7 @@ impl Render for ApplyReport {
                     }
                 ));
                 lines.push(format!("pr: {pr_url}"));
-                lines.push(format!(
-                    "ci: {}",
-                    match ci {
-                        CiVerdict::Passed => "passed".to_string(),
-                        CiVerdict::Failed { detail } => format!("failed ({detail})"),
-                    }
-                ));
+                lines.push(format!("note: {AFTER_THE_PR}"));
             }
         }
 
@@ -1648,11 +1590,7 @@ impl Render for ApplyReport {
     fn render_json(&self) -> Value {
         let outcome = match &self.outcome {
             ApplyOutcome::Stopped(_) => serde_json::json!({"state": "stopped"}),
-            ApplyOutcome::Completed {
-                push_route,
-                pr_url,
-                ci,
-            } => serde_json::json!({
+            ApplyOutcome::Completed { push_route, pr_url } => serde_json::json!({
                 "state": "completed",
                 "push_route": match push_route.kind {
                     PushRouteKind::Direct => "direct",
@@ -1660,10 +1598,7 @@ impl Render for ApplyReport {
                 },
                 "fork_owner": push_route.owner,
                 "pr_url": pr_url,
-                "ci": match ci {
-                    CiVerdict::Passed => serde_json::json!({"passed": true}),
-                    CiVerdict::Failed { detail } => serde_json::json!({"passed": false, "detail": detail}),
-                },
+                "note": AFTER_THE_PR,
             }),
         };
         serde_json::json!({
