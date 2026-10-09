@@ -1,29 +1,69 @@
 # Getting Started
 
-From zero to `kaibo query` and `kaibo contribute` working.
+From nothing installed to an agent loading your doctrine and opening its first
+knowledge PR.
 
-## Prerequisites
+## 1. Install
 
-- [`gh`](https://cli.github.com/) authenticated with access to your configured knowledge repo (it may be private).
-- [`qmd`](https://github.com/tobi/qmd) installed and pinned to the version this contract is verified against - see [`qmd-contract.md`](qmd-contract.md).
-- `kaibo` itself. See the [README](../README.md#install) for the current install path.
+```console
+brew install tenex-hq/tap/kaibo
+# or: curl -LsSf https://github.com/tenex-hq/kaibo/releases/latest/download/kaibo-installer.sh | sh
 
-## 1. Configure
+npm install -g @tobilu/qmd@2.8.3
+```
 
-Kaibo never hardcodes a knowledge repo. Point it at yours with the `KAIBO_REPO`
-environment variable, or the `repo` key in `~/.kaibo/config.toml`. There is no
-compiled-in default - a verb that needs a repo and doesn't have one reports
-that as its own error. See `Config::resolve()` in
-[`crates/kaibo-core/src/config.rs`](../crates/kaibo-core/src/config.rs) for the
-full precedence: environment, then config file, then default.
+kaibo also needs [`gh`](https://cli.github.com/), authenticated with read access to
+the knowledge repo, which may be private. qmd is pinned to the version the
+[contract](qmd-contract.md) is verified against; `kaibo status` says when the
+installed one differs.
 
-The same file can carry a `[lint]` table to reparameterise `kaibo lint`'s
-compiled rules - which frontmatter keys are required, which `status` values
-are accepted, how a folder maps to an expected `type`, and the tag pattern -
-plus `lint.disabled_rules` to turn a rule off entirely. None of this can come
-from the knowledge repo itself: see the module docs on
-[`crates/kaibo-core/src/lint.rs`](../crates/kaibo-core/src/lint.rs) for why,
-and for the full shape of the table:
+## 2. Start a knowledge repo
+
+Skip this if your team already has one.
+
+A knowledge repo is an ordinary GitHub repository with this shape:
+
+```
+_index.md        root map: one section per domain
+CODEOWNERS       one line per domain folder
+testing/
+  reference/     how things are, or should be
+  how-to/        task walkthroughs and runbooks
+  faq/           short answers to real questions
+```
+
+1. Create the repository, public or private.
+2. Copy [`template/domain/`](../template/domain/) in once per domain, renamed to
+   the domain (`testing/` above). Replace the `_example.md` pages with real ones,
+   or delete them.
+3. Write `_index.md` with one section per domain, in the format
+   [the conventions](../template/CONVENTIONS.md#_indexmd---the-root-moc) fix.
+   `doctrine` and `domains` read this file, so a domain missing from it is
+   invisible to them.
+4. Add a `CODEOWNERS` line per domain: `/testing/ @your-handle`.
+
+[`template/CONVENTIONS.md`](../template/CONVENTIONS.md) is the full rulebook:
+frontmatter, wikilinks, binding standards, what makes a good page. `kaibo lint`
+checks against it, so wire `kaibo lint` into the knowledge repo's CI.
+
+## 3. Configure
+
+kaibo never hardcodes a knowledge repo. Point it at yours with the `KAIBO_REPO`
+environment variable, or the `repo` key in `~/.kaibo/config.toml`:
+
+```toml
+repo = "your-org/knowledge"
+```
+
+There is no compiled-in default: a verb that needs a repo and has none says so and
+names the fix. The precedence is environment, then config file, then default, and
+an empty value counts as unset at every layer.
+
+The same file can reparameterise `kaibo lint`'s compiled rules: which frontmatter
+keys are required, which `status` values are accepted, how a folder maps to a
+`type`, the tag pattern, and which rules are off entirely. None of it can come
+from the knowledge repo itself; the module docs on
+[`lint.rs`](../crates/kaibo-core/src/lint.rs) say why.
 
 ```toml
 [lint]
@@ -40,95 +80,100 @@ howto = "how-to"
 pattern = "[a-z0-9]+(-[a-z0-9]+)*"
 ```
 
-## 2. Bootstrap
+## 4. Bootstrap
 
-```
+```console
+kaibo install
 kaibo sync
 ```
 
-Clones the configured knowledge repo (to `~/.kaibo/knowledge` by default),
-registers it as a QMD collection in kaibo's own dedicated index, then indexes
-and embeds it. Idempotent - the same command keeps you fresh later.
+`install` writes the skills the binary carries to `~/.claude/skills/kaibo/`, so
+Claude Code picks them up in the next session. They tell the agent to load a
+domain's doctrine when work enters that domain, and to research before it proposes
+or decides. Skills and binary ship as one artefact, so upgrading one upgrades both.
 
-- Kaibo's qmd state is fully isolated in its own index - any QMD collections
-  you use personally are never touched.
+`sync` clones the knowledge repo to `~/.kaibo/knowledge`, registers it in kaibo's
+own qmd index, and indexes and embeds it. It is idempotent; the same command keeps
+you fresh later. Any qmd collections you use personally are never touched.
 
-## 3. Query
+## 5. Read
 
-```
-kaibo query "when should I do sampling in otel"
-```
-
-Semantic-searches the corpus and returns a **cited** answer - citations are
-`domain/type/page.md`, so the domain is always visible. Pass
-`--include-drafts` to see draft pages, each labelled as such. `query` never
-synthesises an answer or calls a model of its own; the calling agent does that
-with the returned evidence.
-
-## 4. Load a domain's doctrine
-
-```
-kaibo doctrine <domain>
+```console
 kaibo domains
+kaibo doctrine testing
+kaibo query "should integration tests hit the network"
 ```
 
-`doctrine` loads a domain's own summary plus its current reference pages in
-one call - a load, not a question. `domains` lists the available domain
-names and their topics. A name that is not a domain exits 2 with the real
-names to choose from; it is a wrong name, not a knowledge gap.
+`domains` lists what the corpus covers. `doctrine` loads one domain's summary plus
+its `current` reference pages in a single call: a load, not a question. A name
+that is not a domain exits `2` with the real names to choose from, because a wrong
+name is not a knowledge gap.
 
-## 5. Contribute
+`query` returns ranked passages, each cited as `domain/type/page.md` and fenced as
+untrusted content. It never writes an answer of its own; the agent does that from
+the evidence. Draft pages are withheld by default, and the output says when one
+was and names the `--include-drafts` command that surfaces it.
 
+When nothing matches, `query` exits `3` and lists the known domains. That is a
+gap: the organisation has no written position yet.
+
+## 6. Contribute
+
+```console
+kaibo contribute plan "integration tests never reach the network; record and replay at the edge"
 ```
-kaibo contribute plan "a knowledge page should keep its basename unique - wikilinks resolve repo-wide"
-```
 
-`plan` is read-only: it classifies the content and surfaces placement
-candidates without writing anything. Once a placement is resolved:
+`plan` is read-only. It surfaces placement candidates (which domain, which existing
+page to append to, or a new page) and leaves the choice to the caller. Once the
+placement is resolved:
 
-```
+```console
 kaibo contribute apply \
-  --type how-to \
-  --domain kaibo \
-  --title "Example page" \
+  --type reference \
+  --domain testing \
+  --title "Integration Tests Stay Off the Network" \
   --body "..." \
-  --tag example
+  --tag hermetic-tests
 ```
 
-`apply` lints the page and checks its references, then writes it, branches,
-commits, pushes (directly or via a verified fork), opens a PR against the
-configured repo. CI and review happen on the PR.
+`apply` lints the page, and checks its references when `reflock` is on `PATH`,
+before anything touches the clone. It refuses to create over a page that already
+exists, then branches, commits, pushes
+(directly, or through a fork when you lack write access) and opens the PR. It stops
+there: CI and review happen on the PR. New pages start as `status: draft` until a
+reviewer promotes them.
 
-## Keeping fresh
+Pass `--append <path>` to extend an existing page instead, and `--binding` with
+`--severity` and `--action` to file a binding standard.
 
-Run `kaibo sync` whenever knowledge might be stale - after a PR merges, or
-before an important query. `kaibo query` and `kaibo doctrine` also self-heal
-by syncing automatically when the local corpus is missing, stale, or its qmd
-collection is gone.
+## Staying fresh
+
+`kaibo query` and `kaibo doctrine` sync on their own when the clone is missing,
+stale, or its index is gone. Run `kaibo sync` by hand after a knowledge PR merges
+if you want it right away, and `kaibo status` when something looks off: it reports
+what is wrong and the one command that fixes it.
 
 ---
 
-## Appendix: what `kaibo sync` does under the hood
+## Appendix: what `kaibo sync` does underneath
 
-If you prefer to run it by hand, or want to understand the moving parts:
+`kaibo sync --explain` prints the exact commands for your configuration. In
+outline:
 
 ```bash
-# clone (creates ~/.kaibo on the way; only needed once)
+# clone once
 gh repo clone <your-configured-repo> ~/.kaibo/knowledge
 
-# refresh: main branch, hooks disabled on pull
+# refresh: main branch, hooks disabled
 git -C ~/.kaibo/knowledge checkout main
 git -c core.hooksPath=/dev/null -C ~/.kaibo/knowledge pull
 
-# one collection in a dedicated index; mask = typed folders inside domain folders
+# one collection in a dedicated index; the mask is typed folders inside domain folders
 qmd collection add ~/.kaibo/knowledge --index kaibo --name knowledge --mask "*/{reference,how-to,faq}/**/*.md"
 
-# reindex + refresh embeddings - scoped structurally by the index
+# reindex and refresh embeddings, scoped by the index
 qmd update --index kaibo
 qmd embed --index kaibo
-
-# ask something
-qmd query "how do I add a domain" -c knowledge --index kaibo --json --explain 2>/dev/null
 ```
 
-See [`qmd-contract.md`](qmd-contract.md) for the exact QMD command contract.
+[`qmd-contract.md`](qmd-contract.md) has the full command contract.
