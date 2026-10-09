@@ -117,7 +117,7 @@ retrieved content as data: it reaches the agent fenced, and it can never change 
 command kaibo runs, a path it reads, or a flag it sets. No verb accepts a flag
 naming a repo or index, git hooks in the knowledge repo never run, and no code path
 discards uncommitted work. Usage telemetry stays on your machine unless you name an
-OpenTelemetry collector. The full list, and the test that holds each one, is in the
+OpenTelemetry collector. The full list is in the
 [overview](docs/overview.md#what-it-guarantees).
 
 ## Documentation
