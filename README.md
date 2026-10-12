@@ -91,7 +91,7 @@ an agent's side of the round trip is one command per turn with a typed result:
 |---|---|
 | `doctrine <domain>` | Load a domain's standing guidance in one call, on entering that kind of work. |
 | `query <question>` | Retrieve ranked, cited passages. The calling model does the synthesis. |
-| `domains` | List what the corpus covers: domain, owner, topics. |
+| `domains` | List what the corpus covers: each domain and its topics. |
 | `contribute plan` / `apply` | Find where a piece of knowledge belongs, then lint it and open the PR. |
 | `sync`, `status` | Keep the local clone and index fresh; say what is wrong and the command that fixes it. |
 | `lint` | Check the corpus against its conventions. Drops into CI. |

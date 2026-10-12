@@ -4,7 +4,9 @@
 //! doctrine`'s unknown-domain error both point a caller here to see what
 //! actually exists. Each entry is exactly the shape [`crate::moc`] parses
 //! out of one `## ` section of the root MOC: `name` (what `kaibo doctrine
-//! <domain>` expects), `owner`, `topics`, `summary`.
+//! <domain>` expects), `owner`, `topics`, `summary`. Default text carries
+//! only `name` and `topics`, the fields a caller picks a domain by; the
+//! summary is a page inventory `doctrine` repeats anyway.
 //!
 //! Shares its self-heal trigger and its "the MOC being unreadable is a
 //! broken corpus, not a gap" distinction with `kaibo doctrine` - see that
@@ -227,11 +229,15 @@ impl Render for DomainsReport {
             DomainsOutcome::Listed { domains } => {
                 lines.push(format!("result: {} domain(s)", domains.len()));
                 for domain in domains {
-                    lines.push(format!(
-                        "- {} (owner {})",
-                        domain.name,
-                        domain.owner.as_deref().unwrap_or("unknown"),
-                    ));
+                    lines.push(if options.full {
+                        format!(
+                            "- {} (owner {})",
+                            domain.name,
+                            domain.owner.as_deref().unwrap_or("unknown"),
+                        )
+                    } else {
+                        format!("- {}", domain.name)
+                    });
                     lines.push(format!(
                         "  topics: {}",
                         if domain.topics.is_empty() {
@@ -240,11 +246,19 @@ impl Render for DomainsReport {
                             domain.topics.join(", ")
                         }
                     ));
-                    lines.push(format!(
-                        "  summary: {}",
-                        domain.summary.as_deref().unwrap_or("none")
-                    ));
+                    if options.full {
+                        lines.push(format!(
+                            "  summary: {}",
+                            domain.summary.as_deref().unwrap_or("none")
+                        ));
+                    }
                 }
+                if !options.full {
+                    lines.push(
+                        "omitted: owner, summary -> next: `kaibo domains --full`".to_string(),
+                    );
+                }
+                lines.push("next: `kaibo doctrine <name>` loads one domain".to_string());
             }
         }
 

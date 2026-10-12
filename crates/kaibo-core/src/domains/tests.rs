@@ -85,12 +85,6 @@ fn lists_every_domain_with_owner_topics_and_summary() {
         other => panic!("expected Listed, got {other:?}"),
     }
 
-    let text = report.render_text(&crate::output::RenderOptions::default());
-    assert!(text.contains("kaibo"));
-    assert!(text.contains("@someone"));
-    assert!(text.contains("monorepo"));
-    assert!(text.contains("Kaibo's own knowledge."));
-
     let json = report.render_json();
     let names: Vec<_> = json["outcome"]["domains"]
         .as_array()
@@ -101,6 +95,64 @@ fn lists_every_domain_with_owner_topics_and_summary() {
     assert_eq!(
         names,
         vec!["kaibo".to_string(), "observability".to_string()]
+    );
+}
+
+fn two_domain_report() -> (tempfile::TempDir, DomainsReport) {
+    let tmp = tempfile::tempdir().unwrap();
+    let clone = tmp.path().join("clone");
+    git_dir(&clone);
+    let config = config_with_repo(&clone);
+    write_moc(
+        &clone,
+        "---\ntype: index\n---\n\n\
+         ## kaibo\n\n\
+         - **owner:** @someone\n\
+         - **topics:** kaibo, monorepo\n\
+         - **summary:** Kaibo's own knowledge.\n\n\
+         ## observability\n\n\
+         - **owner:** @someone-else\n\
+         - **topics:** otel, tracing\n\
+         - **summary:** Ten principles.\n",
+    );
+    let runner = healthy_fixture(&clone, &config);
+    let report = DomainsVerb::new(&config).gather(&runner, &FixedClock(now()));
+    (tmp, report)
+}
+
+#[test]
+fn an_agent_picking_a_domain_gets_names_and_topics_and_is_told_what_was_left_out() {
+    let (_tmp, report) = two_domain_report();
+
+    let text = report.render_text(&crate::output::RenderOptions::default());
+
+    assert_eq!(
+        text,
+        "kaibo domains\n\
+         self-heal: not needed\n\
+         result: 2 domain(s)\n\
+         - kaibo\n  topics: kaibo, monorepo\n\
+         - observability\n  topics: otel, tracing\n\
+         omitted: owner, summary -> next: `kaibo domains --full`\n\
+         next: `kaibo doctrine <name>` loads one domain"
+    );
+}
+
+#[test]
+fn asking_for_full_output_adds_each_domains_owner_and_summary() {
+    let (_tmp, report) = two_domain_report();
+
+    let text = report.render_text(&crate::output::RenderOptions { full: true });
+
+    assert_eq!(
+        text,
+        "kaibo domains\n\
+         self-heal: not needed\n\
+         result: 2 domain(s)\n\
+         - kaibo (owner @someone)\n  topics: kaibo, monorepo\n  summary: Kaibo's own knowledge.\n\
+         - observability (owner @someone-else)\n  topics: otel, tracing\n  summary: Ten principles.\n\
+         next: `kaibo doctrine <name>` loads one domain\n\
+         exit code: 0"
     );
 }
 
@@ -166,8 +218,12 @@ fn a_control_character_in_a_summary_cannot_forge_a_new_output_line() {
     let clock = FixedClock(now());
 
     let report = DomainsVerb::new(&config).gather(&runner, &clock);
-    let text = report.render_text(&crate::output::RenderOptions::default());
+    let text = report.render_text(&crate::output::RenderOptions { full: true });
 
+    assert!(
+        text.contains("fine"),
+        "the summary must be rendered for this test to mean anything, got: {text:?}"
+    );
     assert!(
         !text.contains('\r'),
         "a control character from a MOC summary must not reach kaibo's own output verbatim, got: {text:?}"
