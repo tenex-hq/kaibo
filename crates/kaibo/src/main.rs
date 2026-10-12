@@ -88,8 +88,8 @@ enum Commands {
     /// in one call. A load, not a question - see `kaibo domains` for the
     /// available domain names.
     Doctrine(DoctrineCommandArgs),
-    /// List the root MOC's domain inventory as structured data: domain,
-    /// owner, topics, summary.
+    /// List the root MOC's domain inventory: each domain and its topics.
+    /// `--full` adds owner and summary.
     Domains,
     /// Run the rule registry over the corpus, or over the given paths.
     /// Any violation exits non-zero.
