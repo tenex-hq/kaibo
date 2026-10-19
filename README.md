@@ -18,6 +18,36 @@ a kind of work and to research it before they decide something.
 - **For the engineer:** stop copying conventions from repo to repo. Write them down
   once; every agent session can read them, cite them, and propose additions.
 
+|  | Without kaibo | With kaibo |
+|---|---|---|
+| **Where the doctrine lives** | Heads, Slack threads, a drifting copy in every `AGENTS.md` | One reviewed repository, owned per domain |
+| **What the agent knows** | General training and whatever repo is open | The version your team agreed on, with citations |
+| **When nobody knows** | The agent guesses, confidently | kaibo reports a gap, and the agent can propose the page |
+| **How it changes** | Someone edits a copy; the others go stale | A pull request, reviewed by the domain's owners |
+
+## The loop
+
+```mermaid
+flowchart LR
+    team(["Leads and engineers"])
+    repo[("Doctrine repo<br/>one folder per domain")]
+    agent(["Coding agent"])
+    work["Work done<br/>your team's way"]
+
+    team -- "write and review<br/>by pull request" --> repo
+    repo -- "kaibo sync<br/>local index" --> agent
+    agent -- "kaibo doctrine / query<br/>cited guidance" --> work
+    agent -. "gap (exit 3)<br/>kaibo contribute" .-> team
+```
+
+1. **Load.** Entering a kind of work (testing, deployment, observability), the agent
+   runs `kaibo doctrine <domain>` and starts from the agreed standard.
+2. **Research.** Before deciding something, it runs `kaibo query` and cites what it
+   found. kaibo retrieves; the agent writes the answer.
+3. **Fill the gap.** When there is no answer, kaibo says so with exit `3`, and the
+   agent drafts the missing page with `kaibo contribute`. It merges only after the
+   domain's owners review it.
+
 > **Status: early release, used internally.** The verb surface is settling, and a
 > breaking change is called out in the [changelog](CHANGELOG.md).
 
