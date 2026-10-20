@@ -149,8 +149,8 @@ reader will have in hand, and keep tags specific.
   change the answer, so a reader can tell whether their case is in scope.
 
 **Record only what the contributor knows.** A reason, alternative or boundary
-nobody stated is left out and named as an open question for the reviewer. One
-inferred to fill the shape is a wrong page in waiting.
+nobody stated is left out, and the contributor is asked for it before the page
+is filed. One inferred to fill the shape is a wrong page in waiting.
 
 These are properties, not sections to fill in. A definition, a placement rule
 and a runbook take different shapes, and the shape follows the claim. A binding
@@ -200,7 +200,8 @@ the evidence rather than update it.
 ### What follows for the corpus
 
 - **Length is paid by every task in the domain.** `kaibo doctrine` loads every
-  `current` reference page of a domain in full. Evidence earns that cost;
+  reference page of a domain that is not a draft, deprecated and binding ones
+  included, in full. Evidence earns that cost;
   narrative does not.
 - **Contradictions are resolved, not left standing.** A page that contradicts
   another, binding or not, improves or supersedes it in the same PR. Two
@@ -330,9 +331,8 @@ creates a second copy, and the second copy is the one nobody edits when the
 first one changes.
 
 A compiled contract carries the lead claim, the severity, the checks and the
-citation, not the page. That is what keeps page length free. Write as much
-context behind the citation as a human reader needs, and the caller about to
-act still receives one sentence and a verdict.
+citation, not the page. However long the page, the caller about to act
+receives one sentence and a verdict; `doctrine` still loads the page in full.
 
 A standard also does not describe what its own checks cannot decide. Writing
 "this pattern cannot see X" does not make it see X, and it puts a weaker
