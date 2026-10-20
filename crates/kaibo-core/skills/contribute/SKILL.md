@@ -55,7 +55,7 @@ Re-run `plan` with `--type` and `--domain` once you have both, to see the resolv
 
 ### 4. Write the body, then apply
 
-The body is markdown without frontmatter: `apply` writes the frontmatter itself. Write only what the contributor gave you: a reason, a rejected alternative or a boundary they did not state stays out of the page, and you name it in your report as an open question for the reviewer. A page that invents its grounding is cited with the confidence of a reviewed one. Add `[[wikilinks]]` to obviously related pages; basenames stay unique across the corpus. A cross-domain page is filed in the domain supplying the constraint, tagged with the other domain's keywords, and wikilinked both ways.
+The body is markdown without frontmatter: `apply` writes the frontmatter itself. Write only what the contributor gave you. A reason, a rejected alternative or a boundary they did not state stays out of the page: a reviewer cannot tell an invented reason from a real one, and once merged it is cited as reviewed doctrine. Tell the contributor which of these are missing, so they can supply them before you apply. Add `[[wikilinks]]` to obviously related pages; basenames stay unique across the corpus. A cross-domain page is filed in the domain supplying the constraint, tagged with the other domain's keywords, and wikilinked both ways.
 
 ```bash
 kaibo contribute apply --type <type> --domain <domain> \
