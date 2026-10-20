@@ -58,7 +58,7 @@ property.
 
 | | |
 |---|---|
-| **`kaibo doctrine <domain>`** | Load a domain's standing guidance in one call: its section of the root map plus every `current` reference page. Not a question, a load - fired on entering a domain of work. |
+| **`kaibo doctrine <domain>`** | Load a domain's standing guidance in one call: its section of the root map plus every reference page that is not a draft. Not a question, a load - fired on entering a domain of work. |
 | **`kaibo query <question>`** | Retrieve ranked, cited evidence for a question. Returns passages and sources; the calling model does the synthesis. |
 | **`kaibo domains`** | List the domain inventory: each domain and its topics, with owner and summary behind `--full`. How an agent discovers what the corpus even covers. |
 
