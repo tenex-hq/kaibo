@@ -31,7 +31,7 @@ Content is organized by **purpose**, not one-file-per-question. The lens is
 |--------|---------|----------|-------|-----------------------------|
 | `reference/` | `reference` | Reference + Explanation | Guidelines, commandments, baselines, standards | …it states how something *is* or *should be*, stably, independent of any one task |
 | `how-to/` | `how-to` | How-to | How-do-I answers, runbooks | …it walks through *doing* a specific task, start to finish |
-| `faq/` | `faq` | — | Answered questions (Q&A) | …it's a short answer to a real question that doesn't justify its own reference/how-to page |
+| `faq/` | `faq` | none | Answered questions (Q&A) | …it's a short answer to a real question that doesn't justify its own reference/how-to page |
 
 > `tutorial/` (learning-oriented) is intentionally deferred. Add it only when a real domain needs it (and extend the indexing mask below).
 
@@ -89,6 +89,134 @@ choice:
 |------|-------|
 | no em dashes or en dashes as prose punctuation | use a comma, colon, period, or parentheses |
 | no `--` standing in for a dash | backtick it when it is a CLI flag |
+
+## What a page is for
+
+A page states one position the organization takes, so that an agent at work
+in another repo can find it, cite it, weigh it and act on it. That reader found
+the page by meaning, cannot ask the author, cannot see the project the
+knowledge came from, and treats a cited page as the team's answer. Every rule
+below follows from that reader, and each one prevents a specific way the reader
+fails.
+
+These rules are judgement, so `kaibo lint` does not check them. Their decidable
+parts (implied time, tracker references) belong in the corpus's prose lint; the
+rest is what a reviewer, human or agent, reads a knowledge PR against. They
+apply to new pages and to any page being edited. Existing pages are not swept.
+
+### The admission test: it takes a side
+
+A page holds a convention, a choice between options, a definition, a measured
+trade-off, or the way a task is done here. The test is whether a competent
+engineer elsewhere could have settled it differently. Pinning base images by
+digest passes, because many teams pin by tag. A page that restates a tool's
+documentation fails: it tells the reader nothing the vendor does not, lends the
+restatement a team citation, and drifts from its source unnoticed. Public facts
+appear only as the context a position needs.
+
+The author does not need the organization to hold the position already. Review
+is what makes the side the organization's, which is how a ratified labeled
+proposal becomes a page.
+
+### Citable: one position, stated first
+
+A reference page holds one position, a how-to one task, an FAQ entry one
+question ([why](#reference-pages-atomic)). The title names the claim ("Base
+images are pinned by digest"), not the topic ("Docker images"); a definition, a
+pattern or a method is titled by the name a reader searches for. Either way the
+first sentence states the claim in full, so a reader who stops there, or a
+search snippet that shows only that sentence, still carries it.
+
+### Findable: in the words of the reader's situation
+
+Search matches meaning, but the reader's question is concrete. A page about
+where a check should run is found by "should this linter run pre-push?" only if
+it names linters and pre-push. Name the trigger, the tools and the symptoms the
+reader will have in hand, and keep tags specific.
+
+### Argued: the reason, and what is known around it
+
+- **The reason.** The mechanism or the measurement behind the claim. The reader
+  has constraints the author never saw and can weigh the claim against them only
+  by knowing what it protects. A claim with no reason is taste.
+- **What lost.** Where the contributor knows it, the alternative a reader would
+  reach for and why it lost. The obvious alternative is the one the next reader
+  proposes, and recording why it lost ends that argument. A rejected
+  alternative carries its verdict in its own sentence ("Rejected: ..."), because
+  `query` returns a passage, not a page, and a passage that reads as advice is
+  cited as advice.
+- **Where it stops.** Where the contributor knows them, the conditions that
+  change the answer, so a reader can tell whether their case is in scope.
+
+**Record only what the contributor knows.** A reason, alternative or boundary
+nobody stated is left out and named as an open question for the reviewer. One
+inferred to fill the shape is a wrong page in waiting.
+
+These are properties, not sections to fill in. A definition, a placement rule
+and a runbook take different shapes, and the shape follows the claim. A binding
+standard carries none of the argument itself: it holds the claim, its
+exceptions and its checks, and cites the page that argues it
+([what a standard page holds](#what-a-standard-page-holds)).
+
+### Durable: nothing turns false unedited
+
+A missing page is reported as a gap. A page that stopped being true is cited as
+a grounded answer. A wrong page therefore costs more than a missing one, and
+nothing on a page should expire silently.
+
+**Evidence stays, live state goes.** Project detail on a page plays one of two
+roles:
+
+1. *Evidence for a durable claim*: a measured cost, a failure breakdown over a
+   stated sample, a benchmark. It stays, with what was measured, where and
+   when. A number earns its place when it is tied to the decision it produced:
+   this cost led to that placement.
+2. *A project's live state*: its current configuration, what runs where today,
+   what is planned. It drifts, nothing in the corpus updates it, and the
+   project's own repo is authoritative. It stays there.
+
+Rejected: removing all project detail. The page becomes impersonal and never
+stale, and also ungrounded: its claims turn into taste, and it stops matching
+the concrete question that would find it. A worked example from one project
+buys the reader three things:
+
+- **Calibration.** The reader cannot reuse another repo's numbers but can reuse
+  the derivation: measure the same quantities at home and compare them the same
+  way.
+- **The shape of the artifact.** One finished instance shows what a decision
+  record or a placement table looks like, to be recognised rather than copied.
+- **Retrieval surface.** Concrete terms match concrete questions.
+
+**Anchor time, never imply it.** Tell a worked example in the dated past of the
+decision, not the present of the project. "In March 2026 the team moved the
+linter to pre-push, because it cost 8 seconds there against 100 in the build"
+stays true. "The team runs the linter pre-push" goes false the day the hook
+changes. "Currently", "recently", "we plan to", a ticket number and a person's
+name fail the same way: each points at state the reader cannot see, which
+changes without an edit to the page. Name the role or the owning team, and keep
+plans in the tracker. A row that drifts was state, not evidence: cut it back to
+the evidence rather than update it.
+
+### What follows for the corpus
+
+- **Length is paid by every task in the domain.** `kaibo doctrine` loads every
+  `current` reference page of a domain in full. Evidence earns that cost;
+  narrative does not.
+- **Contradictions are resolved, not left standing.** A page that contradicts
+  another, binding or not, improves or supersedes it in the same PR. Two
+  current pages that disagree turn a grounded answer into a coin toss.
+
+### Review questions
+
+1. Could a competent engineer elsewhere have settled this differently?
+2. Is there one position, stated in full in the first sentence?
+3. Would a concrete question from another repo, in that repo's words, reach it?
+4. Does it give the reason and, where known, what lost and where it stops, with
+   nothing invented?
+5. Is every number tied to the decision it produced, with a source and a date?
+6. Would every sentence still be true in a year if nothing changed but the
+   calendar?
+7. Does another page already hold this position, or its opposite?
 
 ## Reference pages: atomic
 
