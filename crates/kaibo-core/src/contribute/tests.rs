@@ -1250,7 +1250,7 @@ fn apply_opens_the_pr_and_finishes_without_waiting_on_ci() {
 }
 
 #[test]
-fn a_direct_push_contribution_writes_a_draft_page_and_opens_a_pr() {
+fn a_direct_push_contribution_writes_a_current_page_and_opens_a_pr() {
     let tmp = tempfile::tempdir().unwrap();
     let clone = tmp.path().join("corpus");
     let scratch = tmp.path().join("scratch");
@@ -1293,7 +1293,7 @@ fn a_direct_push_contribution_writes_a_draft_page_and_opens_a_pr() {
 
     let written = std::fs::read_to_string(clone.join(&path)).unwrap();
     assert!(written.starts_with("---\n"));
-    assert!(written.contains("status: draft"));
+    assert!(written.contains("status: current"));
     assert!(written.contains("updated: 2023-11-14"));
     assert!(written.contains("Some body text."));
 }
@@ -1739,7 +1739,7 @@ fn written_frontmatter(input: &ApplyInput) -> String {
             doc_type: Some(input.content_type.clone()),
             title: Some(input.title.clone()),
             tags: Some(input.tags.clone()),
-            status: Some(Status::Draft),
+            status: Some(Status::Current),
             updated: Some(Date::parse("2023-11-14").unwrap()),
             extra: binding_frontmatter(input.binding.as_ref()),
         },

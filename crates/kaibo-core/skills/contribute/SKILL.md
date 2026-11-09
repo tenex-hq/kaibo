@@ -26,7 +26,7 @@ Three content types, pick exactly one:
 
 Binding is a **separate question**, not a fourth type. A standard is still a `reference` page; it additionally says that the organization has decided this and that a client is expected to conform. Ask it as a boolean: *would we treat a change that contradicts this as wrong, or merely unlike us?* Only the first is binding. Most contributions are not, and a page that is not binding says nothing about it.
 
-Prose style: no em dashes, no en dashes, no `--` as punctuation. CI fails the PR otherwise, and `kaibo contribute apply` lint-gates before it writes anything, so a slip stops you locally rather than in review. Tags are kebab-case. New pages land as drafts; correctness is settled in review, not by you.
+Prose style: no em dashes, no en dashes, no `--` as punctuation. CI fails the PR otherwise, and `kaibo contribute apply` lint-gates before it writes anything, so a slip stops you locally rather than in review. Tags are kebab-case. New pages land as `status: current`; the PR is the proposal and merging it is the acceptance, so correctness is settled in review, not by you.
 
 ## Steps
 
