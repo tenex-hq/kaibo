@@ -49,9 +49,10 @@ updated: YYYY-MM-DD               # last meaningful edit
 ---
 ```
 
-- `contribute apply` sets `status: draft` on brand-new pages until a human
-  reviews the PR. `query` excludes drafts from grounded answers by default (or
-  surfaces them explicitly labeled with `--include-drafts`).
+- `contribute apply` writes brand-new pages as `status: current`. The PR is the
+  proposal and merging it is the acceptance; a page not yet merged is invisible
+  to `query`. `draft` is for a page you deliberately keep out of answers: `query`
+  excludes it by default (or surfaces it labeled with `--include-drafts`).
 - `deprecated` pages stay in the repo (history matters) but are demoted in
   answers.
 

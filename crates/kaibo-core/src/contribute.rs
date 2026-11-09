@@ -1095,7 +1095,7 @@ fn apply(
                     doc_type: Some(input.content_type.clone()),
                     title: Some(input.title.clone()),
                     tags: Some(input.tags.clone()),
-                    status: Some(Status::Draft),
+                    status: Some(Status::Current),
                     updated: Some(today),
                     extra: binding_frontmatter(input.binding.as_ref()),
                 },
